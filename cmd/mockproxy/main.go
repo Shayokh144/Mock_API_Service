@@ -9,6 +9,7 @@ import (
 	"os"
 
 	"github.com/Shayokh144/Mock_API_Service/internal/config"
+	"github.com/Shayokh144/Mock_API_Service/internal/proxy"
 )
 
 func main() {
@@ -27,8 +28,9 @@ func run(getenv func(string) string, stderr io.Writer, listen func(string, http.
 	for _, line := range config.StartupLines(cfg) {
 		logger.Println(line)
 	}
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.NotFound(w, r)
+	handler := proxy.New(proxy.Options{
+		Upstream: cfg.Upstream,
+		Timeout:  cfg.UpstreamTimeout,
 	})
 	return listen(cfg.ListenAddr, handler)
 }
