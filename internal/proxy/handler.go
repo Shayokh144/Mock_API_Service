@@ -60,14 +60,31 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func writeMock(w http.ResponseWriter, rule rules.Rule) {
+	for name, value := range rule.Headers {
+		canon := http.CanonicalHeaderKey(name)
+		if canon == "X-Mock-Response" || isHopByHop(canon) {
+			continue
+		}
+		w.Header().Set(canon, value)
+	}
 	body := responseBody(rule)
 	if len(body) > 0 && w.Header().Get("Content-Type") == "" {
 		w.Header().Set("Content-Type", "application/json")
 	}
+	// Set this last so a saved rule cannot turn the Sentry marker off.
 	w.Header().Set("X-Mock-Response", "true")
 	w.WriteHeader(rule.StatusCode)
 	if len(body) > 0 {
 		_, _ = w.Write(body)
+	}
+}
+
+func isHopByHop(canon string) bool {
+	switch canon {
+	case "Connection", "Keep-Alive", "Proxy-Authenticate", "Proxy-Authorization", "Te", "Trailer", "Transfer-Encoding", "Upgrade":
+		return true
+	default:
+		return false
 	}
 }
 
