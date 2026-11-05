@@ -56,6 +56,49 @@ func TestFileRoundTripAndMissingFile(t *testing.T) {
 	}
 }
 
+func TestFreshRequestPersistsAndDefaultsOff(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "rules.json")
+	store, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	draft := sampleDraft()
+	draft.FreshRequest = true
+	created, err := store.Create(draft)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `"fresh_request": true`) {
+		t.Fatalf("file = %s", raw)
+	}
+	reloaded, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, ok := reloaded.Get(created.ID)
+	if !ok || !got.FreshRequest || !got.Enabled {
+		t.Fatalf("reloaded = %+v", got)
+	}
+
+	legacy := filepath.Join(dir, "legacy.json")
+	if err := os.WriteFile(legacy, []byte(`{"rules":[{"id":"0123456789abcdef","name":"Old","enabled":true,"method":"GET","path_pattern":"/v1/old","status_code":200,"headers":{},"body":null,"created_at":"2026-11-05T12:00:00Z","updated_at":"2026-11-05T12:00:00Z"}]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	old, err := Load(legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rule, ok := old.Match("GET", "/v1/old")
+	if !ok || rule.FreshRequest {
+		t.Fatalf("legacy = %+v ok=%v", rule, ok)
+	}
+}
+
 func TestInvalidJSONIsLeftUntouched(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "rules.json")

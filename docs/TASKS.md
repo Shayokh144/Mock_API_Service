@@ -369,6 +369,21 @@ Each task is one change you can review on its own. Tests belong with the behavio
   - `data/.gitkeep` remains so the directory exists.
   - `git status` after a local save shows no rule-file change.
 
+### Fresh request
+
+#### MVP-38 — Bypass cache validators for one rule
+
+- **Outcome:** A rule can forward a fresh upstream request instead of returning its saved mock.
+- **Depends on:** MVP-12, MVP-14, MVP-30
+- **Acceptance criteria:**
+  - `fresh_request` defaults to false. Existing mock rules keep returning the saved status, headers, body, and `X-Mock-Response: true`.
+  - When the winning enabled rule has `fresh_request` set, the proxy forwards upstream and does not write the saved mock.
+  - That forward removes `If-None-Match`, `If-Modified-Since`, `If-Match`, `If-Unmodified-Since`, and `If-Range`, then sets `Cache-Control: no-cache` and `Pragma: no-cache`.
+  - Method, query, body, and other headers stay. A `304` is not rewritten into a `200`.
+  - The dashboard checkbox edits the flag. The rules list shows fresh or mock. Enable, disable, and restart keep the flag.
+  - The Ruby server must be reachable. The mode is pass-through of fresh data, not a mock response.
+  - `httptest` covers validators removed, the upstream body returned, the flag off, persistence, and the dashboard.
+
 ## Future
 
 These tasks are out of the MVP. They have no MVP dependency that forces them now. Do them only after the acceptance checklist is already true.

@@ -240,6 +240,7 @@ A rule has:
 | `id` | 16 hex characters, assigned by the proxy |
 | `name` | Display label, up to 80 characters. Not used for matching |
 | `enabled` | Boolean |
+| `fresh_request` | Boolean. False returns the saved mock. True forwards a fresh upstream request instead |
 | `method` | One allowed method |
 | `path_pattern` | Exact or wildcard path |
 | `status_code` | Integer from 100 through 599 |
@@ -263,6 +264,28 @@ Header names written to the client use canonical MIME format.
 
 Write the status code after the final headers.
 
+### Fresh request
+
+`fresh_request` is a per-rule pass-through mode. It is not a mock response.
+
+When the winning enabled rule has `fresh_request` set, the proxy does not write the saved status, headers, or body. It forwards the request upstream. The Ruby server must be reachable. The saved status and body stay on the rule so clearing the option returns to the mock.
+
+Before that forward, the proxy removes cache validators:
+
+- `If-None-Match`
+- `If-Modified-Since`
+- `If-Match`
+- `If-Unmodified-Since`
+- `If-Range`
+
+It then sets `Cache-Control: no-cache` and `Pragma: no-cache`. Method, path, query, body, and every other header stay as the client sent them.
+
+The goal is a full upstream response, usually `200` with a body. The proxy does not turn a `304` into a `200`. If the upstream still returns `304`, that `304` is what the client receives. The response does not get `X-Mock-Response`.
+
+A rule with `fresh_request` false keeps the normal mock behavior. A disabled rule does not match, so its fresh-request flag does nothing.
+
+A missing `fresh_request` field in an older rules file means false.
+
 ## Dashboard
 
 The dashboard is server-rendered HTML. Forms use POST, then a `303` redirect. Vanilla JavaScript is optional. The MVP does not need a separate JSON API.
@@ -282,7 +305,7 @@ The dashboard is server-rendered HTML. Forms use POST, then a `303` redirect. Va
 | Confirm clear | `GET /_admin/history/clear` |
 | Clear all history | `POST /_admin/history/clear` |
 
-The rules list shows name, method, pattern, exact or wildcard, enabled state, and status code.
+The rules list shows name, method, pattern, exact or wildcard, enabled state, fresh or mock, and status code. The rule form has a Fresh request checkbox.
 
 The history list shows method, URL, status, source, and timestamp. The URL is the path plus the query string. The detail page adds request headers, request body, response headers, and response body.
 
@@ -307,6 +330,7 @@ The file is a single JSON object:
       "id": "0123456789abcdef",
       "name": "Profile failure",
       "enabled": true,
+      "fresh_request": false,
       "method": "GET",
       "path_pattern": "/api/v1/profile",
       "status_code": 500,
@@ -380,3 +404,4 @@ The MVP is complete when every line below is true.
 14. After a restart, rules are still there and history is empty.
 15. A request under `/_admin` never reaches the upstream server.
 16. `go test ./...` passes.
+17. A fresh-request rule forwards to Ruby with cache validators removed, and a rule without that option still returns its mock.

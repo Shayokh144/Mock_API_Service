@@ -16,27 +16,29 @@ const maxPatternLength = 2048
 
 // Rule is one saved mock. Body is null when the response has no body.
 type Rule struct {
-	ID          string            `json:"id"`
-	Name        string            `json:"name"`
-	Enabled     bool              `json:"enabled"`
-	Method      string            `json:"method"`
-	PathPattern string            `json:"path_pattern"`
-	StatusCode  int               `json:"status_code"`
-	Headers     map[string]string `json:"headers"`
-	Body        json.RawMessage   `json:"body"`
-	CreatedAt   timeValue         `json:"created_at"`
-	UpdatedAt   timeValue         `json:"updated_at"`
+	ID           string            `json:"id"`
+	Name         string            `json:"name"`
+	Enabled      bool              `json:"enabled"`
+	FreshRequest bool              `json:"fresh_request"`
+	Method       string            `json:"method"`
+	PathPattern  string            `json:"path_pattern"`
+	StatusCode   int               `json:"status_code"`
+	Headers      map[string]string `json:"headers"`
+	Body         json.RawMessage   `json:"body"`
+	CreatedAt    timeValue         `json:"created_at"`
+	UpdatedAt    timeValue         `json:"updated_at"`
 }
 
 // Draft is the input for creating or updating a rule.
 type Draft struct {
-	Name        string
-	Enabled     bool
-	Method      string
-	PathPattern string
-	StatusCode  int
-	Headers     map[string]string
-	Body        string
+	Name         string
+	Enabled      bool
+	FreshRequest bool
+	Method       string
+	PathPattern  string
+	StatusCode   int
+	Headers      map[string]string
+	Body         string
 }
 
 var allowedMethods = map[string]struct{}{
@@ -84,13 +86,14 @@ func normalize(d Draft, allowWildcard bool) (Rule, error) {
 		return Rule{}, err
 	}
 	return Rule{
-		Name:        name,
-		Enabled:     d.Enabled,
-		Method:      method,
-		PathPattern: d.PathPattern,
-		StatusCode:  d.StatusCode,
-		Headers:     headers,
-		Body:        body,
+		Name:         name,
+		Enabled:      d.Enabled,
+		FreshRequest: d.FreshRequest,
+		Method:       method,
+		PathPattern:  d.PathPattern,
+		StatusCode:   d.StatusCode,
+		Headers:      headers,
+		Body:         body,
 	}, nil
 }
 
