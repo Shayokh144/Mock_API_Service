@@ -258,6 +258,18 @@ Match only enabled rules. A miss falls through to passthrough.
 
 **Done when:** a new terminal session can complete that check using the README and no other notes.
 
+## Fresh request
+
+This behavior is task MVP-38. It sits on top of saved rules and passthrough.
+
+1. Add `fresh_request` to the rule and the dashboard form. Default it to false so older files keep returning mocks.
+2. When the winning rule has the flag, skip `writeMock`. Strip `If-None-Match`, `If-Modified-Since`, `If-Match`, `If-Unmodified-Since`, and `If-Range`. Set `Cache-Control: no-cache` and `Pragma: no-cache`. Then use the existing forward path.
+3. Leave method, query, body, and other headers in place. Do not rewrite a `304` into a `200`.
+4. Show fresh or mock on the rules list. Keep the flag across edit, enable, disable, and restart.
+5. Test with `httptest`: validators removed and a full upstream body returned, the flag off still mocks, a disabled rule does not strip headers, and the JSON file round-trips the flag.
+
+**Done when:** a checked Fresh request rule returns the upstream body, and an unchecked rule still returns the saved mock.
+
 ## Troubleshooting
 
 | What you see | What to check |

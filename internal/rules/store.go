@@ -286,13 +286,14 @@ func validateLoaded(rule Rule, allowWildcard bool) error {
 		return fmt.Errorf("rule %s is missing timestamps", rule.ID)
 	}
 	draft := Draft{
-		Name:        rule.Name,
-		Enabled:     rule.Enabled,
-		Method:      rule.Method,
-		PathPattern: rule.PathPattern,
-		StatusCode:  rule.StatusCode,
-		Headers:     rule.Headers,
-		Body:        string(rule.Body),
+		Name:         rule.Name,
+		Enabled:      rule.Enabled,
+		FreshRequest: rule.FreshRequest,
+		Method:       rule.Method,
+		PathPattern:  rule.PathPattern,
+		StatusCode:   rule.StatusCode,
+		Headers:      rule.Headers,
+		Body:         string(rule.Body),
 	}
 	if len(rule.Body) == 0 {
 		draft.Body = ""
