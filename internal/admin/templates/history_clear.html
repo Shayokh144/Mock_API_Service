@@ -1,0 +1,9 @@
+{{define "history_clear"}}
+{{template "head" .}}
+<p>Rules are kept. This deletes every history entry and leaves mock rules in place.</p>
+<form method="post" action="/_admin/history/clear">
+  <button class="danger" type="submit">Clear all history</button>
+</form>
+<p><a href="/_admin/history">Cancel</a></p>
+{{template "foot" .}}
+{{end}}

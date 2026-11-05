@@ -1,0 +1,37 @@
+{{define "history_detail"}}
+{{template "head" .}}
+<p>Rules are kept. Deleting this entry does not delete rules.</p>
+<p><a href="/_admin/history">Back to history</a></p>
+{{with .Entry}}
+<dl>
+  <dt>Method</dt><dd>{{.Method}}</dd>
+  <dt>URL</dt><dd>{{.URL}}</dd>
+  <dt>Status</dt><dd>{{.Status}}</dd>
+  <dt>Source</dt><dd>{{.Source}}</dd>
+  <dt>Timestamp</dt><dd>{{.When}}</dd>
+  <dt>Rule id</dt><dd>{{if .RuleID}}{{.RuleID}}{{else}}none{{end}}</dd>
+</dl>
+<h2>Request headers</h2>
+{{if .RequestHeaders}}
+<ul>
+  {{range .RequestHeaders}}<li><code>{{.Name}}: {{.Value}}</code></li>{{end}}
+</ul>
+{{else}}<p>No request headers.</p>{{end}}
+<h2>Request body</h2>
+{{if .RequestTruncated}}<p>Request body preview was truncated.</p>{{end}}
+<pre>{{.RequestBody}}</pre>
+<h2>Response headers</h2>
+{{if .ResponseHeaders}}
+<ul>
+  {{range .ResponseHeaders}}<li><code>{{.Name}}: {{.Value}}</code></li>{{end}}
+</ul>
+{{else}}<p>No response headers.</p>{{end}}
+<h2>Response body</h2>
+{{if .ResponseTruncated}}<p>Response body preview was truncated.</p>{{end}}
+<pre>{{.ResponseBody}}</pre>
+<form method="post" action="/_admin/history/{{.ID}}/delete">
+  <button class="danger" type="submit">Delete this entry</button>
+</form>
+{{end}}
+{{template "foot" .}}
+{{end}}
