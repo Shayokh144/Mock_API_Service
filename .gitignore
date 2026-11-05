@@ -1,0 +1,6 @@
+# Saved on the first rule change. The directory stays via data/.gitkeep.
+data/rules.json
+data/rules.json.tmp
+
+# go build -o mockproxy ./cmd/mockproxy
+/mockproxy
