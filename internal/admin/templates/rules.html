@@ -1,0 +1,46 @@
+{{define "rules"}}
+{{template "head" .}}
+<p><a class="button" href="/_admin/rules/new">New rule</a></p>
+{{if .Rules}}
+<table>
+  <caption>Saved mock rules</caption>
+  <thead>
+    <tr>
+      <th scope="col">Name</th>
+      <th scope="col">Method</th>
+      <th scope="col">Pattern</th>
+      <th scope="col">Kind</th>
+      <th scope="col">Enabled</th>
+      <th scope="col">Status</th>
+      <th scope="col">Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+    {{range .Rules}}
+    <tr>
+      <td>{{.Name}}</td>
+      <td>{{.Method}}</td>
+      <td><code>{{.Pattern}}</code></td>
+      <td>{{.Kind}}</td>
+      <td>{{if .Enabled}}enabled{{else}}disabled{{end}}</td>
+      <td>{{.Status}}</td>
+      <td>
+        <div class="actions">
+          <a href="/_admin/rules/{{.ID}}/edit">Edit</a>
+          <form class="inline" method="post" action="/_admin/rules/{{.ID}}/toggle">
+            <button type="submit">{{if .Enabled}}Disable{{else}}Enable{{end}}</button>
+          </form>
+          <form class="inline" method="post" action="/_admin/rules/{{.ID}}/delete">
+            <button class="danger" type="submit">Delete</button>
+          </form>
+        </div>
+      </td>
+    </tr>
+    {{end}}
+  </tbody>
+</table>
+{{else}}
+<p>No rules yet.</p>
+{{end}}
+{{template "foot" .}}
+{{end}}

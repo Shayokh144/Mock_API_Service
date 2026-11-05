@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/Shayokh144/Mock_API_Service/internal/admin"
 	"github.com/Shayokh144/Mock_API_Service/internal/config"
 	"github.com/Shayokh144/Mock_API_Service/internal/history"
 	"github.com/Shayokh144/Mock_API_Service/internal/proxy"
@@ -35,11 +36,18 @@ func run(getenv func(string) string, stderr io.Writer, listen func(string, http.
 		fmt.Fprintln(stderr, err.Error())
 		return err
 	}
+	log := history.New(cfg.HistoryLimit)
+	dashboard, err := admin.New(store, log)
+	if err != nil {
+		fmt.Fprintln(stderr, err.Error())
+		return err
+	}
 	handler := proxy.New(proxy.Options{
 		Upstream: cfg.Upstream,
 		Timeout:  cfg.UpstreamTimeout,
 		Rules:    store,
-		History:  history.New(cfg.HistoryLimit),
+		History:  log,
+		Admin:    dashboard,
 	})
 	return listen(cfg.ListenAddr, handler)
 }
