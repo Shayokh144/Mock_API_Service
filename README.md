@@ -128,6 +128,34 @@ When several enabled rules match, an exact path wins. After that, the wildcard w
 
 An empty body is the right shape for `204`. Invalid JSON is rejected and the rules file is left unchanged.
 
+## Fresh request
+
+Check **Fresh request** on a rule when you want the Ruby response instead of the saved mock. The rule still matches the method and path. The proxy then forwards the call and does not use the saved status or body.
+
+The Ruby server must be reachable. This is pass-through of fresh data, not a mock. The response does not include `X-Mock-Response`.
+
+The proxy removes these validators before the forward:
+
+- `If-None-Match`
+- `If-Modified-Since`
+- `If-Match`
+- `If-Unmodified-Since`
+- `If-Range`
+
+It sets `Cache-Control: no-cache` and `Pragma: no-cache`. Method, query, body, and other headers stay. The proxy does not turn a `304` into a `200`. If Ruby still answers `304`, the app receives `304`.
+
+Example rule: method `POST`, pattern `/v1/items`, Fresh request checked. The saved `500` body is kept for later, but this call does not return it.
+
+```sh
+curl -i -X POST 'http://127.0.0.1:8080/v1/items?page=2' \
+  -H 'Content-Type: application/json' \
+  -H 'If-None-Match: "old"' \
+  -H 'If-Modified-Since: Tue, 15 Nov 1994 08:12:31 GMT' \
+  --data '{"n":1}'
+```
+
+The rules list shows `fresh` or `mock`. Clear the checkbox to return to the saved mock. Enable, disable, edit, and restart keep the choice.
+
 ## Passthrough
 
 With no matching rule, the proxy returns the Ruby response.
@@ -180,6 +208,7 @@ Use this on a Mac after the automated tests pass. The implementation environment
 14. After a restart, rules are still there and history is empty.
 15. A request under `/_admin` never reaches the Ruby server.
 16. `go test ./...` passes.
+17. A rule with Fresh request checked returns a full Ruby response with the cache validators removed. A rule without it still returns the saved mock.
 
 ## Troubleshooting
 

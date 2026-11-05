@@ -48,6 +48,7 @@ type ruleRow struct {
 	Pattern string
 	Kind    string
 	Enabled bool
+	Fresh   bool
 	Status  string
 }
 
@@ -135,6 +136,7 @@ func (s *Server) rulesPage(w http.ResponseWriter, status int) {
 			Pattern: rule.PathPattern,
 			Kind:    kind,
 			Enabled: rule.Enabled,
+			Fresh:   rule.FreshRequest,
 			Status:  strconv.Itoa(rule.StatusCode),
 		})
 	}
@@ -212,13 +214,14 @@ func (s *Server) toggleRule(w http.ResponseWriter, r *http.Request, id string) {
 		return
 	}
 	draft := rules.Draft{
-		Name:        rule.Name,
-		Enabled:     !rule.Enabled,
-		Method:      rule.Method,
-		PathPattern: rule.PathPattern,
-		StatusCode:  rule.StatusCode,
-		Headers:     rule.Headers,
-		Body:        string(rule.Body),
+		Name:         rule.Name,
+		Enabled:      !rule.Enabled,
+		FreshRequest: rule.FreshRequest,
+		Method:       rule.Method,
+		PathPattern:  rule.PathPattern,
+		StatusCode:   rule.StatusCode,
+		Headers:      rule.Headers,
+		Body:         string(rule.Body),
 	}
 	if _, err := s.rules.Update(id, draft); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)

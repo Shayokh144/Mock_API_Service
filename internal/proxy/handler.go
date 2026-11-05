@@ -93,6 +93,16 @@ func (h *Handler) serveAPI(w http.ResponseWriter, r *http.Request) {
 	capw := &bodyCapture{ResponseWriter: w}
 	if h.rules != nil {
 		if rule, ok := h.rules.Match(r.Method, r.URL.Path); ok {
+			if rule.FreshRequest {
+				prepareFreshRequest(r.Header)
+				failed := h.forward(capw, r)
+				source := history.SourceUpstream
+				if failed {
+					source = history.SourceUpstreamError
+				}
+				h.record(started, r, reqHeaders, payload, capw, source, rule.ID)
+				return
+			}
 			writeMock(capw, rule)
 			h.record(started, r, reqHeaders, payload, capw, history.SourceMock, rule.ID)
 			return

@@ -11,6 +11,7 @@
       <th scope="col">Pattern</th>
       <th scope="col">Kind</th>
       <th scope="col">Enabled</th>
+      <th scope="col">Request</th>
       <th scope="col">Status</th>
       <th scope="col">Actions</th>
     </tr>
@@ -23,6 +24,7 @@
       <td><code>{{.Pattern}}</code></td>
       <td>{{.Kind}}</td>
       <td>{{if .Enabled}}enabled{{else}}disabled{{end}}</td>
+      <td>{{if .Fresh}}fresh{{else}}mock{{end}}</td>
       <td>{{.Status}}</td>
       <td>
         <div class="actions">
