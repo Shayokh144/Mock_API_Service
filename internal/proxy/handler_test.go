@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -207,6 +208,51 @@ func TestExactRuleMatchesIgnoringQuery(t *testing.T) {
 	}
 	if hits.Load() != 4 {
 		t.Fatalf("admin was forwarded, hits = %d", hits.Load())
+	}
+}
+
+func TestLoadedRuleMatchesFirstRequest(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "rules.json")
+	store, err := rules.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Create(rules.Draft{
+		Name:        "Saved",
+		Enabled:     true,
+		Method:      "GET",
+		PathPattern: "/v1/saved",
+		StatusCode:  http.StatusOK,
+		Body:        `{"saved":true}`,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := rules.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("upstream saw %s", r.URL.Path)
+	}))
+	defer upstream.Close()
+	base, err := url.Parse(upstream.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proxySrv := httptest.NewServer(New(Options{Upstream: base, Timeout: time.Second, Rules: reloaded}))
+	defer proxySrv.Close()
+	resp, err := http.Get(proxySrv.URL + "/v1/saved?page=1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK || string(body) != `{"saved":true}` {
+		t.Fatalf("status=%d body=%s", resp.StatusCode, body)
+	}
+	if resp.Header.Get("X-Mock-Response") != "true" {
+		t.Fatal("missing mock header")
 	}
 }
 
