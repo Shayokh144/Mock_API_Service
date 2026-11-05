@@ -9,6 +9,7 @@ import (
 	"os"
 
 	"github.com/Shayokh144/Mock_API_Service/internal/config"
+	"github.com/Shayokh144/Mock_API_Service/internal/history"
 	"github.com/Shayokh144/Mock_API_Service/internal/proxy"
 	"github.com/Shayokh144/Mock_API_Service/internal/rules"
 )
@@ -38,6 +39,7 @@ func run(getenv func(string) string, stderr io.Writer, listen func(string, http.
 		Upstream: cfg.Upstream,
 		Timeout:  cfg.UpstreamTimeout,
 		Rules:    store,
+		History:  history.New(cfg.HistoryLimit),
 	})
 	return listen(cfg.ListenAddr, handler)
 }
