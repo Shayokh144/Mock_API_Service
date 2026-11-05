@@ -211,6 +211,50 @@ func TestExactRuleMatchesIgnoringQuery(t *testing.T) {
 	}
 }
 
+func TestWildcardRuleDoesNotReachUpstream(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("upstream saw %s", r.URL.RequestURI())
+	}))
+	defer upstream.Close()
+	base, err := url.Parse(upstream.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := rules.NewMemory()
+	for _, pattern := range []string{"/api/users/1", "/api/users/*", "/api/*/*"} {
+		if _, err := store.Create(rules.Draft{
+			Enabled:     true,
+			Method:      "GET",
+			PathPattern: pattern,
+			StatusCode:  http.StatusOK,
+			Body:        `{"pattern":"` + pattern + `"}`,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	proxySrv := httptest.NewServer(New(Options{Upstream: base, Timeout: time.Second, Rules: store}))
+	defer proxySrv.Close()
+
+	exact, err := http.Get(proxySrv.URL + "/api/users/1?page=2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	exactBody, _ := io.ReadAll(exact.Body)
+	exact.Body.Close()
+	if string(exactBody) != `{"pattern":"/api/users/1"}` {
+		t.Fatalf("exact body = %s", exactBody)
+	}
+	wild, err := http.Get(proxySrv.URL + "/api/users/2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wildBody, _ := io.ReadAll(wild.Body)
+	wild.Body.Close()
+	if string(wildBody) != `{"pattern":"/api/users/*"}` || wild.Header.Get("X-Mock-Response") != "true" {
+		t.Fatalf("wildcard body = %s header=%s", wildBody, wild.Header.Get("X-Mock-Response"))
+	}
+}
+
 func TestLoadedRuleMatchesFirstRequest(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "rules.json")
