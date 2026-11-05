@@ -65,7 +65,7 @@ func Load(path string) (*Store, error) {
 		}
 		doc.Rules[i].Body = body
 		rule := doc.Rules[i]
-		if err := validateLoaded(rule, false); err != nil {
+		if err := validateLoaded(rule, store.wildcards()); err != nil {
 			return nil, fmt.Errorf("RULES_PATH %s: %w", path, err)
 		}
 		key := rule.Method + " " + rule.PathPattern
@@ -187,20 +187,31 @@ func (s *Store) Match(method, path string) (Rule, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	method = strings.ToUpper(method)
+	var (
+		winner Rule
+		found  bool
+	)
 	for i := range s.rules {
 		rule := s.rules[i]
 		if !rule.Enabled || !strings.EqualFold(rule.Method, method) {
 			continue
 		}
-		if rule.PathPattern == path {
-			return cloneRule(rule), true
+		if !matchPattern(rule.PathPattern, path) {
+			continue
+		}
+		if !found || better(rule, winner) {
+			winner = rule
+			found = true
 		}
 	}
-	return Rule{}, false
+	if !found {
+		return Rule{}, false
+	}
+	return cloneRule(winner), true
 }
 
 func (s *Store) wildcards() bool {
-	return false
+	return true
 }
 
 func (s *Store) persist(rules []Rule) error {
