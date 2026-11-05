@@ -1,0 +1,49 @@
+{{define "head"}}<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.Title}} · Mock API proxy</title>
+  <style>
+    :root { color-scheme: light; }
+    body { margin: 0; font: 16px/1.45 system-ui, sans-serif; color: #1b1b1b; background: #f6f7f9; }
+    a { color: #0b3a82; }
+    a:focus, button:focus, input:focus, select:focus, textarea:focus { outline: 3px solid #0b3a82; outline-offset: 2px; }
+    .skip { position: absolute; left: -999px; }
+    .skip:focus { left: 1rem; top: 1rem; background: #fff; padding: 0.4rem; }
+    header { display: flex; justify-content: space-between; gap: 1rem; align-items: center; padding: 1rem 1.5rem; background: #10233f; color: #fff; }
+    header a { color: #fff; }
+    nav { display: flex; gap: 1rem; }
+    main { max-width: 64rem; margin: 0 auto; padding: 1.5rem; }
+    table { width: 100%; border-collapse: collapse; background: #fff; }
+    th, td { text-align: left; padding: 0.55rem 0.7rem; border-bottom: 1px solid #d5d8de; vertical-align: top; }
+    th { background: #e7edf6; }
+    form.inline { display: inline; }
+    button, .button { font: inherit; background: #0b3a82; color: #fff; border: 0; border-radius: 4px; padding: 0.4rem 0.7rem; text-decoration: none; display: inline-block; }
+    button.danger { background: #8b1e1e; }
+    label { display: block; font-weight: 650; margin-top: 0.9rem; }
+    input[type="text"], input[type="number"], select, textarea { width: 100%; max-width: 40rem; box-sizing: border-box; font: inherit; padding: 0.4rem; }
+    textarea { min-height: 8rem; }
+    .error { background: #fde8e8; color: #6d1414; padding: 0.7rem 0.9rem; border: 1px solid #e3b0b0; }
+    .hint { color: #333; }
+    .actions { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+  </style>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <header>
+    <p>Mock API proxy</p>
+    <nav aria-label="Sections">
+      <a href="/_admin">Rules</a>
+      <a href="/_admin/history">History</a>
+    </nav>
+  </header>
+  <main id="main">
+    <h1>{{.Title}}</h1>
+{{end}}
+
+{{define "foot"}}
+  </main>
+</body>
+</html>
+{{end}}
