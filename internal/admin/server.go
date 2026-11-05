@@ -70,6 +70,14 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}, http.StatusOK)
 	case strings.HasPrefix(path, "/_admin/rules/"):
 		s.ruleRoute(w, r, strings.TrimPrefix(path, "/_admin/rules/"))
+	case path == "/_admin/history" && r.Method == http.MethodGet:
+		s.historyPage(w, r)
+	case path == "/_admin/history/clear" && r.Method == http.MethodGet:
+		s.clearConfirm(w, r)
+	case path == "/_admin/history/clear" && r.Method == http.MethodPost:
+		s.clearHistory(w, r)
+	case strings.HasPrefix(path, "/_admin/history/"):
+		s.historyRoute(w, r, strings.TrimPrefix(path, "/_admin/history/"))
 	default:
 		http.NotFound(w, r)
 	}
