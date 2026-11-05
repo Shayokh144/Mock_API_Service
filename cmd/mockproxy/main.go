@@ -29,10 +29,15 @@ func run(getenv func(string) string, stderr io.Writer, listen func(string, http.
 	for _, line := range config.StartupLines(cfg) {
 		logger.Println(line)
 	}
+	store, err := rules.Load(cfg.RulesPath)
+	if err != nil {
+		fmt.Fprintln(stderr, err.Error())
+		return err
+	}
 	handler := proxy.New(proxy.Options{
 		Upstream: cfg.Upstream,
 		Timeout:  cfg.UpstreamTimeout,
-		Rules:    rules.NewMemory(),
+		Rules:    store,
 	})
 	return listen(cfg.ListenAddr, handler)
 }

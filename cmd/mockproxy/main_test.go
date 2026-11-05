@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -61,6 +63,38 @@ func TestRunLogsListenAddressAndDashboard(t *testing.T) {
 	}
 	if !strings.Contains(text, "dashboard at http://localhost:8080/_admin") {
 		t.Fatalf("stderr = %q", text)
+	}
+}
+
+func TestRunInvalidRulesFileDoesNotListenOrRewrite(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "rules.json")
+	if err := os.WriteFile(path, []byte("{"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	called := false
+	err := run(func(key string) string {
+		switch key {
+		case "UPSTREAM_BASE_URL":
+			return "http://127.0.0.1:9"
+		case "RULES_PATH":
+			return path
+		default:
+			return ""
+		}
+	}, io.Discard, func(string, http.Handler) error {
+		called = true
+		return nil
+	})
+	if err == nil || called {
+		t.Fatalf("err=%v called=%v", err, called)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(raw) != "{" {
+		t.Fatalf("file = %s", raw)
 	}
 }
 

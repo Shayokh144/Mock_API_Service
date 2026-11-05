@@ -1,9 +1,14 @@
 package rules
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -28,6 +33,49 @@ type Store struct {
 // NewMemory returns an empty store that does not touch the filesystem.
 func NewMemory() *Store {
 	return newStore("")
+}
+
+type rulesFile struct {
+	Rules []Rule `json:"rules"`
+}
+
+// Load reads rules from path. A missing file starts empty and is not created.
+// Invalid JSON or an invalid rule returns an error and does not rewrite the file.
+func Load(path string) (*Store, error) {
+	store := newStore(path)
+	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return store, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var doc rulesFile
+	if err := json.Unmarshal(data, &doc); err != nil {
+		return nil, fmt.Errorf("RULES_PATH %s contains invalid JSON: %w", path, err)
+	}
+	if doc.Rules == nil {
+		doc.Rules = []Rule{}
+	}
+	seen := map[string]struct{}{}
+	for i := range doc.Rules {
+		body, err := compactStoredBody(doc.Rules[i].Body)
+		if err != nil {
+			return nil, fmt.Errorf("RULES_PATH %s: %w", path, err)
+		}
+		doc.Rules[i].Body = body
+		rule := doc.Rules[i]
+		if err := validateLoaded(rule, false); err != nil {
+			return nil, fmt.Errorf("RULES_PATH %s: %w", path, err)
+		}
+		key := rule.Method + " " + rule.PathPattern
+		if _, ok := seen[key]; ok {
+			return nil, fmt.Errorf("RULES_PATH %s: duplicate rule %s %s", path, rule.Method, rule.PathPattern)
+		}
+		seen[key] = struct{}{}
+	}
+	store.rules = doc.Rules
+	return store, nil
 }
 
 func newStore(path string) *Store {
@@ -159,7 +207,87 @@ func (s *Store) persist(rules []Rule) error {
 	if s.path == "" {
 		return nil
 	}
-	return errors.New("rule file persistence is not available")
+	if rules == nil {
+		rules = []Rule{}
+	}
+	dir := filepath.Dir(s.path)
+	if dir != "" && dir != "." {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			return err
+		}
+	}
+	payload, err := json.MarshalIndent(rulesFile{Rules: rules}, "", "  ")
+	if err != nil {
+		return err
+	}
+	payload = append(payload, '\n')
+	tmp := s.path + ".tmp"
+	file, err := os.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	if err != nil {
+		return err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = os.Remove(tmp)
+		}
+	}()
+	if _, err := file.Write(payload); err != nil {
+		_ = file.Close()
+		return err
+	}
+	if err := file.Sync(); err != nil {
+		_ = file.Close()
+		return err
+	}
+	if err := file.Close(); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmp, 0o600); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, s.path); err != nil {
+		return err
+	}
+	committed = true
+	// The new file is already in place. A mode error must not roll memory back.
+	_ = os.Chmod(s.path, 0o600)
+	return nil
+}
+
+func compactStoredBody(body json.RawMessage) (json.RawMessage, error) {
+	trimmed := bytes.TrimSpace(body)
+	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
+		return nil, nil
+	}
+	var buf bytes.Buffer
+	if err := json.Compact(&buf, trimmed); err != nil {
+		return nil, fmt.Errorf("mock body must be empty or JSON")
+	}
+	return json.RawMessage(buf.Bytes()), nil
+}
+
+func validateLoaded(rule Rule, allowWildcard bool) error {
+	if _, err := hex.DecodeString(rule.ID); err != nil || len(rule.ID) != 16 {
+		return fmt.Errorf("rule id %q is invalid", rule.ID)
+	}
+	if rule.CreatedAt.IsZero() || rule.UpdatedAt.IsZero() {
+		return fmt.Errorf("rule %s is missing timestamps", rule.ID)
+	}
+	draft := Draft{
+		Name:        rule.Name,
+		Enabled:     rule.Enabled,
+		Method:      rule.Method,
+		PathPattern: rule.PathPattern,
+		StatusCode:  rule.StatusCode,
+		Headers:     rule.Headers,
+		Body:        string(rule.Body),
+	}
+	if len(rule.Body) == 0 {
+		draft.Body = ""
+	}
+	_, err := normalize(draft, allowWildcard)
+	return err
 }
 
 func (s *Store) index(id string) int {
