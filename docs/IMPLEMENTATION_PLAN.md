@@ -73,7 +73,7 @@ The log shows the listen address and the dashboard URL. The process keeps runnin
 
 **Files:** `internal/proxy/handler.go`.
 
-1. Keep a single HTTP handler. Avoid `ServeMux` for API paths. The default mux redirects some trailing slashes, and those redirects would hide Ruby routes. Match and forward `r.URL.Path` as parsed. Do not call `path.Clean`.
+1. Keep a single HTTP handler. Avoid `ServeMux` for API paths. The default mux redirects some trailing slashes, and those redirects would hide upstream routes. Match and forward `r.URL.Path` as parsed. Do not call `path.Clean`.
 2. If the path is `/_admin` or has the prefix `/_admin/`, return `404` text `admin is not ready` for now. Do not call upstream.
 3. Build a `ReverseProxy`. In `Director`, copy the incoming request onto the upstream URL.
 4. Join paths without dropping a trailing slash. If the base path is empty or `/`, use the request path. Otherwise trim one trailing slash from the base path and concatenate the request path.
@@ -263,8 +263,8 @@ Match only enabled rules. A miss falls through to passthrough.
 | What you see | What to check |
 | --- | --- |
 | The client gets an empty reply | `WriteHeader` was called after `Write`, or the status was sent twice |
-| A trailing slash hits the wrong Ruby route | Path joining trimmed the slash |
-| `/_admin` shows a Ruby page | The admin branch runs after the proxy |
+| A trailing slash hits the wrong upstream route | Path joining trimmed the slash |
+| `/_admin` shows an upstream page | The admin branch runs after the proxy |
 | Tests hang | An `httptest` server was left without `Close` |
 | Rules vanish after restart | Memory was updated, and the rename failed or never ran |
 | Two rules seem random | The winner was not sorted by the full precedence list |

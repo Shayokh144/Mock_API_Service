@@ -2,14 +2,14 @@
 
 The product is a local mock API proxy for one Flutter developer on a MacBook.
 
-The Flutter debug build calls `http://localhost:8080`. This Go service answers that address. A matched rule returns a saved response. Every other call goes to the Ruby develop server. The Ruby server stays unchanged. Production app configuration stays unchanged.
+The Flutter debug build calls `http://localhost:8080`. This Go service answers that address. A matched rule returns a saved response. Every other call goes to your upstream server (develop/staging). That server stays unchanged. Production app configuration stays unchanged.
 
 Read this file for behavior. [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) says how to build it. [TASKS.md](TASKS.md) splits the work into tickets.
 
 ## Glossary
 
 - **Proxy**: the Go process on the MacBook.
-- **Upstream**: the Ruby develop server.
+- **Upstream**: any HTTP or HTTPS backend your Mac can reach.
 - **Passthrough**: a request the proxy forwards upstream.
 - **Rule**: one saved mock.
 - **Exact pattern**: a path with no `*`.
@@ -23,7 +23,7 @@ The proxy runs on the developer's MacBook. It is not deployed.
 
 The Flutter app changes only its debug base URL to `http://localhost:8080`. Release builds keep the real API host.
 
-The proxy forwards an unmatched request to the configured Ruby server. It returns that server's status, headers, and body.
+The proxy forwards an unmatched request to the configured upstream server. It returns that server's status, headers, and body.
 
 The dashboard can create, edit, enable, disable, and delete rules.
 
@@ -39,7 +39,7 @@ The developer can delete one history entry or clear all history.
 
 Rules remain after a restart. History does not.
 
-The Ruby backend needs no code, route, or config change. Production app configuration needs no change.
+The upstream server needs no code, route, or config change. Production app configuration needs no change.
 
 ## Out of this MVP
 
@@ -63,7 +63,7 @@ The Android emulator is different. Inside that emulator, `localhost` is the emul
 
 A physical phone cannot use `localhost`. Reaching a phone over the LAN is later work.
 
-Run the proxy from a terminal on the Mac. Stop it with Ctrl+C. The Ruby server must already be reachable from the Mac.
+Run the proxy from a terminal on the Mac. Stop it with Ctrl+C. The upstream server must already be reachable from the Mac.
 
 ### Listen address
 
@@ -73,7 +73,7 @@ The process listens on `127.0.0.1:8080` by default. Startup accepts only a loopb
 
 | Variable | Required | Default | Meaning |
 | --- | --- | --- | --- |
-| `UPSTREAM_BASE_URL` | yes | none | Absolute `http` or `https` URL of the Ruby server |
+| `UPSTREAM_BASE_URL` | yes | none | Absolute `http` or `https` URL of your upstream server (develop/staging) |
 | `LISTEN_ADDR` | no | `127.0.0.1:8080` | Loopback address and port |
 | `RULES_PATH` | no | `data/rules.json` | Rule file, relative to the working directory |
 | `HISTORY_LIMIT` | no | `500` | Newest history entries kept in memory |
@@ -84,7 +84,7 @@ The process listens on `127.0.0.1:8080` by default. Startup accepts only a loopb
 Example:
 
 ```sh
-export UPSTREAM_BASE_URL='https://ruby-dev.example.com'
+export UPSTREAM_BASE_URL='https://upstream.example.com'
 go run ./cmd/mockproxy
 ```
 
@@ -94,8 +94,8 @@ Open the dashboard at `http://localhost:8080/_admin`.
 
 The incoming path and query are appended to the upstream base.
 
-- Base `https://ruby-dev.example.com` and request `/v1/users?page=2` become `https://ruby-dev.example.com/v1/users?page=2`.
-- Base `https://ruby-dev.example.com/prefix` and request `/v1/users` become `https://ruby-dev.example.com/prefix/v1/users`.
+- Base `https://upstream.example.com` and request `/v1/users?page=2` become `https://upstream.example.com/v1/users?page=2`.
+- Base `https://upstream.example.com/prefix` and request `/v1/users` become `https://upstream.example.com/prefix/v1/users`.
 - A trailing slash on the request path stays.
 
 The proxy sets the outbound `Host` header to the upstream host. Hop-by-hop headers follow `httputil.ReverseProxy`.
@@ -134,7 +134,7 @@ Every connection is handled in this order:
 5. Otherwise the proxy calls upstream and returns that response.
 6. It stores one history entry.
 
-`/_admin` is the only reserved prefix. Do not add a health route that could hide a real Ruby path. Startup logs are the "process is up" signal.
+`/_admin` is the only reserved prefix. Do not add a health route that could hide a real upstream path. Startup logs are the "process is up" signal.
 
 Unknown `/_admin/...` paths return `404` from the proxy. They are not forwarded.
 
@@ -366,8 +366,8 @@ The MVP is complete when every line below is true.
 
 1. `go run ./cmd/mockproxy` listens on loopback on a Mac and logs the dashboard URL.
 2. A non-loopback `LISTEN_ADDR` fails startup.
-3. With no rules, a Flutter debug client using `http://localhost:8080` receives the Ruby response, including status, body, and query string.
-4. The Ruby project and the production base URL are unchanged.
+3. With no rules, a Flutter debug client using `http://localhost:8080` receives the upstream response, including status, body, and query string.
+4. The upstream project and the production base URL are unchanged.
 5. The dashboard can create, edit, enable, disable, and delete a rule.
 6. An exact rule matches one method and one path, and ignores the query string.
 7. A wildcard rule matches one `*` per whole segment and rejects regex-style patterns.
@@ -378,5 +378,5 @@ The MVP is complete when every line below is true.
 12. A history detail page shows request and response headers and bodies.
 13. Delete-one and clear-all remove only history. Clear-all asks for confirmation.
 14. After a restart, rules are still there and history is empty.
-15. A request under `/_admin` never reaches the Ruby server.
+15. A request under `/_admin` never reaches the upstream server.
 16. `go test ./...` passes.

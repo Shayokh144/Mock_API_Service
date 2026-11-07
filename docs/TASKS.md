@@ -33,7 +33,7 @@ Each task is one change you can review on its own. Tests belong with the behavio
 
 #### MVP-03 — Forward unmatched requests
 
-- **Outcome:** A request that is not reserved is sent to Ruby, and the client receives the real response.
+- **Outcome:** A request that is not reserved is sent to the upstream server, and the client receives the real response.
 - **Depends on:** MVP-02
 - **Acceptance criteria:**
   - `httputil.ReverseProxy` performs the forward.
@@ -41,7 +41,7 @@ Each task is one change you can review on its own. Tests belong with the behavio
   - The outbound `Host` is the upstream host.
   - Upstream status, headers, and body are returned to the client.
 
-#### MVP-04 — Keep `/_admin` off the Ruby server
+#### MVP-04 — Keep `/_admin` off the upstream server
 
 - **Outcome:** The reserved prefix is handled only by this process.
 - **Depends on:** MVP-03
@@ -55,7 +55,7 @@ Each task is one change you can review on its own. Tests belong with the behavio
 - **Outcome:** The forward and the reserved prefix stay locked by tests.
 - **Depends on:** MVP-03, MVP-04
 - **Acceptance criteria:**
-  - `httptest` is the upstream. No real Ruby server is required.
+  - `httptest` is the upstream. No real upstream server is required.
   - A query string and a trailing slash are asserted.
   - `go test ./internal/proxy` passes.
 
@@ -358,7 +358,7 @@ Each task is one change you can review on its own. Tests belong with the behavio
 - **Acceptance criteria:**
   - The checklist includes passthrough, a `4xx` or `5xx` mock, the Sentry header, history detail, delete-one, clear-all, and restart.
   - Restart is described as rules kept and history empty.
-  - The Ruby project and the production base URL are called out as unchanged.
+  - The upstream project and the production base URL are called out as unchanged.
 
 #### MVP-37 — Ignore local rule data
 
