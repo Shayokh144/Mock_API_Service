@@ -268,7 +268,7 @@ Write the status code after the final headers.
 
 `fresh_request` is a per-rule pass-through mode. It is not a mock response.
 
-When the winning enabled rule has `fresh_request` set, the proxy does not write the saved status, headers, or body. It forwards the request upstream. The Ruby server must be reachable. The saved status and body stay on the rule so clearing the option returns to the mock.
+When the winning enabled rule has `fresh_request` set, the proxy does not write the saved status, headers, or body. It forwards the request upstream. The upstream server must be reachable. The saved status and body stay on the rule so clearing the option returns to the mock.
 
 Before that forward, the proxy removes cache validators:
 
@@ -404,4 +404,4 @@ The MVP is complete when every line below is true.
 14. After a restart, rules are still there and history is empty.
 15. A request under `/_admin` never reaches the upstream server.
 16. `go test ./...` passes.
-17. A fresh-request rule forwards to Ruby with cache validators removed, and a rule without that option still returns its mock.
+17. A fresh-request rule forwards to the upstream server with cache validators removed, and a rule without that option still returns its mock.

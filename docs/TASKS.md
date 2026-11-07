@@ -381,7 +381,7 @@ Each task is one change you can review on its own. Tests belong with the behavio
   - That forward removes `If-None-Match`, `If-Modified-Since`, `If-Match`, `If-Unmodified-Since`, and `If-Range`, then sets `Cache-Control: no-cache` and `Pragma: no-cache`.
   - Method, query, body, and other headers stay. A `304` is not rewritten into a `200`.
   - The dashboard checkbox edits the flag. The rules list shows fresh or mock. Enable, disable, and restart keep the flag.
-  - The Ruby server must be reachable. The mode is pass-through of fresh data, not a mock response.
+  - The upstream server must be reachable. The mode is pass-through of fresh data, not a mock response.
   - `httptest` covers validators removed, the upstream body returned, the flag off, persistence, and the dashboard.
 
 ## Future
