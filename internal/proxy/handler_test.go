@@ -28,7 +28,7 @@ func TestPassthroughPreservesMethodPathQueryBodyAndResponse(t *testing.T) {
 		gotBody = string(body)
 		w.Header().Set("X-Upstream", "yes")
 		w.WriteHeader(http.StatusCreated)
-		_, _ = w.Write([]byte(`{"from":"ruby"}`))
+		_, _ = w.Write([]byte(`{"from":"upstream"}`))
 	}))
 	defer upstream.Close()
 
@@ -81,7 +81,7 @@ func TestPassthroughPreservesMethodPathQueryBodyAndResponse(t *testing.T) {
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("status = %d", resp.StatusCode)
 	}
-	if string(respBody) != `{"from":"ruby"}` {
+	if string(respBody) != `{"from":"upstream"}` {
 		t.Fatalf("response = %s", respBody)
 	}
 	if resp.Header.Get("X-Upstream") != "yes" {

@@ -1,4 +1,4 @@
-// Package proxy forwards unmatched HTTP requests to the upstream Ruby server.
+// Package proxy forwards unmatched HTTP requests to the upstream server.
 package proxy
 
 import (
