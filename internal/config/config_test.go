@@ -14,12 +14,12 @@ func getenvFrom(values map[string]string) func(string) string {
 
 func TestLoadDefaults(t *testing.T) {
 	cfg, err := Load(getenvFrom(map[string]string{
-		"UPSTREAM_BASE_URL": "https://ruby-dev.example.com/prefix",
+		"UPSTREAM_BASE_URL": "https://upstream.example.com/prefix",
 	}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Upstream.String() != "https://ruby-dev.example.com/prefix" {
+	if cfg.Upstream.String() != "https://upstream.example.com/prefix" {
 		t.Fatalf("upstream = %s", cfg.Upstream)
 	}
 	if cfg.ListenAddr != "127.0.0.1:8080" {
@@ -95,10 +95,10 @@ func TestLoadRejectsBadSettings(t *testing.T) {
 		substr string
 	}{
 		{"missing upstream", map[string]string{}, "UPSTREAM_BASE_URL"},
-		{"bad scheme", map[string]string{"UPSTREAM_BASE_URL": "ftp://ruby.example"}, "UPSTREAM_BASE_URL"},
+		{"bad scheme", map[string]string{"UPSTREAM_BASE_URL": "ftp://upstream.example"}, "UPSTREAM_BASE_URL"},
 		{"missing host", map[string]string{"UPSTREAM_BASE_URL": "http:///missing"}, "UPSTREAM_BASE_URL"},
-		{"query", map[string]string{"UPSTREAM_BASE_URL": "http://ruby.example/?a=1"}, "UPSTREAM_BASE_URL"},
-		{"fragment", map[string]string{"UPSTREAM_BASE_URL": "http://ruby.example/#x"}, "UPSTREAM_BASE_URL"},
+		{"query", map[string]string{"UPSTREAM_BASE_URL": "http://upstream.example/?a=1"}, "UPSTREAM_BASE_URL"},
+		{"fragment", map[string]string{"UPSTREAM_BASE_URL": "http://upstream.example/#x"}, "UPSTREAM_BASE_URL"},
 		{"public bind", map[string]string{"UPSTREAM_BASE_URL": "http://127.0.0.1:9", "LISTEN_ADDR": "0.0.0.0:8080"}, "LISTEN_ADDR"},
 		{"lan bind", map[string]string{"UPSTREAM_BASE_URL": "http://127.0.0.1:9", "LISTEN_ADDR": "192.168.1.10:8080"}, "LISTEN_ADDR"},
 		{"bad addr", map[string]string{"UPSTREAM_BASE_URL": "http://127.0.0.1:9", "LISTEN_ADDR": "8080"}, "LISTEN_ADDR"},

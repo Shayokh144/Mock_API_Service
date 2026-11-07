@@ -39,7 +39,7 @@ func TestRunLogsListenAddressAndDashboard(t *testing.T) {
 	var gotAddr string
 	err := run(func(key string) string {
 		if key == "UPSTREAM_BASE_URL" {
-			return "https://ruby-dev.example.com"
+			return "https://upstream.example.com"
 		}
 		return ""
 	}, &stderr, func(addr string, h http.Handler) error {
