@@ -40,13 +40,25 @@ func New(opts Options) *Handler {
 	}
 }
 
-// ServeHTTP reserves /_admin and forwards every other request.
+// ServeHTTP reserves /_admin, serves the temporary slice mock, and forwards the rest.
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if isAdmin(r.URL.Path) {
 		http.Error(w, "admin is not ready", http.StatusNotFound)
 		return
 	}
+	// Temporary end-to-end slice. Saved rules replace this path in a later change.
+	if r.Method == http.MethodGet && r.URL.Path == "/__slice/ping" {
+		writeSlice(w)
+		return
+	}
 	h.forward(w, r)
+}
+
+func writeSlice(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("X-Mock-Response", "true")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(`{"ok":true}`))
 }
 
 func isAdmin(path string) bool {

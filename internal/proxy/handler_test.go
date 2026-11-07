@@ -92,6 +92,85 @@ func TestPassthroughPreservesMethodPathQueryBodyAndResponse(t *testing.T) {
 	}
 }
 
+func TestSliceMockAndPassthrough(t *testing.T) {
+	var hits atomic.Int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		if r.URL.Path == "/v1/ping" && r.URL.RawQuery != "x=1" {
+			t.Errorf("query = %s", r.URL.RawQuery)
+		}
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = io.WriteString(w, `{"from":"upstream"}`)
+	}))
+	defer upstream.Close()
+
+	base, err := url.Parse(upstream.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proxySrv := httptest.NewServer(New(Options{Upstream: base, Timeout: time.Second}))
+	defer proxySrv.Close()
+
+	mockResp, err := http.Get(proxySrv.URL + "/__slice/ping")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mockBody, _ := io.ReadAll(mockResp.Body)
+	mockResp.Body.Close()
+	if mockResp.StatusCode != http.StatusOK {
+		t.Fatalf("mock status = %d", mockResp.StatusCode)
+	}
+	if string(mockBody) != `{"ok":true}` {
+		t.Fatalf("mock body = %s", mockBody)
+	}
+	if mockResp.Header.Get("X-Mock-Response") != "true" {
+		t.Fatalf("mock header = %q", mockResp.Header.Get("X-Mock-Response"))
+	}
+	if mockResp.Header.Get("Content-Type") != "application/json" {
+		t.Fatalf("content type = %s", mockResp.Header.Get("Content-Type"))
+	}
+	if hits.Load() != 0 {
+		t.Fatalf("slice reached upstream, hits = %d", hits.Load())
+	}
+
+	passResp, err := http.Get(proxySrv.URL + "/v1/ping?x=1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	passBody, _ := io.ReadAll(passResp.Body)
+	passResp.Body.Close()
+	if passResp.StatusCode != http.StatusAccepted || string(passBody) != `{"from":"upstream"}` {
+		t.Fatalf("passthrough status=%d body=%s", passResp.StatusCode, passBody)
+	}
+	if passResp.Header.Get("X-Mock-Response") != "" {
+		t.Fatal("passthrough set X-Mock-Response")
+	}
+
+	postResp, err := http.Post(proxySrv.URL+"/__slice/ping", "application/json", strings.NewReader(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	postResp.Body.Close()
+	if postResp.StatusCode != http.StatusAccepted {
+		t.Fatalf("POST slice status = %d", postResp.StatusCode)
+	}
+	if hits.Load() != 2 {
+		t.Fatalf("hits = %d", hits.Load())
+	}
+
+	adminResp, err := http.Get(proxySrv.URL + "/_admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	adminResp.Body.Close()
+	if adminResp.StatusCode != http.StatusNotFound {
+		t.Fatalf("admin status = %d", adminResp.StatusCode)
+	}
+	if hits.Load() != 2 {
+		t.Fatalf("admin was forwarded, hits = %d", hits.Load())
+	}
+}
+
 func TestAdminPrefixIsNotForwarded(t *testing.T) {
 	var hits atomic.Int32
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
