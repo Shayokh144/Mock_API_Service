@@ -100,7 +100,7 @@ func TestSliceMockAndPassthrough(t *testing.T) {
 			t.Errorf("query = %s", r.URL.RawQuery)
 		}
 		w.WriteHeader(http.StatusAccepted)
-		_, _ = io.WriteString(w, `{"from":"ruby"}`)
+		_, _ = io.WriteString(w, `{"from":"upstream"}`)
 	}))
 	defer upstream.Close()
 
@@ -139,7 +139,7 @@ func TestSliceMockAndPassthrough(t *testing.T) {
 	}
 	passBody, _ := io.ReadAll(passResp.Body)
 	passResp.Body.Close()
-	if passResp.StatusCode != http.StatusAccepted || string(passBody) != `{"from":"ruby"}` {
+	if passResp.StatusCode != http.StatusAccepted || string(passBody) != `{"from":"upstream"}` {
 		t.Fatalf("passthrough status=%d body=%s", passResp.StatusCode, passBody)
 	}
 	if passResp.Header.Get("X-Mock-Response") != "" {
