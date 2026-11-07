@@ -2,7 +2,7 @@
 
 A local Go proxy for one Flutter developer on a MacBook.
 
-Point the debug build at `http://localhost:8080`. A matching rule returns a saved response. Every other call goes to the Ruby develop server. The Ruby server stays unchanged. Production app configuration stays unchanged.
+Point the debug build at `http://localhost:8080`. A matching rule returns a saved response. Every other call goes to your upstream server (develop/staging). That server stays unchanged. Production app configuration stays unchanged.
 
 Behavior, matching, and deletion rules live in [docs/MVP_REQUIREMENTS.md](docs/MVP_REQUIREMENTS.md). The build order is in [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md). The task list is in [docs/TASKS.md](docs/TASKS.md).
 
@@ -10,7 +10,7 @@ Behavior, matching, and deletion rules live in [docs/MVP_REQUIREMENTS.md](docs/M
 
 - macOS
 - Go 1.22 or newer. This module was tested with Go 1.22.2.
-- A Ruby develop server the Mac can already reach
+- Any HTTP or HTTPS backend your Mac can reach
 - A Flutter app whose debug base URL you can change
 
 Install Go from [https://go.dev/dl/](https://go.dev/dl/). Homebrew also works: `brew install go`.
@@ -27,23 +27,23 @@ Run commands from the repository root. The default rules file is `data/rules.jso
 
 ## Configuration
 
-The process reads only environment variables. It does not take flags, and it does not store Ruby credentials.
+The process reads only environment variables. It does not take flags, and it does not store upstream credentials.
 
 | Variable | Required | Default | Meaning |
 | --- | --- | --- | --- |
-| `UPSTREAM_BASE_URL` | yes | none | Absolute `http` or `https` URL of the Ruby server. A path prefix is allowed. A query or fragment is rejected. |
+| `UPSTREAM_BASE_URL` | yes | none | Absolute `http` or `https` URL of your upstream server (develop/staging). A path prefix is allowed. A query or fragment is rejected. |
 | `LISTEN_ADDR` | no | `127.0.0.1:8080` | Loopback address. `localhost` becomes `127.0.0.1`. `[::1]` is allowed. Any other host fails startup. |
 | `RULES_PATH` | no | `data/rules.json` | Rule file. A missing file means there are no rules. |
 | `HISTORY_LIMIT` | no | `500` | Newest history entries kept in memory. |
 | `UPSTREAM_TIMEOUT` | no | `30s` | Time allowed for one upstream call. |
 
 ```sh
-export UPSTREAM_BASE_URL='https://ruby-dev.example.com'
+export UPSTREAM_BASE_URL='https://upstream.example.com'
 ```
 
 A path prefix is joined in front of the request path. A trailing slash on the request path stays.
 
-`https://ruby-dev.example.com` plus `GET /v1/users?page=2` becomes `GET https://ruby-dev.example.com/v1/users?page=2`.
+`https://upstream.example.com` plus `GET /v1/users?page=2` becomes `GET https://upstream.example.com/v1/users?page=2`.
 
 ## Run on macOS
 
@@ -75,7 +75,7 @@ Inside the Android emulator, `localhost` is the emulator itself. `10.0.2.2` is t
 
 A physical phone cannot use `localhost`. That setup is outside this MVP.
 
-The proxy forwards the method, path, query string, body, and ordinary headers. The Ruby app keeps its own auth. Do not put passwords in this repository.
+The proxy forwards the method, path, query string, body, and ordinary headers. The upstream server keeps its own auth. Do not put passwords in this repository.
 
 ## Sentry
 
@@ -130,7 +130,7 @@ An empty body is the right shape for `204`. Invalid JSON is rejected and the rul
 
 ## Passthrough
 
-With no matching rule, the proxy returns the Ruby response.
+With no matching rule, the proxy returns the upstream response.
 
 ```sh
 curl -i 'http://127.0.0.1:8080/v1/health?ping=1'
@@ -144,7 +144,7 @@ Open [http://localhost:8080/_admin/history](http://localhost:8080/_admin/history
 
 The list shows method, URL, status, source, and local time. The URL is the path plus the query string. Sources are `mock`, `upstream`, `upstream-error`, and `rejected`.
 
-Open a row to see headers and bodies. A preview longer than 64 KiB is marked truncated. The full body is still what the client and the Ruby server exchanged, up to the 8 MiB buffer limit.
+Open a row to see headers and bodies. A preview longer than 64 KiB is marked truncated. The full body is still what the client and the upstream server exchanged, up to the 8 MiB buffer limit.
 
 Delete one row from the list or the detail page. **Clear all history** opens a confirm page first. Both actions keep the rules. The pages say that rules are kept.
 
@@ -158,7 +158,7 @@ go test ./...
 
 `gofmt` above formats every package directory. You can also format the files you edited.
 
-The tests use `httptest`. They do not need a Ruby server or a Flutter app.
+The tests use `httptest`. They do not need a running upstream server or a Flutter app.
 
 ## Manual checklist
 
@@ -166,8 +166,8 @@ Use this on a Mac after the automated tests pass. The implementation environment
 
 1. `go run ./cmd/mockproxy` listens on loopback and logs the dashboard URL.
 2. `LISTEN_ADDR=0.0.0.0:8080` fails before the process listens.
-3. With no rules, the Flutter debug client at `http://localhost:8080` receives the Ruby status, body, and query string.
-4. The Ruby project and the production base URL are unchanged.
+3. With no rules, the Flutter debug client at `http://localhost:8080` receives the upstream status, body, and query string.
+4. The upstream project and the production base URL are unchanged.
 5. The dashboard can create, edit, enable, disable, and delete a rule.
 6. An exact rule matches one method and one path, and ignores the query string.
 7. A wildcard rule matches one `*` per whole segment and rejects a pattern such as `/api/users/**`.
@@ -178,19 +178,19 @@ Use this on a Mac after the automated tests pass. The implementation environment
 12. A history detail page shows headers and bodies.
 13. Delete-one and clear-all remove only history. Clear-all asks for confirmation.
 14. After a restart, rules are still there and history is empty.
-15. A request under `/_admin` never reaches the Ruby server.
+15. A request under `/_admin` never reaches the upstream server.
 16. `go test ./...` passes.
 
 ## Troubleshooting
 
 | What you see | What to check |
 | --- | --- |
-| Startup says `UPSTREAM_BASE_URL is required` | Export the Ruby base URL in the same shell. |
+| Startup says `UPSTREAM_BASE_URL is required` | Export the upstream base URL in the same shell. |
 | Startup says `LISTEN_ADDR must be a loopback address` | Use `127.0.0.1`, `localhost`, or `[::1]`. |
 | Startup says the rules file contains invalid JSON | Fix or remove `data/rules.json`. Startup will not replace a broken file. |
 | The app gets a connection error | The proxy is running, and the debug base URL is `http://localhost:8080`. On an Android emulator use `http://10.0.2.2:8080`. |
-| A trailing slash hits the wrong Ruby route | `/v1/users` and `/v1/users/` are different paths. |
-| `/_admin` shows a Ruby page | The request did not reach this proxy. |
+| A trailing slash hits the wrong upstream route | `/v1/users` and `/v1/users/` are different paths. |
+| `/_admin` shows an upstream page | The request did not reach this proxy. |
 | A mock does not match | The method and path are exact, the rule is enabled, and the pattern is not under `/_admin`. |
 | Two rules seem to compete | Read the precedence section in the requirements. Disabled rules never win. |
 | Rules vanished after restart | The save failed, or the process was started from a different working directory. |
