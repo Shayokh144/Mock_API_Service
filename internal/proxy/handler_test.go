@@ -9,6 +9,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/Shayokh144/Mock_API_Service/internal/rules"
 )
 
 func TestPassthroughPreservesMethodPathQueryBodyAndResponse(t *testing.T) {
@@ -92,11 +94,11 @@ func TestPassthroughPreservesMethodPathQueryBodyAndResponse(t *testing.T) {
 	}
 }
 
-func TestSliceMockAndPassthrough(t *testing.T) {
+func TestExactRuleMatchesIgnoringQuery(t *testing.T) {
 	var hits atomic.Int32
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hits.Add(1)
-		if r.URL.Path == "/v1/ping" && r.URL.RawQuery != "x=1" {
+		if r.URL.Path == "/v1/other" && r.URL.RawQuery != "x=1" {
 			t.Errorf("query = %s", r.URL.RawQuery)
 		}
 		w.WriteHeader(http.StatusAccepted)
@@ -108,10 +110,32 @@ func TestSliceMockAndPassthrough(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	proxySrv := httptest.NewServer(New(Options{Upstream: base, Timeout: time.Second}))
+	store := rules.NewMemory()
+	if _, err := store.Create(rules.Draft{
+		Name:        "Items",
+		Enabled:     true,
+		Method:      "GET",
+		PathPattern: "/v1/ping",
+		StatusCode:  http.StatusOK,
+		Body:        `{"ok":true}`,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	disabled := rules.Draft{
+		Name:        "Off",
+		Enabled:     false,
+		Method:      "GET",
+		PathPattern: "/v1/off",
+		StatusCode:  http.StatusOK,
+		Body:        `{"off":true}`,
+	}
+	if _, err := store.Create(disabled); err != nil {
+		t.Fatal(err)
+	}
+	proxySrv := httptest.NewServer(New(Options{Upstream: base, Timeout: time.Second, Rules: store}))
 	defer proxySrv.Close()
 
-	mockResp, err := http.Get(proxySrv.URL + "/__slice/ping")
+	mockResp, err := http.Get(proxySrv.URL + "/v1/ping?page=2")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,14 +150,20 @@ func TestSliceMockAndPassthrough(t *testing.T) {
 	if mockResp.Header.Get("X-Mock-Response") != "true" {
 		t.Fatalf("mock header = %q", mockResp.Header.Get("X-Mock-Response"))
 	}
-	if mockResp.Header.Get("Content-Type") != "application/json" {
-		t.Fatalf("content type = %s", mockResp.Header.Get("Content-Type"))
-	}
 	if hits.Load() != 0 {
-		t.Fatalf("slice reached upstream, hits = %d", hits.Load())
+		t.Fatalf("exact rule reached upstream, hits = %d", hits.Load())
 	}
 
-	passResp, err := http.Get(proxySrv.URL + "/v1/ping?x=1")
+	offResp, err := http.Get(proxySrv.URL + "/v1/off")
+	if err != nil {
+		t.Fatal(err)
+	}
+	offResp.Body.Close()
+	if offResp.StatusCode != http.StatusAccepted {
+		t.Fatalf("disabled status = %d", offResp.StatusCode)
+	}
+
+	passResp, err := http.Get(proxySrv.URL + "/v1/other?x=1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,15 +176,24 @@ func TestSliceMockAndPassthrough(t *testing.T) {
 		t.Fatal("passthrough set X-Mock-Response")
 	}
 
-	postResp, err := http.Post(proxySrv.URL+"/__slice/ping", "application/json", strings.NewReader(`{}`))
+	postResp, err := http.Post(proxySrv.URL+"/v1/ping", "application/json", strings.NewReader(`{}`))
 	if err != nil {
 		t.Fatal(err)
 	}
 	postResp.Body.Close()
 	if postResp.StatusCode != http.StatusAccepted {
-		t.Fatalf("POST slice status = %d", postResp.StatusCode)
+		t.Fatalf("POST status = %d", postResp.StatusCode)
 	}
-	if hits.Load() != 2 {
+
+	sliceResp, err := http.Get(proxySrv.URL + "/__slice/ping")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sliceResp.Body.Close()
+	if sliceResp.StatusCode != http.StatusAccepted {
+		t.Fatalf("former slice path status = %d", sliceResp.StatusCode)
+	}
+	if hits.Load() != 4 {
 		t.Fatalf("hits = %d", hits.Load())
 	}
 
@@ -166,7 +205,7 @@ func TestSliceMockAndPassthrough(t *testing.T) {
 	if adminResp.StatusCode != http.StatusNotFound {
 		t.Fatalf("admin status = %d", adminResp.StatusCode)
 	}
-	if hits.Load() != 2 {
+	if hits.Load() != 4 {
 		t.Fatalf("admin was forwarded, hits = %d", hits.Load())
 	}
 }

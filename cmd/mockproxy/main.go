@@ -10,6 +10,7 @@ import (
 
 	"github.com/Shayokh144/Mock_API_Service/internal/config"
 	"github.com/Shayokh144/Mock_API_Service/internal/proxy"
+	"github.com/Shayokh144/Mock_API_Service/internal/rules"
 )
 
 func main() {
@@ -31,6 +32,7 @@ func run(getenv func(string) string, stderr io.Writer, listen func(string, http.
 	handler := proxy.New(proxy.Options{
 		Upstream: cfg.Upstream,
 		Timeout:  cfg.UpstreamTimeout,
+		Rules:    rules.NewMemory(),
 	})
 	return listen(cfg.ListenAddr, handler)
 }
