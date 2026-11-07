@@ -309,6 +309,12 @@ The rules list shows name, method, pattern, exact or wildcard, enabled state, fr
 
 The history list shows method, URL, status, source, and timestamp. The URL is the path plus the query string. The detail page adds request headers, request body, response headers, and response body.
 
+The list has a source filter: All, Mocked (`?source=mock`), and Real server (`?source=upstream`). The choice is a GET query, so refresh and links keep it. The page names the active filter and how many entries are shown. An unknown `source` value shows All. `upstream-error` and `rejected` are valid source values, but they have no button. They appear under All.
+
+A fresh-request match is a real upstream response. Success keeps source `upstream` and sets `rule_id`. Real server includes that row. The source column reads `upstream (fresh rule)`. It is not a mock. A failed fresh request stays `upstream-error` and appears under All.
+
+Clear all still deletes every entry, including rows hidden by the filter. Delete one entry returns to the active filter.
+
 Timestamps are stored in UTC and shown in the Mac's local zone, with a numeric offset such as `+07:00` or `-05:00`. The offset does not depend on a zone abbreviation.
 
 Delete-one happens on POST. Clear-all has a confirm page, then POST. Both actions change history only.
@@ -378,8 +384,8 @@ History fields:
 | `request_headers`, `request_body` | What the client sent |
 | `status` | Status returned to the client |
 | `response_headers`, `response_body` | What the client received |
-| `source` | `mock`, `upstream`, `upstream-error`, or `rejected` |
-| `rule_id` | Winning rule, or empty |
+| `source` | `mock`, `upstream`, `upstream-error`, or `rejected`. A fresh-request success is `upstream` with a rule id |
+| `rule_id` | Winning rule, or empty. On `upstream` or `upstream-error`, a rule id means a fresh-request match |
 | `request_body_truncated`, `response_body_truncated` | Preview was cut at 64 KiB |
 
 Deleting a rule does not delete history. A later detail page may show a `rule_id` whose rule is already gone.
@@ -405,3 +411,4 @@ The MVP is complete when every line below is true.
 15. A request under `/_admin` never reaches the upstream server.
 16. `go test ./...` passes.
 17. A fresh-request rule forwards to the upstream server with cache validators removed, and a rule without that option still returns its mock.
+18. The history page can show All, Mocked, or Real server. A fresh-request row is Real server, labeled `upstream (fresh rule)`. An unknown source query shows All. Delete keeps the filter. Clear all still removes every entry.
