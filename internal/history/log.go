@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
@@ -85,6 +86,28 @@ func (l *Log) Add(entry Entry) Entry {
 		l.entries = append([]Entry(nil), l.entries[len(l.entries)-l.limit:]...)
 	}
 	return entry
+}
+
+// ParseSource reads a history filter query value.
+// An empty or unknown value is not a source. The caller shows every entry.
+func ParseSource(raw string) (Source, bool) {
+	switch Source(strings.TrimSpace(raw)) {
+	case SourceMock, SourceUpstream, SourceUpstreamError, SourceRejected:
+		return Source(strings.TrimSpace(raw)), true
+	default:
+		return "", false
+	}
+}
+
+// Filter keeps entries with source, in the same order.
+func Filter(entries []Entry, source Source) []Entry {
+	out := make([]Entry, 0, len(entries))
+	for _, entry := range entries {
+		if entry.Source == source {
+			out = append(out, entry)
+		}
+	}
+	return out
 }
 
 // List returns copies, newest first.
