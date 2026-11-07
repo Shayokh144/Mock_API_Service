@@ -172,9 +172,21 @@ Open [http://localhost:8080/_admin/history](http://localhost:8080/_admin/history
 
 The list shows method, URL, status, source, and local time. The URL is the path plus the query string. Sources are `mock`, `upstream`, `upstream-error`, and `rejected`.
 
+The top of the page filters that list:
+
+| Link | Address |
+| --- | --- |
+| All | `/_admin/history` |
+| Mocked | `/_admin/history?source=mock` |
+| Real server | `/_admin/history?source=upstream` |
+
+The page names the active filter and how many rows are shown. A bad `source` value, such as `?source=nope`, shows All. `upstream-error` and `rejected` have no button. They show under All. You can still open `?source=upstream-error` or `?source=rejected` directly.
+
+A fresh-request rule is a real server response, not a mock. Its source stays `upstream`, so **Real server** includes it. The source column says `upstream (fresh rule)` when a rule selected that response. A failed fresh request stays `upstream-error` and shows under All.
+
 Open a row to see headers and bodies. A preview longer than 64 KiB is marked truncated. The full body is still what the client and the Ruby server exchanged, up to the 8 MiB buffer limit.
 
-Delete one row from the list or the detail page. **Clear all history** opens a confirm page first. Both actions keep the rules. The pages say that rules are kept.
+Delete one row from the list or the detail page. The list returns to the same filter. **Clear all history** opens a confirm page first. Clear removes every entry, including rows the filter is hiding. Both actions keep the rules. The pages say that rules are kept.
 
 ## Tests
 
@@ -209,6 +221,7 @@ Use this on a Mac after the automated tests pass. The implementation environment
 15. A request under `/_admin` never reaches the Ruby server.
 16. `go test ./...` passes.
 17. A rule with Fresh request checked returns a full Ruby response with the cache validators removed. A rule without it still returns the saved mock.
+18. History can show All, Mocked, or Real server. A fresh-request row appears under Real server as `upstream (fresh rule)`. A bad source query shows All. Delete keeps the filter. Clear all still removes every entry.
 
 ## Troubleshooting
 

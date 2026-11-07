@@ -1,7 +1,14 @@
 {{define "history"}}
 {{template "head" .}}
 <p>Rules are kept. Deleting history does not delete rules.</p>
-<p><a href="/_admin/history/clear">Clear all history</a></p>
+<nav aria-label="History source">
+  <a href="/_admin/history"{{if eq .FilterKey "all"}} aria-current="page"{{end}}>All</a>
+  <a href="/_admin/history?source=mock"{{if eq .FilterKey "mock"}} aria-current="page"{{end}}>Mocked</a>
+  <a href="/_admin/history?source=upstream"{{if eq .FilterKey "upstream"}} aria-current="page"{{end}}>Real server</a>
+</nav>
+<p>Filter: {{.FilterLabel}}. Showing {{.Shown}} of {{.Total}}.</p>
+<p class="hint">A fresh-request rule is a real server response. Its source stays <code>upstream</code>, so Real server includes it. The source column says <code>upstream (fresh rule)</code> when a rule selected that response. It is not a mock. <code>upstream-error</code> and <code>rejected</code> stay under All.</p>
+<p><a href="/_admin/history/clear{{.FilterQuery}}">Clear all history</a></p>
 {{if .Entries}}
 <table>
   <caption>Recorded requests</caption>
@@ -19,12 +26,12 @@
     {{range .Entries}}
     <tr>
       <td>{{.Method}}</td>
-      <td><a href="/_admin/history/{{.ID}}">{{.URL}}</a></td>
+      <td><a href="/_admin/history/{{.ID}}{{$.FilterQuery}}">{{.URL}}</a></td>
       <td>{{.Status}}</td>
       <td>{{.Source}}</td>
       <td>{{.When}}</td>
       <td>
-        <form method="post" action="/_admin/history/{{.ID}}/delete">
+        <form method="post" action="/_admin/history/{{.ID}}/delete{{$.FilterQuery}}">
           <button class="danger" type="submit">Delete</button>
         </form>
       </td>
@@ -32,6 +39,8 @@
     {{end}}
   </tbody>
 </table>
+{{else if .Total}}
+<p>No entries for this filter.</p>
 {{else}}
 <p>No history yet.</p>
 {{end}}
