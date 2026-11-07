@@ -49,7 +49,7 @@ func TestHistoryDashboard(t *testing.T) {
 		RequestHeaders:  http.Header{"X-Request-Id": []string{"abc"}},
 		RequestBody:     `{"q":1}`,
 		ResponseHeaders: http.Header{"X-Upstream": []string{"yes"}},
-		ResponseBody:    `{"from":"ruby"}`,
+		ResponseBody:    `{"from":"upstream"}`,
 	})
 	latest := log.Add(history.Entry{
 		StartedAt:             newer,
@@ -95,7 +95,7 @@ func TestHistoryDashboard(t *testing.T) {
 	}
 	olderEntry := log.List()[1]
 	inspected := get(t, client, srv.URL+"/_admin/history/"+olderEntry.ID)
-	if !strings.Contains(inspected, "X-Request-Id: abc") || !strings.Contains(inspected, "&#34;from&#34;:&#34;ruby&#34;") || !strings.Contains(inspected, "&#34;q&#34;:1") {
+	if !strings.Contains(inspected, "X-Request-Id: abc") || !strings.Contains(inspected, "&#34;from&#34;:&#34;upstream&#34;") || !strings.Contains(inspected, "&#34;q&#34;:1") {
 		t.Fatalf("detail headers or bodies missing: %s", inspected)
 	}
 
