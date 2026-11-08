@@ -8,18 +8,33 @@ import (
 )
 
 // sameOrigin allows a dashboard form post from this process.
-// Browsers may name the loopback host as localhost, 127.0.0.1, or [::1]
-// while the Host header uses a different one of those names. The port must match.
-// A foreign origin is rejected. A missing Origin falls back to Referer.
-// A request with neither header is allowed so non-browser clients still work.
+//
+// Fetch says a request whose referrer policy is no-referrer serializes Origin
+// as the string "null", even for a same-origin form POST. Browsers still send
+// Sec-Fetch-Site: same-origin on that navigation. Trust same-origin and none.
+// A concrete Origin must still name this loopback port. localhost, 127.0.0.1,
+// and [::1] are the same local server. A foreign origin is rejected.
+// A missing Origin falls back to Referer. Neither header means a non-browser client.
 func sameOrigin(r *http.Request) bool {
+	switch fetchSite(r) {
+	case "cross-site", "same-site":
+		return false
+	}
 	if raw, ok := statedSource(r.Header.Get("Origin")); ok {
 		return loopbackSamePort(raw, r.Host)
 	}
 	if referer := strings.TrimSpace(r.Header.Get("Referer")); referer != "" {
 		return loopbackSamePort(referer, r.Host)
 	}
+	if strings.EqualFold(strings.TrimSpace(r.Header.Get("Origin")), "null") {
+		site := fetchSite(r)
+		return site == "same-origin" || site == "none"
+	}
 	return true
+}
+
+func fetchSite(r *http.Request) string {
+	return strings.ToLower(strings.TrimSpace(r.Header.Get("Sec-Fetch-Site")))
 }
 
 func statedSource(origin string) (string, bool) {
