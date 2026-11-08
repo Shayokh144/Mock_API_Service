@@ -1,0 +1,28 @@
+{{define "rule_form"}}
+{{template "head" .}}
+{{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{end}}
+<form method="post" action="{{.Form.Action}}">
+  <label for="name">Name</label>
+  <input id="name" name="name" type="text" maxlength="80" value="{{.Form.Name}}">
+  <label for="enabled"><input id="enabled" name="enabled" type="checkbox" value="on" {{if .Form.Enabled}}checked{{end}}> Enabled</label>
+  <label for="method">Method</label>
+  <select id="method" name="method">
+    {{range .Methods}}
+    <option value="{{.}}" {{if eq . $.Form.Method}}selected{{end}}>{{.}}</option>
+    {{end}}
+  </select>
+  <label for="path_pattern">Path pattern</label>
+  <input id="path_pattern" name="path_pattern" type="text" required value="{{.Form.PathPattern}}">
+  <p class="hint">Use an exact path, or * for one whole segment. Example: /api/users/*</p>
+  <label for="status_code">Status code</label>
+  <input id="status_code" name="status_code" type="number" min="100" max="599" required value="{{.Form.StatusCode}}">
+  <label for="headers">Headers</label>
+  <textarea id="headers" name="headers">{{.Form.Headers}}</textarea>
+  <p class="hint">One header per line, as Name: value.</p>
+  <label for="body">JSON body</label>
+  <textarea id="body" name="body">{{.Form.Body}}</textarea>
+  <p class="hint">Leave the body empty for no response body.</p>
+  <p><button type="submit">{{.Form.Submit}}</button></p>
+</form>
+{{template "foot" .}}
+{{end}}
