@@ -140,6 +140,15 @@ func (s *Server) renderHistory(w http.ResponseWriter, name string, data historyP
 	}
 }
 
+// historyTimeLayout is local clock time plus a numeric offset.
+// Abbreviations from the layout "MST" are not stable across operating systems.
+// Asia/Bangkok is "+07" on macOS and "ICT" in some other zone databases.
+const historyTimeLayout = "2006-01-02 15:04:05 -07:00"
+
+func formatHistoryTime(t time.Time) string {
+	return t.In(time.Local).Format(historyTimeLayout)
+}
+
 func historyRowFrom(entry history.Entry) historyRow {
 	target := entry.Path
 	if entry.RawQuery != "" {
@@ -151,7 +160,7 @@ func historyRowFrom(entry history.Entry) historyRow {
 		URL:    target,
 		Status: entry.Status,
 		Source: string(entry.Source),
-		When:   entry.StartedAt.In(time.Local).Format("2006-01-02 15:04:05 MST"),
+		When:   formatHistoryTime(entry.StartedAt),
 	}
 }
 

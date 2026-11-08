@@ -81,14 +81,15 @@ func TestHistoryDashboard(t *testing.T) {
 	if newestAt < 0 || olderAt < 0 || newestAt > olderAt {
 		t.Fatalf("order is wrong: %s", page)
 	}
-	for _, want := range []string{"POST", "500", "mock", newer.In(time.Local).Format("2006-01-02 15:04:05 MST")} {
+	shownAt := templateText(formatHistoryTime(newer))
+	for _, want := range []string{"POST", "500", "mock", shownAt} {
 		if !strings.Contains(page, want) {
-			t.Fatalf("list missing %s", want)
+			t.Fatalf("list missing %s\n%s", want, page)
 		}
 	}
 
 	detail := get(t, client, srv.URL+"/_admin/history/"+latest.ID)
-	for _, want := range []string{"Rules are kept", "0123456789abcdef", "&#34;error&#34;:&#34;boom&#34;", "Response body preview was truncated"} {
+	for _, want := range []string{"Rules are kept", "0123456789abcdef", "&#34;error&#34;:&#34;boom&#34;", "Response body preview was truncated", shownAt} {
 		if !strings.Contains(detail, want) {
 			t.Fatalf("detail missing %s\n%s", want, detail)
 		}
@@ -147,4 +148,17 @@ func TestHistoryDashboard(t *testing.T) {
 	if !strings.Contains(rulesPage, "Keep me") {
 		t.Fatal("rules list changed")
 	}
+}
+
+// templateText matches html/template text escaping. A positive offset contains '+',
+// which the template writes as &#43;.
+func templateText(s string) string {
+	return strings.NewReplacer(
+		"&", "&amp;",
+		"<", "&lt;",
+		">", "&gt;",
+		`"`, "&#34;",
+		"'", "&#39;",
+		"+", "&#43;",
+	).Replace(s)
 }

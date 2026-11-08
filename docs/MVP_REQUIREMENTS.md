@@ -286,7 +286,7 @@ The rules list shows name, method, pattern, exact or wildcard, enabled state, an
 
 The history list shows method, URL, status, source, and timestamp. The URL is the path plus the query string. The detail page adds request headers, request body, response headers, and response body.
 
-Timestamps are stored in UTC and shown in the Mac's local zone.
+Timestamps are stored in UTC and shown in the Mac's local zone, with a numeric offset such as `+07:00` or `-05:00`. The offset does not depend on a zone abbreviation.
 
 Delete-one happens on POST. Clear-all has a confirm page, then POST. Both actions change history only.
 
