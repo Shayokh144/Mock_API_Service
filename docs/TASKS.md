@@ -309,7 +309,7 @@ Each task is one change you can review on its own. Tests belong with the behavio
   - Columns are method, URL, status, source, and timestamp.
   - The URL is path plus query.
   - The newest entry is first.
-  - The timestamp uses the local zone.
+  - The timestamp uses the local zone, printed with a numeric offset such as `+07:00` or `-05:00`.
 
 #### MVP-32 — Inspect one history entry
 

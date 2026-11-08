@@ -1,0 +1,39 @@
+{{define "history"}}
+{{template "head" .}}
+<p>Rules are kept. Deleting history does not delete rules.</p>
+<p><a href="/_admin/history/clear">Clear all history</a></p>
+{{if .Entries}}
+<table>
+  <caption>Recorded requests</caption>
+  <thead>
+    <tr>
+      <th scope="col">Method</th>
+      <th scope="col">URL</th>
+      <th scope="col">Status</th>
+      <th scope="col">Source</th>
+      <th scope="col">Timestamp</th>
+      <th scope="col">Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+    {{range .Entries}}
+    <tr>
+      <td>{{.Method}}</td>
+      <td><a href="/_admin/history/{{.ID}}">{{.URL}}</a></td>
+      <td>{{.Status}}</td>
+      <td>{{.Source}}</td>
+      <td>{{.When}}</td>
+      <td>
+        <form method="post" action="/_admin/history/{{.ID}}/delete">
+          <button class="danger" type="submit">Delete</button>
+        </form>
+      </td>
+    </tr>
+    {{end}}
+  </tbody>
+</table>
+{{else}}
+<p>No history yet.</p>
+{{end}}
+{{template "foot" .}}
+{{end}}
