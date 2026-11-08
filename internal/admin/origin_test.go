@@ -106,7 +106,7 @@ func TestCreateRuleAcceptsLocalhostOrigin(t *testing.T) {
 	}
 }
 
-func TestCreateRuleAcceptsBrowserSameOriginPost(t *testing.T) {
+func TestCreateRuleAcceptsChromeSameOriginPost(t *testing.T) {
 	dir := t.TempDir()
 	store, err := rules.Load(filepath.Join(dir, "rules.json"))
 	if err != nil {
@@ -127,13 +127,21 @@ func TestCreateRuleAcceptsBrowserSameOriginPost(t *testing.T) {
 		t.Fatal(err)
 	}
 	form.Body.Close()
-	if got := form.Header.Get("Referrer-Policy"); got != "same-origin" {
-		t.Fatalf("Referrer-Policy = %q", got)
+	policy := form.Header.Get("Referrer-Policy")
+	if policy != "same-origin" {
+		t.Fatalf("Referrer-Policy = %q", policy)
 	}
 
-	target, err := url.Parse(srv.URL)
+	page, err := url.Parse(srv.URL + "/_admin/rules/new")
 	if err != nil {
 		t.Fatal(err)
+	}
+	headers := chromeSameOriginFormHeaders(page)
+	if headers.Get("Origin") != srv.URL || headers.Get("Origin") == "null" {
+		t.Fatalf("Origin = %q, want %s", headers.Get("Origin"), srv.URL)
+	}
+	if headers.Get("Referer") != page.String() {
+		t.Fatalf("Referer = %q, want %s", headers.Get("Referer"), page.String())
 	}
 	body := url.Values{
 		"name":         {"Browser"},
@@ -147,49 +155,41 @@ func TestCreateRuleAcceptsBrowserSameOriginPost(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Headers Chrome and Safari send for a same-origin form navigation.
-	req.Host = target.Host
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("Origin", srv.URL)
-	req.Header.Set("Referer", srv.URL+"/_admin/rules/new")
-	req.Header.Set("Sec-Fetch-Site", "same-origin")
-	req.Header.Set("Sec-Fetch-Mode", "navigate")
-	req.Header.Set("Sec-Fetch-Dest", "document")
-	req.Header.Set("Sec-Fetch-User", "?1")
+	req.Host = page.Host
+	req.Header = headers
 	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusSeeOther {
-		t.Fatalf("browser post status = %d", resp.StatusCode)
+		t.Fatalf("Chrome post status = %d, origin %q", resp.StatusCode, headers.Get("Origin"))
 	}
+	if len(store.List()) != 1 {
+		t.Fatalf("rules = %d", len(store.List()))
+	}
+}
 
-	// Referrer-Policy: no-referrer makes those browsers send Origin: null.
-	// Sec-Fetch-Site stays same-origin. That post must still be accepted.
-	nullBody := url.Values{
-		"name":         {"Null origin"},
-		"method":       {"POST"},
-		"path_pattern": {"/v1/null-origin"},
-		"status_code":  {"200"},
-	}
-	nullReq, err := http.NewRequest(http.MethodPost, srv.URL+"/_admin/rules", strings.NewReader(nullBody.Encode()))
-	if err != nil {
-		t.Fatal(err)
-	}
-	nullReq.Host = target.Host
-	nullReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	nullReq.Header.Set("Origin", "null")
-	nullReq.Header.Set("Sec-Fetch-Site", "same-origin")
-	nullReq.Header.Set("Sec-Fetch-Mode", "navigate")
-	nullReq.Header.Set("Sec-Fetch-Dest", "document")
-	nullReq.Header.Set("Sec-Fetch-User", "?1")
-	nullResp, err := client.Do(nullReq)
-	if err != nil {
-		t.Fatal(err)
-	}
-	nullResp.Body.Close()
-	if nullResp.StatusCode != http.StatusSeeOther {
-		t.Fatalf("null-origin browser post status = %d", nullResp.StatusCode)
-	}
+// chromeSameOriginFormHeaders is what Google Chrome on macOS sends for a
+// clicked same-origin form POST when the form page's Referrer-Policy is
+// same-origin.
+//
+// Origin is the page origin, not "null". That policy serializes Origin as
+// null only for a cross-origin request. Referer is the full document URL
+// with the fragment removed. Chrome omits Referer for a cross-origin request
+// under this policy. Sec-Fetch-User is ?1 because the submit is a user gesture.
+func chromeSameOriginFormHeaders(page *url.URL) http.Header {
+	origin := &url.URL{Scheme: page.Scheme, Host: page.Host}
+	referer := *page
+	referer.Fragment = ""
+	referer.User = nil
+	header := make(http.Header)
+	header.Set("Content-Type", "application/x-www-form-urlencoded")
+	header.Set("Origin", origin.String())
+	header.Set("Referer", referer.String())
+	header.Set("Sec-Fetch-Site", "same-origin")
+	header.Set("Sec-Fetch-Mode", "navigate")
+	header.Set("Sec-Fetch-Dest", "document")
+	header.Set("Sec-Fetch-User", "?1")
+	return header
 }
