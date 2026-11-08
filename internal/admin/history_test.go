@@ -72,6 +72,15 @@ func TestHistoryDashboard(t *testing.T) {
 		return http.ErrUseLastResponse
 	}}
 
+	policyResp, err := client.Get(srv.URL + "/_admin/history")
+	if err != nil {
+		t.Fatal(err)
+	}
+	policyResp.Body.Close()
+	if got := policyResp.Header.Get("Referrer-Policy"); got != "same-origin" {
+		t.Fatalf("Referrer-Policy = %q", got)
+	}
+
 	page := get(t, client, srv.URL+"/_admin/history")
 	if !strings.Contains(page, "Rules are kept") {
 		t.Fatal("list does not say rules are kept")
