@@ -21,15 +21,16 @@ var methods = []string{
 }
 
 type formView struct {
-	Action      string
-	Submit      string
-	Name        string
-	Enabled     bool
-	Method      string
-	PathPattern string
-	StatusCode  string
-	Headers     string
-	Body        string
+	Action       string
+	Submit       string
+	Name         string
+	Enabled      bool
+	FreshRequest bool
+	Method       string
+	PathPattern  string
+	StatusCode   string
+	Headers      string
+	Body         string
 }
 
 func draftFromForm(r *http.Request) (rules.Draft, formView, error) {
@@ -37,13 +38,14 @@ func draftFromForm(r *http.Request) (rules.Draft, formView, error) {
 		return rules.Draft{}, formView{}, fmt.Errorf("could not read the form")
 	}
 	view := formView{
-		Name:        r.FormValue("name"),
-		Enabled:     r.FormValue("enabled") == "on",
-		Method:      strings.ToUpper(strings.TrimSpace(r.FormValue("method"))),
-		PathPattern: strings.TrimSpace(r.FormValue("path_pattern")),
-		StatusCode:  strings.TrimSpace(r.FormValue("status_code")),
-		Headers:     r.FormValue("headers"),
-		Body:        r.FormValue("body"),
+		Name:         r.FormValue("name"),
+		Enabled:      r.FormValue("enabled") == "on",
+		FreshRequest: r.FormValue("fresh_request") == "on",
+		Method:       strings.ToUpper(strings.TrimSpace(r.FormValue("method"))),
+		PathPattern:  strings.TrimSpace(r.FormValue("path_pattern")),
+		StatusCode:   strings.TrimSpace(r.FormValue("status_code")),
+		Headers:      r.FormValue("headers"),
+		Body:         r.FormValue("body"),
 	}
 	status, err := strconv.Atoi(view.StatusCode)
 	if err != nil {
@@ -54,13 +56,14 @@ func draftFromForm(r *http.Request) (rules.Draft, formView, error) {
 		return rules.Draft{}, view, err
 	}
 	return rules.Draft{
-		Name:        view.Name,
-		Enabled:     view.Enabled,
-		Method:      view.Method,
-		PathPattern: view.PathPattern,
-		StatusCode:  status,
-		Headers:     headers,
-		Body:        view.Body,
+		Name:         view.Name,
+		Enabled:      view.Enabled,
+		FreshRequest: view.FreshRequest,
+		Method:       view.Method,
+		PathPattern:  view.PathPattern,
+		StatusCode:   status,
+		Headers:      headers,
+		Body:         view.Body,
 	}, view, nil
 }
 
@@ -103,14 +106,15 @@ func formatHeaders(headers map[string]string) string {
 
 func viewFromRule(rule rules.Rule, action, submit string) formView {
 	return formView{
-		Action:      action,
-		Submit:      submit,
-		Name:        rule.Name,
-		Enabled:     rule.Enabled,
-		Method:      rule.Method,
-		PathPattern: rule.PathPattern,
-		StatusCode:  strconv.Itoa(rule.StatusCode),
-		Headers:     formatHeaders(rule.Headers),
-		Body:        string(rule.Body),
+		Action:       action,
+		Submit:       submit,
+		Name:         rule.Name,
+		Enabled:      rule.Enabled,
+		FreshRequest: rule.FreshRequest,
+		Method:       rule.Method,
+		PathPattern:  rule.PathPattern,
+		StatusCode:   strconv.Itoa(rule.StatusCode),
+		Headers:      formatHeaders(rule.Headers),
+		Body:         string(rule.Body),
 	}
 }
