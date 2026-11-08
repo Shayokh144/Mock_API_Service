@@ -182,6 +182,8 @@ The top of the page filters that list:
 
 The page names the active filter and how many rows are shown. A bad `source` value, such as `?source=nope`, shows All. `upstream-error` and `rejected` have no button. They show under All. You can still open `?source=upstream-error` or `?source=rejected` directly.
 
+While the list is open, it asks for new rows about once a second and adds them at the top. The active filter still applies. Rows already on the page stay put, and an open detail page is left alone. Reload the list if JavaScript is off.
+
 A fresh-request rule is a real server response, not a mock. Its source stays `upstream`, so **Real server** includes it. The source column says `upstream (fresh rule)` when a rule selected that response. A failed fresh request stays `upstream-error` and shows under All.
 
 Open a row to see headers and bodies. A preview longer than 64 KiB is marked truncated. The full body is still what the client and the upstream server exchanged, up to the 8 MiB buffer limit.

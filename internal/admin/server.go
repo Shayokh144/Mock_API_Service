@@ -73,6 +73,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.ruleRoute(w, r, strings.TrimPrefix(path, "/_admin/rules/"))
 	case path == "/_admin/history" && r.Method == http.MethodGet:
 		s.historyPage(w, r)
+	case path == "/_admin/history/feed" && r.Method == http.MethodGet:
+		s.historyFeed(w, r)
+	case path == "/_admin/history.js" && r.Method == http.MethodGet:
+		s.historyScript(w, r)
 	case path == "/_admin/history/clear" && r.Method == http.MethodGet:
 		s.clearConfirm(w, r)
 	case path == "/_admin/history/clear" && r.Method == http.MethodPost:

@@ -6,7 +6,8 @@
   <a href="/_admin/history?source=mock"{{if eq .FilterKey "mock"}} aria-current="page"{{end}}>Mocked</a>
   <a href="/_admin/history?source=upstream"{{if eq .FilterKey "upstream"}} aria-current="page"{{end}}>Real server</a>
 </nav>
-<p>Filter: {{.FilterLabel}}. Showing {{.Shown}} of {{.Total}}.</p>
+<p id="history-summary">Filter: {{.FilterLabel}}. Showing {{.Shown}} of {{.Total}}.</p>
+<p class="hint">New rows are added at the top while this page is open. A row already on screen stays put. Reload the page if JavaScript is off.</p>
 <p class="hint">A fresh-request rule is a real server response. Its source stays <code>upstream</code>, so Real server includes it. The source column says <code>upstream (fresh rule)</code> when a rule selected that response. It is not a mock. <code>upstream-error</code> and <code>rejected</code> stay under All.</p>
 <p><a href="/_admin/history/clear{{.FilterQuery}}">Clear all history</a></p>
 {{if .Entries}}
@@ -22,9 +23,9 @@
       <th scope="col">Actions</th>
     </tr>
   </thead>
-  <tbody>
+  <tbody id="history-rows">
     {{range .Entries}}
-    <tr>
+    <tr data-id="{{.ID}}">
       <td>{{.Method}}</td>
       <td><a href="/_admin/history/{{.ID}}{{$.FilterQuery}}">{{.URL}}</a></td>
       <td>{{.Status}}</td>
@@ -40,9 +41,10 @@
   </tbody>
 </table>
 {{else if .Total}}
-<p>No entries for this filter.</p>
+<p id="history-empty">No entries for this filter.</p>
 {{else}}
-<p>No history yet.</p>
+<p id="history-empty">No history yet.</p>
 {{end}}
+<script src="/_admin/history.js"></script>
 {{template "foot" .}}
 {{end}}

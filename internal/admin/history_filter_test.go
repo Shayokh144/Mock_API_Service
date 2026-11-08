@@ -58,9 +58,10 @@ func TestHistorySourceFilter(t *testing.T) {
 	assertContains(t, all, "Filter: All. Showing 6 of 6.")
 	assertContains(t, all, `aria-current="page">All`)
 	assertContains(t, all, "upstream (fresh rule)")
-	if strings.Contains(all, "<script") {
-		t.Fatal("history page added a script")
+	if strings.Contains(all, "<script>") || strings.Contains(all, "onclick=") {
+		t.Fatal("history page added an inline script")
 	}
+	assertContains(t, all, `<script src="/_admin/history.js"></script>`)
 
 	mocked := get(t, client, srv.URL+"/_admin/history?source=mock")
 	assertContains(t, mocked, "Filter: Mocked. Showing 2 of 6.")
