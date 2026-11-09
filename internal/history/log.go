@@ -21,6 +21,9 @@ const (
 	SourceRejected      Source = "rejected"
 )
 
+// UpstreamAny is the stored id for a mock whose rule is not linked to an upstream.
+const UpstreamAny = "any"
+
 // Entry is one recorded request and response. Bodies are previews.
 type Entry struct {
 	ID                    string
@@ -35,6 +38,7 @@ type Entry struct {
 	ResponseBody          string
 	Source                Source
 	RuleID                string
+	UpstreamID            string
 	UpstreamName          string
 	RequestBodyTruncated  bool
 	ResponseBodyTruncated bool
@@ -100,11 +104,40 @@ func ParseSource(raw string) (Source, bool) {
 	}
 }
 
+// ParseUpstream reads an upstream history filter.
+// "any" selects mocks that were not linked to an upstream.
+// A 16-digit hex id selects rows stored with that id.
+// An empty or other value is not a filter. The caller shows every entry.
+func ParseUpstream(raw string) (string, bool) {
+	raw = strings.TrimSpace(raw)
+	if raw == UpstreamAny {
+		return UpstreamAny, true
+	}
+	if len(raw) != 16 {
+		return "", false
+	}
+	if _, err := hex.DecodeString(raw); err != nil {
+		return "", false
+	}
+	return strings.ToLower(raw), true
+}
+
 // Filter keeps entries with source, in the same order.
 func Filter(entries []Entry, source Source) []Entry {
 	out := make([]Entry, 0, len(entries))
 	for _, entry := range entries {
 		if entry.Source == source {
+			out = append(out, entry)
+		}
+	}
+	return out
+}
+
+// FilterUpstream keeps entries stored with id, in the same order.
+func FilterUpstream(entries []Entry, id string) []Entry {
+	out := make([]Entry, 0, len(entries))
+	for _, entry := range entries {
+		if entry.UpstreamID == id {
 			out = append(out, entry)
 		}
 	}

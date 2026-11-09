@@ -90,16 +90,16 @@ func TestSwitchingUpstreamChangesTheNextRequest(t *testing.T) {
 	if len(entries) != 4 {
 		t.Fatalf("history = %d", len(entries))
 	}
-	if entries[0].UpstreamName != "any" || entries[0].Source != history.SourceMock {
+	if entries[0].UpstreamName != "any" || entries[0].UpstreamID != history.UpstreamAny || entries[0].Source != history.SourceMock {
 		t.Fatalf("newest = %+v", entries[0])
 	}
-	if entries[1].UpstreamName != "develop" || entries[1].Source != history.SourceUpstream {
+	if entries[1].UpstreamName != "develop" || entries[1].UpstreamID != developUp.ID || entries[1].Source != history.SourceUpstream {
 		t.Fatalf("develop entry = %+v", entries[1])
 	}
-	if entries[2].UpstreamName != "staging" || entries[2].RuleID != stagingRule.ID {
+	if entries[2].UpstreamName != "staging" || entries[2].UpstreamID != stagingUp.ID || entries[2].RuleID != stagingRule.ID {
 		t.Fatalf("staging mock = %+v", entries[2])
 	}
-	if entries[3].UpstreamName != "staging" {
+	if entries[3].UpstreamName != "staging" || entries[3].UpstreamID != stagingUp.ID {
 		t.Fatalf("staging pass = %+v", entries[3])
 	}
 }
@@ -122,7 +122,7 @@ func TestNoUpstreamReturnsDashboardHint(t *testing.T) {
 		t.Fatalf("status=%d body=%s", resp.StatusCode, body)
 	}
 	entries := log.List()
-	if len(entries) != 1 || entries[0].UpstreamName != "none" || entries[0].Source != history.SourceUpstreamError {
+	if len(entries) != 1 || entries[0].UpstreamName != "none" || entries[0].UpstreamID != "" || entries[0].Source != history.SourceUpstreamError {
 		t.Fatalf("entry = %+v", entries)
 	}
 }

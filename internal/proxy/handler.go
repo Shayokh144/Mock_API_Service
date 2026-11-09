@@ -84,10 +84,10 @@ func (h *Handler) serveAPI(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		if errors.Is(err, errBodyTooLarge) {
-			h.finish(w, r, started, reqHeaders, payload, history.SourceRejected, "", "", http.StatusRequestEntityTooLarge, "request body too large")
+			h.finish(w, r, started, reqHeaders, payload, history.SourceRejected, "", "", "", http.StatusRequestEntityTooLarge, "request body too large")
 			return
 		}
-		h.finish(w, r, started, reqHeaders, nil, history.SourceRejected, "", "", http.StatusBadRequest, "could not read request body")
+		h.finish(w, r, started, reqHeaders, nil, history.SourceRejected, "", "", "", http.StatusBadRequest, "could not read request body")
 		return
 	}
 	r.Body = io.NopCloser(bytes.NewReader(payload))
@@ -111,11 +111,12 @@ func (h *Handler) serveAPI(w http.ResponseWriter, r *http.Request) {
 				if failed {
 					source = history.SourceUpstreamError
 				}
-				h.record(started, r, reqHeaders, payload, capw, source, rule.ID, activeName)
+				h.record(started, r, reqHeaders, payload, capw, source, rule.ID, activeID, activeName)
 				return
 			}
 			writeMock(capw, rule)
-			h.record(started, r, reqHeaders, payload, capw, history.SourceMock, rule.ID, h.mockUpstreamName(rule))
+			mockID, mockName := h.mockUpstream(rule)
+			h.record(started, r, reqHeaders, payload, capw, history.SourceMock, rule.ID, mockID, mockName)
 			return
 		}
 	}
@@ -128,18 +129,18 @@ func (h *Handler) serveAPI(w http.ResponseWriter, r *http.Request) {
 	if failed {
 		source = history.SourceUpstreamError
 	}
-	h.record(started, r, reqHeaders, payload, capw, source, "", activeName)
+	h.record(started, r, reqHeaders, payload, capw, source, "", activeID, activeName)
 }
 
 func (h *Handler) unavailable(w *bodyCapture, started time.Time, r *http.Request, reqHeaders http.Header, payload []byte, ruleID string) {
 	writeJSONError(w, http.StatusServiceUnavailable, noUpstreamMessage)
-	h.record(started, r, reqHeaders, payload, w, history.SourceUpstreamError, ruleID, "none")
+	h.record(started, r, reqHeaders, payload, w, history.SourceUpstreamError, ruleID, "", "none")
 }
 
-func (h *Handler) finish(w http.ResponseWriter, r *http.Request, started time.Time, reqHeaders http.Header, payload []byte, source history.Source, ruleID, upstreamName string, status int, reason string) {
+func (h *Handler) finish(w http.ResponseWriter, r *http.Request, started time.Time, reqHeaders http.Header, payload []byte, source history.Source, ruleID, upstreamID, upstreamName string, status int, reason string) {
 	capw := &bodyCapture{ResponseWriter: w}
 	writeJSONError(capw, status, reason)
-	h.record(started, r, reqHeaders, payload, capw, source, ruleID, upstreamName)
+	h.record(started, r, reqHeaders, payload, capw, source, ruleID, upstreamID, upstreamName)
 }
 
 func (h *Handler) activeTarget() (name, id string, dest *url.URL, ok bool) {
@@ -160,16 +161,16 @@ func (h *Handler) activeTarget() (name, id string, dest *url.URL, ok bool) {
 	return "none", "", nil, false
 }
 
-func (h *Handler) mockUpstreamName(rule rules.Rule) string {
+func (h *Handler) mockUpstream(rule rules.Rule) (string, string) {
 	if rule.UpstreamID == "" {
-		return "any"
+		return history.UpstreamAny, "any"
 	}
 	if h.upstreams != nil {
 		if item, ok := h.upstreams.Get(rule.UpstreamID); ok {
-			return item.Name
+			return item.ID, item.Name
 		}
 	}
-	return "unknown"
+	return rule.UpstreamID, "unknown"
 }
 
 func writeMock(w http.ResponseWriter, rule rules.Rule) {
@@ -259,7 +260,7 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, upstream *url.
 	return failed
 }
 
-func (h *Handler) record(started time.Time, r *http.Request, reqHeaders http.Header, payload []byte, capw *bodyCapture, source history.Source, ruleID, upstreamName string) {
+func (h *Handler) record(started time.Time, r *http.Request, reqHeaders http.Header, payload []byte, capw *bodyCapture, source history.Source, ruleID, upstreamID, upstreamName string) {
 	if h.history == nil {
 		return
 	}
@@ -277,6 +278,7 @@ func (h *Handler) record(started time.Time, r *http.Request, reqHeaders http.Hea
 		ResponseBody:          respBody,
 		Source:                source,
 		RuleID:                ruleID,
+		UpstreamID:            upstreamID,
 		UpstreamName:          upstreamName,
 		RequestBodyTruncated:  reqTrunc,
 		ResponseBodyTruncated: respTrunc,

@@ -17,15 +17,27 @@ import (
 var historyJS []byte
 
 type historyPageData struct {
-	Title       string
-	Entries     []historyRow
-	Entry       *historyDetail
-	Error       string
-	FilterKey   string
-	FilterLabel string
-	FilterQuery template.URL
-	Shown       int
-	Total       int
+	Title           string
+	Entries         []historyRow
+	Entry           *historyDetail
+	Error           string
+	FilterKey       string
+	FilterLabel     string
+	FilterQuery     template.URL
+	SourceAll       template.URL
+	SourceMock      template.URL
+	SourceReal      template.URL
+	UpstreamKey     string
+	UpstreamLabel   string
+	UpstreamChoices []historyUpstreamChoice
+	Shown           int
+	Total           int
+}
+
+type historyUpstreamChoice struct {
+	ID       string
+	Label    string
+	Selected bool
 }
 
 type historyRow struct {
@@ -136,11 +148,13 @@ func (s *Server) historyDetail(w http.ResponseWriter, r *http.Request, id string
 func (s *Server) historyFeed(w http.ResponseWriter, r *http.Request) {
 	shown, data := s.historyView(r)
 	payload := historyFeed{
-		Filter:  data.FilterKey,
-		Label:   data.FilterLabel,
-		Shown:   data.Shown,
-		Total:   data.Total,
-		Entries: make([]historyFeedRow, 0, len(shown)),
+		Filter:        data.FilterKey,
+		Label:         data.FilterLabel,
+		Upstream:      data.UpstreamKey,
+		UpstreamLabel: data.UpstreamLabel,
+		Shown:         data.Shown,
+		Total:         data.Total,
+		Entries:       make([]historyFeedRow, 0, len(shown)),
 	}
 	for _, entry := range shown {
 		row := historyRowFrom(entry)
@@ -182,28 +196,113 @@ func (s *Server) deleteHistory(w http.ResponseWriter, r *http.Request, id string
 }
 
 func (s *Server) historyView(r *http.Request) ([]history.Entry, historyPageData) {
-	data := historyPageData{FilterKey: "all", FilterLabel: "All"}
+	data := historyPageData{FilterKey: "all", FilterLabel: "All", UpstreamLabel: "All upstreams"}
 	var entries []history.Entry
 	if s.history != nil {
 		entries = s.history.List()
 	}
 	data.Total = len(entries)
-	shown := entries
+	sourceKey := ""
 	if source, ok := history.ParseSource(r.URL.Query().Get("source")); ok {
-		shown = history.Filter(entries, source)
-		data.FilterKey = string(source)
+		sourceKey = string(source)
+		data.FilterKey = sourceKey
 		data.FilterLabel = historyFilterLabel(source)
-		data.FilterQuery = template.URL("?source=" + url.QueryEscape(string(source)))
+	}
+	upstreamKey := ""
+	if upstream, ok := history.ParseUpstream(r.URL.Query().Get("upstream")); ok {
+		upstreamKey = upstream
+		data.UpstreamKey = upstreamKey
+		data.UpstreamLabel = s.upstreamFilterLabel(entries, upstreamKey)
+	}
+	shown := entries
+	if sourceKey != "" {
+		shown = history.Filter(shown, history.Source(sourceKey))
+	}
+	if upstreamKey != "" {
+		shown = history.FilterUpstream(shown, upstreamKey)
 	}
 	data.Shown = len(shown)
+	data.SourceAll = template.URL(historyQueryString("", upstreamKey))
+	data.SourceMock = template.URL(historyQueryString(string(history.SourceMock), upstreamKey))
+	data.SourceReal = template.URL(historyQueryString(string(history.SourceUpstream), upstreamKey))
+	data.FilterQuery = template.URL(historyQueryString(sourceKey, upstreamKey))
+	data.UpstreamChoices = s.upstreamFilterChoices(entries, upstreamKey)
 	return shown, data
 }
 
 func historyReturnPath(r *http.Request) string {
-	if _, ok := history.ParseSource(r.URL.Query().Get("source")); !ok {
+	sourceKey := ""
+	if source, ok := history.ParseSource(r.URL.Query().Get("source")); ok {
+		sourceKey = string(source)
+	}
+	upstreamKey := ""
+	if upstream, ok := history.ParseUpstream(r.URL.Query().Get("upstream")); ok {
+		upstreamKey = upstream
+	}
+	query := historyQueryString(sourceKey, upstreamKey)
+	if query == "" {
 		return "/_admin/history"
 	}
-	return "/_admin/history?" + "source=" + url.QueryEscape(strings.TrimSpace(r.URL.Query().Get("source")))
+	return "/_admin/history" + query
+}
+
+func historyQueryString(source, upstream string) string {
+	values := url.Values{}
+	if source != "" {
+		values.Set("source", source)
+	}
+	if upstream != "" {
+		values.Set("upstream", upstream)
+	}
+	encoded := values.Encode()
+	if encoded == "" {
+		return ""
+	}
+	return "?" + encoded
+}
+
+func (s *Server) upstreamFilterLabel(entries []history.Entry, id string) string {
+	if id == history.UpstreamAny {
+		return "Any upstream"
+	}
+	if s.upstreams != nil {
+		if item, ok := s.upstreams.Get(id); ok {
+			return item.Name
+		}
+	}
+	for _, entry := range entries {
+		if entry.UpstreamID == id && entry.UpstreamName != "" && entry.UpstreamName != history.UpstreamAny {
+			return entry.UpstreamName + " (deleted)"
+		}
+	}
+	return "Deleted upstream"
+}
+
+func (s *Server) upstreamFilterChoices(entries []history.Entry, selected string) []historyUpstreamChoice {
+	choices := []historyUpstreamChoice{{
+		ID:       history.UpstreamAny,
+		Label:    "Any upstream (mock rule not linked)",
+		Selected: selected == history.UpstreamAny,
+	}}
+	seen := map[string]bool{history.UpstreamAny: true}
+	if s.upstreams != nil {
+		for _, item := range s.upstreams.List() {
+			seen[item.ID] = true
+			choices = append(choices, historyUpstreamChoice{
+				ID:       item.ID,
+				Label:    item.Name,
+				Selected: item.ID == selected,
+			})
+		}
+	}
+	if selected != "" && !seen[selected] {
+		choices = append(choices, historyUpstreamChoice{
+			ID:       selected,
+			Label:    s.upstreamFilterLabel(entries, selected),
+			Selected: true,
+		})
+	}
+	return choices
 }
 
 func historyFilterLabel(source history.Source) string {
@@ -267,11 +366,13 @@ func historySourceLabel(entry history.Entry) string {
 }
 
 type historyFeed struct {
-	Filter  string           `json:"filter"`
-	Label   string           `json:"label"`
-	Shown   int              `json:"shown"`
-	Total   int              `json:"total"`
-	Entries []historyFeedRow `json:"entries"`
+	Filter        string           `json:"filter"`
+	Label         string           `json:"label"`
+	Upstream      string           `json:"upstream"`
+	UpstreamLabel string           `json:"upstream_label"`
+	Shown         int              `json:"shown"`
+	Total         int              `json:"total"`
+	Entries       []historyFeedRow `json:"entries"`
 }
 
 type historyFeedRow struct {
