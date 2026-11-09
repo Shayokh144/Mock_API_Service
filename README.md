@@ -75,7 +75,90 @@ Inside the Android emulator, `localhost` is the emulator itself. `10.0.2.2` is t
 
 A physical phone cannot use `localhost`. That setup is outside this MVP.
 
+The numbered setup for the Android Emulator and the iOS Simulator is in the next section.
+
 The proxy forwards the method, path, query string, body, and ordinary headers. The upstream server keeps its own auth. Do not put passwords in this repository.
+
+## Using with mobile emulators/simulators
+
+Use these steps for a Flutter debug build on the Android Emulator or the iOS Simulator.
+
+### Shared setup
+
+1. Start the proxy with the real API base:
+
+```sh
+UPSTREAM_BASE_URL=https://staging.example.com go run ./cmd/mockproxy
+```
+
+The default `LISTEN_ADDR` is `127.0.0.1:8080`. The log prints `dashboard at http://localhost:8080/_admin`.
+
+2. Open [http://127.0.0.1:8080/_admin](http://127.0.0.1:8080/_admin). `localhost` and `127.0.0.1` are the same loopback address here.
+3. Choose **New rule** and save a rule.
+4. Call that path. A mocked response includes `X-Mock-Response: true`. A passthrough response does not.
+
+Keep any path from the real base URL on the app base URL in the platform steps below. Leave that path off `UPSTREAM_BASE_URL`. The proxy joins the `UPSTREAM_BASE_URL` path in front of the request path. A prefix on both sides is sent twice.
+
+Example: the app used `https://staging.example.com/v1`. The Android base URL is `http://10.0.2.2:8080/v1`. The iOS Simulator base URL is `http://127.0.0.1:8080/v1`. Start with `UPSTREAM_BASE_URL=https://staging.example.com`.
+
+### Android Emulator
+
+1. Point the debug base URL at `http://10.0.2.2:8080`, plus any path prefix from the real base URL.
+2. `10.0.2.2` is the emulator's alias for the host loopback. Inside the emulator, `localhost` is the emulator itself.
+3. A loopback-only `LISTEN_ADDR` still works. The default is `127.0.0.1:8080`. The emulator maps `10.0.2.2` to that host loopback. A LAN bind is not required.
+4. Allow cleartext HTTP in the debug build only. Add `android/app/src/debug/res/xml/network_security_config.xml`:
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">10.0.2.2</domain>
+    </domain-config>
+</network-security-config>
+```
+
+Reference it from the debug manifest, `android/app/src/debug/AndroidManifest.xml`, on `<application>`:
+
+```xml
+android:networkSecurityConfig="@xml/network_security_config"
+```
+
+`android:usesCleartextTraffic="true"` on that same debug `<application>` also allows cleartext. The domain config limits cleartext to `10.0.2.2`. Do not add either setting to the release manifest.
+
+5. Pass the base URL with `--dart-define` or a flavor. Leave the release host in source unchanged.
+
+```sh
+flutter run --dart-define=API_BASE_URL=http://10.0.2.2:8080
+```
+
+The app reads that value, for example with `String.fromEnvironment('API_BASE_URL')`. The proxy does not read that name.
+
+### iOS Simulator
+
+The Simulator shares the Mac's network. Use `http://127.0.0.1:8080` or `http://localhost:8080`, plus any path prefix from the real base URL.
+
+App Transport Security blocks plain HTTP until local networking is allowed. In `ios/Runner/Info.plist`, add:
+
+```xml
+<key>NSAppTransportSecurity</key>
+<dict>
+	<key>NSAllowsLocalNetworking</key>
+	<true/>
+</dict>
+```
+
+Keep that change debug-only, or check with the team before committing it. If `NSAppTransportSecurity` is already present with an empty dict, add the inner key there.
+
+Run it with `flutter run -d <simulator>`, or run the same Simulator from Xcode.
+
+A physical device is out of scope for this loopback-only MVP.
+
+### If the app does not show traffic
+
+- Cleartext or ATS errors: the debug network security config must allow `10.0.2.2`, or `NSAllowsLocalNetworking` must be true.
+- The app still calls the old base URL: the debug define or flavor did not win. This run must be a debug build.
+- Connection refused or a timeout: the proxy is not running, or the app port is not the proxy port. The default port is `8080`.
+- The call works and history stays empty: the app is not reaching this proxy. Open [http://127.0.0.1:8080/_admin/history](http://127.0.0.1:8080/_admin/history) and check the base URL host.
 
 ## Sentry
 
