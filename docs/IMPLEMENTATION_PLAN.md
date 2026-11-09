@@ -270,6 +270,19 @@ This behavior is task MVP-38. It sits on top of saved rules and passthrough.
 
 **Done when:** a checked Fresh request rule returns the upstream body, and an unchecked rule still returns the saved mock.
 
+## History source filter
+
+This behavior is task MVP-39. It sits on the history list.
+
+1. Add All, Mocked, and Real server links on `GET /_admin/history`. Mocked uses `?source=mock`. Real server uses `?source=upstream`.
+2. Parse the query with the history source values. An unknown value shows every entry and does not echo the bad value in later links.
+3. Print the active filter and the number of entries shown. Keep the query on row, delete, detail, and clear links.
+4. Leave fresh-request rows as source `upstream` with a rule id. Show `upstream (fresh rule)` in the source column. Do not add a new source value.
+5. Delete redirects back to the same filter. Clear all still deletes every entry, then returns to that filter.
+6. Keep the existing Content-Security-Policy. Use links, not a script.
+
+**Done when:** Mocked hides real responses, Real server shows passthrough and fresh-request rows, and a bad `source` query shows All.
+
 ## Troubleshooting
 
 | What you see | What to check |
