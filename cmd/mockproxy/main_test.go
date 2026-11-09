@@ -39,11 +39,16 @@ func TestRunRejectsNonLoopbackBeforeListen(t *testing.T) {
 func TestRunLogsListenAddressAndDashboard(t *testing.T) {
 	var stderr bytes.Buffer
 	var gotAddr string
+	dir := t.TempDir()
 	err := run(func(key string) string {
-		if key == "UPSTREAM_BASE_URL" {
+		switch key {
+		case "UPSTREAM_BASE_URL":
 			return "https://upstream.example.com"
+		case "RULES_PATH":
+			return filepath.Join(dir, "rules.json")
+		default:
+			return ""
 		}
-		return ""
 	}, &stderr, func(addr string, h http.Handler) error {
 		gotAddr = addr
 		if h == nil {
@@ -98,16 +103,71 @@ func TestRunInvalidRulesFileDoesNotListenOrRewrite(t *testing.T) {
 	}
 }
 
-func TestRunMissingUpstreamDoesNotListen(t *testing.T) {
+func TestRunMissingUpstreamStillListens(t *testing.T) {
+	var stderr bytes.Buffer
 	called := false
-	err := run(func(string) string { return "" }, io.Discard, func(string, http.Handler) error {
+	dir := t.TempDir()
+	err := run(func(key string) string {
+		if key == "RULES_PATH" {
+			return filepath.Join(dir, "rules.json")
+		}
+		return ""
+	}, &stderr, func(string, http.Handler) error {
 		called = true
 		return nil
 	})
-	if err == nil || called {
+	if err != nil || !called {
 		t.Fatalf("err=%v called=%v", err, called)
 	}
-	if !strings.Contains(err.Error(), "UPSTREAM_BASE_URL") {
-		t.Fatalf("error = %v", err)
+	if !strings.Contains(stderr.String(), "no upstream configured") {
+		t.Fatalf("stderr = %q", stderr.String())
+	}
+	if _, err := os.Stat(filepath.Join(dir, "upstreams.json")); !os.IsNotExist(err) {
+		t.Fatal("missing env created an upstreams file")
+	}
+}
+
+func TestRunSeedsUpstreamOnce(t *testing.T) {
+	dir := t.TempDir()
+	rulesPath := filepath.Join(dir, "rules.json")
+	getenv := func(key string) string {
+		switch key {
+		case "UPSTREAM_BASE_URL":
+			return "https://staging.example.com/v1"
+		case "RULES_PATH":
+			return rulesPath
+		default:
+			return ""
+		}
+	}
+	if err := run(getenv, io.Discard, func(string, http.Handler) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, "upstreams.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), "https://staging.example.com/v1") || !strings.Contains(string(raw), "staging.example.com") {
+		t.Fatalf("file = %s", raw)
+	}
+	getenv = func(key string) string {
+		switch key {
+		case "UPSTREAM_BASE_URL":
+			return "https://other.example.com"
+		case "RULES_PATH":
+			return rulesPath
+		default:
+			return ""
+		}
+	}
+	if err := run(getenv, io.Discard, func(string, http.Handler) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	again, err := os.ReadFile(filepath.Join(dir, "upstreams.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(again) != string(raw) {
+		t.Fatalf("seed replaced the file:\n%s", again)
 	}
 }

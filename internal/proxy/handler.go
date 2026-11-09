@@ -16,13 +16,17 @@ import (
 	"github.com/Shayokh144/Mock_API_Service/internal/config"
 	"github.com/Shayokh144/Mock_API_Service/internal/history"
 	"github.com/Shayokh144/Mock_API_Service/internal/rules"
+	"github.com/Shayokh144/Mock_API_Service/internal/upstreams"
 )
+
+const noUpstreamMessage = "no upstream is configured; add one at /_admin"
 
 var errResponseTooLarge = errors.New("upstream response too large")
 
 // Options configures the proxy handler.
 type Options struct {
 	Upstream  *url.URL
+	Upstreams *upstreams.Store
 	Timeout   time.Duration
 	Transport http.RoundTripper
 	Rules     *rules.Store
@@ -33,6 +37,7 @@ type Options struct {
 // Handler is the local proxy. /_admin is never forwarded.
 type Handler struct {
 	upstream  *url.URL
+	upstreams *upstreams.Store
 	timeout   time.Duration
 	transport http.RoundTripper
 	rules     *rules.Store
@@ -48,6 +53,7 @@ func New(opts Options) *Handler {
 	}
 	return &Handler{
 		upstream:  opts.Upstream,
+		upstreams: opts.Upstreams,
 		timeout:   timeout,
 		transport: opts.Transport,
 		rules:     opts.Rules,
@@ -78,10 +84,10 @@ func (h *Handler) serveAPI(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		if errors.Is(err, errBodyTooLarge) {
-			h.finish(w, r, started, reqHeaders, payload, history.SourceRejected, "", http.StatusRequestEntityTooLarge, "request body too large")
+			h.finish(w, r, started, reqHeaders, payload, history.SourceRejected, "", "", "", http.StatusRequestEntityTooLarge, "request body too large")
 			return
 		}
-		h.finish(w, r, started, reqHeaders, nil, history.SourceRejected, "", http.StatusBadRequest, "could not read request body")
+		h.finish(w, r, started, reqHeaders, nil, history.SourceRejected, "", "", "", http.StatusBadRequest, "could not read request body")
 		return
 	}
 	r.Body = io.NopCloser(bytes.NewReader(payload))
@@ -90,36 +96,81 @@ func (h *Handler) serveAPI(w http.ResponseWriter, r *http.Request) {
 		return io.NopCloser(bytes.NewReader(payload)), nil
 	}
 
+	activeName, activeID, dest, hasTarget := h.activeTarget()
 	capw := &bodyCapture{ResponseWriter: w}
 	if h.rules != nil {
-		if rule, ok := h.rules.Match(r.Method, r.URL.Path); ok {
+		if rule, ok := h.rules.MatchActive(r.Method, r.URL.Path, activeID); ok {
 			if rule.FreshRequest {
+				if !hasTarget {
+					h.unavailable(capw, started, r, reqHeaders, payload, rule.ID)
+					return
+				}
 				prepareFreshRequest(r.Header)
-				failed := h.forward(capw, r)
+				failed := h.forward(capw, r, dest)
 				source := history.SourceUpstream
 				if failed {
 					source = history.SourceUpstreamError
 				}
-				h.record(started, r, reqHeaders, payload, capw, source, rule.ID)
+				h.record(started, r, reqHeaders, payload, capw, source, rule.ID, activeID, activeName)
 				return
 			}
 			writeMock(capw, rule)
-			h.record(started, r, reqHeaders, payload, capw, history.SourceMock, rule.ID)
+			mockID, mockName := h.mockUpstream(rule)
+			h.record(started, r, reqHeaders, payload, capw, history.SourceMock, rule.ID, mockID, mockName)
 			return
 		}
 	}
-	failed := h.forward(capw, r)
+	if !hasTarget {
+		h.unavailable(capw, started, r, reqHeaders, payload, "")
+		return
+	}
+	failed := h.forward(capw, r, dest)
 	source := history.SourceUpstream
 	if failed {
 		source = history.SourceUpstreamError
 	}
-	h.record(started, r, reqHeaders, payload, capw, source, "")
+	h.record(started, r, reqHeaders, payload, capw, source, "", activeID, activeName)
 }
 
-func (h *Handler) finish(w http.ResponseWriter, r *http.Request, started time.Time, reqHeaders http.Header, payload []byte, source history.Source, ruleID string, status int, reason string) {
+func (h *Handler) unavailable(w *bodyCapture, started time.Time, r *http.Request, reqHeaders http.Header, payload []byte, ruleID string) {
+	writeJSONError(w, http.StatusServiceUnavailable, noUpstreamMessage)
+	h.record(started, r, reqHeaders, payload, w, history.SourceUpstreamError, ruleID, "", "none")
+}
+
+func (h *Handler) finish(w http.ResponseWriter, r *http.Request, started time.Time, reqHeaders http.Header, payload []byte, source history.Source, ruleID, upstreamID, upstreamName string, status int, reason string) {
 	capw := &bodyCapture{ResponseWriter: w}
 	writeJSONError(capw, status, reason)
-	h.record(started, r, reqHeaders, payload, capw, source, ruleID)
+	h.record(started, r, reqHeaders, payload, capw, source, ruleID, upstreamID, upstreamName)
+}
+
+func (h *Handler) activeTarget() (name, id string, dest *url.URL, ok bool) {
+	if h.upstreams != nil {
+		item, found := h.upstreams.Active()
+		if !found {
+			return "none", "", nil, false
+		}
+		parsed, err := url.Parse(item.BaseURL)
+		if err != nil || parsed.Host == "" {
+			return "none", item.ID, nil, false
+		}
+		return item.Name, item.ID, parsed, true
+	}
+	if h.upstream != nil {
+		return "", "", h.upstream, true
+	}
+	return "none", "", nil, false
+}
+
+func (h *Handler) mockUpstream(rule rules.Rule) (string, string) {
+	if rule.UpstreamID == "" {
+		return history.UpstreamAny, "any"
+	}
+	if h.upstreams != nil {
+		if item, ok := h.upstreams.Get(rule.UpstreamID); ok {
+			return item.ID, item.Name
+		}
+	}
+	return rule.UpstreamID, "unknown"
 }
 
 func writeMock(w http.ResponseWriter, rule rules.Rule) {
@@ -162,7 +213,7 @@ func isAdmin(path string) bool {
 	return path == "/_admin" || strings.HasPrefix(path, "/_admin/")
 }
 
-func (h *Handler) forward(w http.ResponseWriter, r *http.Request) bool {
+func (h *Handler) forward(w http.ResponseWriter, r *http.Request, upstream *url.URL) bool {
 	incomingPath := r.URL.Path
 	incomingQuery := r.URL.RawQuery
 	ctx, cancel := context.WithTimeout(r.Context(), h.timeout)
@@ -170,7 +221,6 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request) bool {
 	outbound := r.WithContext(ctx)
 
 	failed := false
-	upstream := h.upstream
 	reverse := &httputil.ReverseProxy{
 		Director: func(req *http.Request) {
 			req.URL.Scheme = upstream.Scheme
@@ -210,7 +260,7 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request) bool {
 	return failed
 }
 
-func (h *Handler) record(started time.Time, r *http.Request, reqHeaders http.Header, payload []byte, capw *bodyCapture, source history.Source, ruleID string) {
+func (h *Handler) record(started time.Time, r *http.Request, reqHeaders http.Header, payload []byte, capw *bodyCapture, source history.Source, ruleID, upstreamID, upstreamName string) {
 	if h.history == nil {
 		return
 	}
@@ -228,6 +278,8 @@ func (h *Handler) record(started time.Time, r *http.Request, reqHeaders http.Hea
 		ResponseBody:          respBody,
 		Source:                source,
 		RuleID:                ruleID,
+		UpstreamID:            upstreamID,
+		UpstreamName:          upstreamName,
 		RequestBodyTruncated:  reqTrunc,
 		ResponseBodyTruncated: respTrunc,
 	})

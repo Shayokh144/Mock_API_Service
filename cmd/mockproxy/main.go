@@ -13,6 +13,7 @@ import (
 	"github.com/Shayokh144/Mock_API_Service/internal/history"
 	"github.com/Shayokh144/Mock_API_Service/internal/proxy"
 	"github.com/Shayokh144/Mock_API_Service/internal/rules"
+	"github.com/Shayokh144/Mock_API_Service/internal/upstreams"
 )
 
 func main() {
@@ -36,18 +37,29 @@ func run(getenv func(string) string, stderr io.Writer, listen func(string, http.
 		fmt.Fprintln(stderr, err.Error())
 		return err
 	}
+	ups, err := upstreams.Load(cfg.UpstreamsPath)
+	if err != nil {
+		fmt.Fprintln(stderr, err.Error())
+		return err
+	}
+	if cfg.Upstream != nil {
+		if err := ups.Seed(cfg.Upstream.String()); err != nil {
+			fmt.Fprintln(stderr, err.Error())
+			return err
+		}
+	}
 	log := history.New(cfg.HistoryLimit)
-	dashboard, err := admin.New(store, log)
+	dashboard, err := admin.New(store, log, ups)
 	if err != nil {
 		fmt.Fprintln(stderr, err.Error())
 		return err
 	}
 	handler := proxy.New(proxy.Options{
-		Upstream: cfg.Upstream,
-		Timeout:  cfg.UpstreamTimeout,
-		Rules:    store,
-		History:  log,
-		Admin:    dashboard,
+		Upstreams: ups,
+		Timeout:   cfg.UpstreamTimeout,
+		Rules:     store,
+		History:   log,
+		Admin:     dashboard,
 	})
 	return listen(cfg.ListenAddr, handler)
 }

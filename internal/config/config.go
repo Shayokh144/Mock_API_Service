@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -29,6 +30,7 @@ type Config struct {
 	Upstream        *url.URL
 	ListenAddr      string
 	RulesPath       string
+	UpstreamsPath   string
 	HistoryLimit    int
 	UpstreamTimeout time.Duration
 }
@@ -66,17 +68,30 @@ func Load(getenv func(string) string) (Config, error) {
 		Upstream:        upstream,
 		ListenAddr:      listenAddr,
 		RulesPath:       rulesPath,
+		UpstreamsPath:   UpstreamsPath(rulesPath),
 		HistoryLimit:    historyLimit,
 		UpstreamTimeout: timeout,
 	}, nil
 }
 
+// UpstreamsPath is the upstream file stored next to the rules file.
+func UpstreamsPath(rulesPath string) string {
+	if strings.TrimSpace(rulesPath) == "" {
+		rulesPath = DefaultRulesPath
+	}
+	return filepath.Join(filepath.Dir(rulesPath), "upstreams.json")
+}
+
 // StartupLines are the human-readable lines printed before the process listens.
 func StartupLines(cfg Config) []string {
-	return []string{
+	lines := []string{
 		"listening on " + cfg.ListenAddr,
 		"dashboard at " + DashboardURL(cfg.ListenAddr),
 	}
+	if cfg.Upstream == nil {
+		lines = append(lines, "no upstream configured; add one at the dashboard")
+	}
+	return lines
 }
 
 // DashboardURL is the local browser URL for the resolved listen address.
@@ -94,7 +109,7 @@ func DashboardURL(listenAddr string) string {
 func parseUpstream(raw string) (*url.URL, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		return nil, fmt.Errorf("UPSTREAM_BASE_URL is required")
+		return nil, nil
 	}
 	u, err := url.Parse(raw)
 	if err != nil || u == nil || (u.Host == "" && u.Scheme == "") {

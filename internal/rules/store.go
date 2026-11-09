@@ -68,7 +68,7 @@ func Load(path string) (*Store, error) {
 		if err := validateLoaded(rule, store.wildcards()); err != nil {
 			return nil, fmt.Errorf("RULES_PATH %s: %w", path, err)
 		}
-		key := rule.Method + " " + rule.PathPattern
+		key := rule.Method + " " + rule.PathPattern + " " + rule.UpstreamID
 		if _, ok := seen[key]; ok {
 			return nil, fmt.Errorf("RULES_PATH %s: duplicate rule %s %s", path, rule.Method, rule.PathPattern)
 		}
@@ -103,7 +103,7 @@ func (s *Store) Create(d Draft) (Rule, error) {
 	rule.ID = id
 	rule.CreatedAt = now
 	rule.UpdatedAt = now
-	if s.duplicate(rule.Method, rule.PathPattern, "") {
+	if s.duplicate(rule.Method, rule.PathPattern, rule.UpstreamID, "") {
 		return Rule{}, ErrDuplicate
 	}
 	next := append(append([]Rule{}, s.rules...), rule)
@@ -129,7 +129,7 @@ func (s *Store) Update(id string, d Draft) (Rule, error) {
 	rule.ID = id
 	rule.CreatedAt = s.rules[index].CreatedAt
 	rule.UpdatedAt = utc(s.now())
-	if s.duplicate(rule.Method, rule.PathPattern, id) {
+	if s.duplicate(rule.Method, rule.PathPattern, rule.UpstreamID, id) {
 		return Rule{}, ErrDuplicate
 	}
 	next := append([]Rule{}, s.rules...)
@@ -181,9 +181,15 @@ func (s *Store) List() []Rule {
 	return out
 }
 
-// Match returns a copy of the winning enabled rule.
+// Match returns a copy of the winning enabled rule for any upstream.
 // The lock is released before return. The caller can write the response without holding it.
 func (s *Store) Match(method, path string) (Rule, bool) {
+	return s.MatchActive(method, path, "")
+}
+
+// MatchActive returns a copy of the winning enabled rule.
+// A rule matches when its upstream id is empty or equal to activeID.
+func (s *Store) MatchActive(method, path, activeID string) (Rule, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	method = strings.ToUpper(method)
@@ -194,6 +200,9 @@ func (s *Store) Match(method, path string) (Rule, bool) {
 	for i := range s.rules {
 		rule := s.rules[i]
 		if !rule.Enabled || !strings.EqualFold(rule.Method, method) {
+			continue
+		}
+		if rule.UpstreamID != "" && rule.UpstreamID != activeID {
 			continue
 		}
 		if !matchPattern(rule.PathPattern, path) {
@@ -208,6 +217,44 @@ func (s *Store) Match(method, path string) (Rule, bool) {
 		return Rule{}, false
 	}
 	return cloneRule(winner), true
+}
+
+// DetachUpstream clears upstream id on every rule that used it.
+// Those rules become Any upstream. The change is refused when two of them
+// would share a method and path with an existing Any rule.
+func (s *Store) DetachUpstream(id string) error {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	next := make([]Rule, len(s.rules))
+	changed := false
+	for i := range s.rules {
+		next[i] = cloneRule(s.rules[i])
+		if next[i].UpstreamID == id {
+			next[i].UpstreamID = ""
+			next[i].UpdatedAt = utc(s.now())
+			changed = true
+		}
+	}
+	if !changed {
+		return nil
+	}
+	seen := map[string]struct{}{}
+	for _, rule := range next {
+		key := rule.Method + " " + rule.PathPattern + " " + rule.UpstreamID
+		if _, ok := seen[key]; ok {
+			return fmt.Errorf("deleting this upstream would make a duplicate Any rule for %s %s", rule.Method, rule.PathPattern)
+		}
+		seen[key] = struct{}{}
+	}
+	if err := s.persist(next); err != nil {
+		return err
+	}
+	s.rules = next
+	return nil
 }
 
 func (s *Store) wildcards() bool {
@@ -289,6 +336,7 @@ func validateLoaded(rule Rule, allowWildcard bool) error {
 		Name:         rule.Name,
 		Enabled:      rule.Enabled,
 		FreshRequest: rule.FreshRequest,
+		UpstreamID:   rule.UpstreamID,
 		Method:       rule.Method,
 		PathPattern:  rule.PathPattern,
 		StatusCode:   rule.StatusCode,
@@ -311,12 +359,12 @@ func (s *Store) index(id string) int {
 	return -1
 }
 
-func (s *Store) duplicate(method, pattern, exceptID string) bool {
+func (s *Store) duplicate(method, pattern, upstreamID, exceptID string) bool {
 	for _, rule := range s.rules {
 		if rule.ID == exceptID {
 			continue
 		}
-		if rule.Method == method && rule.PathPattern == pattern {
+		if rule.Method == method && rule.PathPattern == pattern && rule.UpstreamID == upstreamID {
 			return true
 		}
 	}

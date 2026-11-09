@@ -44,7 +44,7 @@ func TestHistorySourceFilter(t *testing.T) {
 	log.Add(history.Entry{StartedAt: start.Add(4 * time.Second), Method: "GET", Path: "/v1/down", Status: 502, Source: history.SourceUpstreamError})
 	log.Add(history.Entry{StartedAt: start.Add(5 * time.Second), Method: "POST", Path: "/v1/huge", Status: 413, Source: history.SourceRejected})
 
-	dashboard, err := New(store, log)
+	dashboard, err := New(store, log, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

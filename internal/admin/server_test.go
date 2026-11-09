@@ -23,7 +23,7 @@ func TestRulesDashboard(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	dashboard, err := New(store, nil)
+	dashboard, err := New(store, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

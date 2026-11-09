@@ -3,6 +3,7 @@ package rules
 
 import (
 	"bytes"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -20,6 +21,7 @@ type Rule struct {
 	Name         string            `json:"name"`
 	Enabled      bool              `json:"enabled"`
 	FreshRequest bool              `json:"fresh_request"`
+	UpstreamID   string            `json:"upstream_id,omitempty"`
 	Method       string            `json:"method"`
 	PathPattern  string            `json:"path_pattern"`
 	StatusCode   int               `json:"status_code"`
@@ -34,6 +36,7 @@ type Draft struct {
 	Name         string
 	Enabled      bool
 	FreshRequest bool
+	UpstreamID   string
 	Method       string
 	PathPattern  string
 	StatusCode   int
@@ -67,6 +70,10 @@ func normalize(d Draft, allowWildcard bool) (Rule, error) {
 	if utf8.RuneCountInString(name) > 80 {
 		return Rule{}, fmt.Errorf("name must be 80 characters or fewer")
 	}
+	upstreamID, err := normalizeUpstreamID(d.UpstreamID)
+	if err != nil {
+		return Rule{}, err
+	}
 	method := strings.ToUpper(strings.TrimSpace(d.Method))
 	if _, ok := allowedMethods[method]; !ok {
 		return Rule{}, fmt.Errorf("method must be one of GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS")
@@ -89,12 +96,24 @@ func normalize(d Draft, allowWildcard bool) (Rule, error) {
 		Name:         name,
 		Enabled:      d.Enabled,
 		FreshRequest: d.FreshRequest,
+		UpstreamID:   upstreamID,
 		Method:       method,
 		PathPattern:  d.PathPattern,
 		StatusCode:   d.StatusCode,
 		Headers:      headers,
 		Body:         body,
 	}, nil
+}
+
+func normalizeUpstreamID(raw string) (string, error) {
+	id := strings.TrimSpace(raw)
+	if id == "" {
+		return "", nil
+	}
+	if _, err := hex.DecodeString(id); err != nil || len(id) != 16 {
+		return "", fmt.Errorf("upstream_id is invalid")
+	}
+	return id, nil
 }
 
 func validatePattern(pattern string, allowWildcard bool) error {

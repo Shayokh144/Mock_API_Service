@@ -1,0 +1,15 @@
+{{define "upstream_form"}}
+{{template "head" .}}
+{{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{end}}
+<form method="post" action="{{.UpstreamForm.Action}}">
+  <label for="name">Name</label>
+  <input id="name" name="name" type="text" maxlength="80" required value="{{.UpstreamForm.Name}}">
+  <p class="hint">A short name such as staging or develop.</p>
+  <label for="base_url">Base URL</label>
+  <input id="base_url" name="base_url" type="url" required value="{{.UpstreamForm.BaseURL}}">
+  <p class="hint">Absolute http or https URL. A path prefix is allowed. A query or fragment is not.</p>
+  <p><button type="submit">{{.UpstreamForm.Submit}}</button></p>
+</form>
+<p><a href="/_admin/upstreams">Back to upstreams</a></p>
+{{template "foot" .}}
+{{end}}

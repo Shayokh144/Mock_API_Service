@@ -26,6 +26,7 @@ type formView struct {
 	Name         string
 	Enabled      bool
 	FreshRequest bool
+	UpstreamID   string
 	Method       string
 	PathPattern  string
 	StatusCode   string
@@ -41,6 +42,7 @@ func draftFromForm(r *http.Request) (rules.Draft, formView, error) {
 		Name:         r.FormValue("name"),
 		Enabled:      r.FormValue("enabled") == "on",
 		FreshRequest: r.FormValue("fresh_request") == "on",
+		UpstreamID:   strings.TrimSpace(r.FormValue("upstream_id")),
 		Method:       strings.ToUpper(strings.TrimSpace(r.FormValue("method"))),
 		PathPattern:  strings.TrimSpace(r.FormValue("path_pattern")),
 		StatusCode:   strings.TrimSpace(r.FormValue("status_code")),
@@ -59,6 +61,7 @@ func draftFromForm(r *http.Request) (rules.Draft, formView, error) {
 		Name:         view.Name,
 		Enabled:      view.Enabled,
 		FreshRequest: view.FreshRequest,
+		UpstreamID:   view.UpstreamID,
 		Method:       view.Method,
 		PathPattern:  view.PathPattern,
 		StatusCode:   status,
@@ -111,6 +114,7 @@ func viewFromRule(rule rules.Rule, action, submit string) formView {
 		Name:         rule.Name,
 		Enabled:      rule.Enabled,
 		FreshRequest: rule.FreshRequest,
+		UpstreamID:   rule.UpstreamID,
 		Method:       rule.Method,
 		PathPattern:  rule.PathPattern,
 		StatusCode:   strconv.Itoa(rule.StatusCode),

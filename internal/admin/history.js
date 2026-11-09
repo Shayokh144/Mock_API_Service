@@ -1,11 +1,31 @@
 (function () {
   var summary = document.getElementById("history-summary");
+  var upstreamSummary = document.getElementById("history-upstream");
   var rows = document.getElementById("history-rows");
   var empty = document.getElementById("history-empty");
   if (!summary) {
     return;
   }
-  var query = window.location.search || "";
+
+  function filterQuery() {
+    var params = new URLSearchParams(window.location.search);
+    var kept = new URLSearchParams();
+    var source = params.get("source");
+    var upstream = params.get("upstream");
+    if (source) {
+      kept.set("source", source);
+    }
+    if (upstream) {
+      kept.set("upstream", upstream);
+    }
+    var text = kept.toString();
+    if (!text) {
+      return "";
+    }
+    return "?" + text;
+  }
+
+  var query = filterQuery();
 
   function cell(text) {
     var td = document.createElement("td");
@@ -23,7 +43,7 @@
     table.appendChild(caption);
     var head = document.createElement("thead");
     var headRow = document.createElement("tr");
-    ["Method", "URL", "Status", "Source", "Timestamp", "Actions"].forEach(function (label) {
+    ["Method", "URL", "Status", "Source", "Upstream", "Timestamp", "Actions"].forEach(function (label) {
       var th = document.createElement("th");
       th.scope = "col";
       th.textContent = label;
@@ -56,6 +76,7 @@
     tr.appendChild(linkCell);
     tr.appendChild(cell(String(entry.status)));
     tr.appendChild(cell(entry.source));
+    tr.appendChild(cell(entry.upstream || ""));
     tr.appendChild(cell(entry.when));
     var action = document.createElement("td");
     var form = document.createElement("form");
@@ -97,7 +118,7 @@
 
   function tick() {
     var request = new XMLHttpRequest();
-    request.open("GET", "/_admin/history/feed" + query, true);
+    request.open("GET", "/_admin/history/feed" + filterQuery(), true);
     request.setRequestHeader("Accept", "application/json");
     request.onreadystatechange = function () {
       if (request.readyState !== 4 || request.status !== 200) {
@@ -113,6 +134,9 @@
         return;
       }
       summary.textContent = "Filter: " + data.label + ". Showing " + data.shown + " of " + data.total + ".";
+      if (upstreamSummary) {
+        upstreamSummary.textContent = "Upstream: " + (data.upstream_label || "All upstreams") + ".";
+      }
       addNew(data.entries);
     };
     request.send();

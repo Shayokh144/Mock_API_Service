@@ -48,3 +48,32 @@ func TestFilterKeepsMatchingSourceAndOrder(t *testing.T) {
 		t.Fatal("nil input was not empty")
 	}
 }
+
+func TestParseAndFilterUpstream(t *testing.T) {
+	if id, ok := ParseUpstream("  any "); !ok || id != UpstreamAny {
+		t.Fatalf("any = %q %v", id, ok)
+	}
+	if _, ok := ParseUpstream("nope"); ok {
+		t.Fatal("unknown value was accepted")
+	}
+	if _, ok := ParseUpstream(""); ok {
+		t.Fatal("empty value was accepted")
+	}
+	id, ok := ParseUpstream("AABBCCDDEEFF0011")
+	if !ok || id != "aabbccddeeff0011" {
+		t.Fatalf("hex = %q %v", id, ok)
+	}
+	entries := []Entry{
+		{ID: "1", UpstreamID: UpstreamAny, Source: SourceMock},
+		{ID: "2", UpstreamID: "aabbccddeeff0011", Source: SourceUpstream},
+		{ID: "3", UpstreamID: "aabbccddeeff0011", Source: SourceMock},
+	}
+	got := FilterUpstream(entries, "aabbccddeeff0011")
+	if len(got) != 2 || got[0].ID != "2" || got[1].ID != "3" {
+		t.Fatalf("id filter = %+v", got)
+	}
+	anyRows := FilterUpstream(entries, UpstreamAny)
+	if len(anyRows) != 1 || anyRows[0].ID != "1" {
+		t.Fatalf("any filter = %+v", anyRows)
+	}
+}
