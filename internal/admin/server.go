@@ -11,6 +11,7 @@ import (
 
 	"github.com/Shayokh144/Mock_API_Service/internal/history"
 	"github.com/Shayokh144/Mock_API_Service/internal/rules"
+	"github.com/Shayokh144/Mock_API_Service/internal/upstreams"
 )
 
 //go:embed templates/*.html
@@ -18,37 +19,63 @@ var templateFiles embed.FS
 
 // Server renders the dashboard.
 type Server struct {
-	rules   *rules.Store
-	history *history.Log
-	tmpl    *template.Template
+	rules     *rules.Store
+	history   *history.Log
+	upstreams *upstreams.Store
+	tmpl      *template.Template
 }
 
 // New parses the embedded templates. A parse error should stop startup.
-func New(store *rules.Store, log *history.Log) (*Server, error) {
+func New(store *rules.Store, log *history.Log, ups *upstreams.Store) (*Server, error) {
 	tmpl, err := template.ParseFS(templateFiles, "templates/*.html")
 	if err != nil {
 		return nil, err
 	}
-	return &Server{rules: store, history: log, tmpl: tmpl}, nil
+	return &Server{rules: store, history: log, upstreams: ups, tmpl: tmpl}, nil
 }
 
 type page struct {
-	Title   string
-	Rules   []ruleRow
-	Form    formView
-	Methods []string
-	Error   string
+	Title           string
+	Rules           []ruleRow
+	Form            formView
+	Methods         []string
+	Error           string
+	ActiveUpstream  string
+	Upstreams       []upstreamRow
+	UpstreamForm    upstreamForm
+	UpstreamChoices []upstreamChoice
 }
 
 type ruleRow struct {
+	ID       string
+	Name     string
+	Method   string
+	Pattern  string
+	Kind     string
+	Enabled  bool
+	Fresh    bool
+	Status   string
+	Upstream string
+}
+
+type upstreamRow struct {
 	ID      string
 	Name    string
-	Method  string
-	Pattern string
-	Kind    string
-	Enabled bool
-	Fresh   bool
-	Status  string
+	BaseURL string
+	Active  bool
+}
+
+type upstreamForm struct {
+	Action  string
+	Submit  string
+	Name    string
+	BaseURL string
+}
+
+type upstreamChoice struct {
+	ID       string
+	Name     string
+	Selected bool
 }
 
 // ServeHTTP routes the dashboard. API traffic never reaches this handler.
@@ -65,12 +92,24 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.rulesPage(w, http.StatusOK)
 	case path == "/_admin/rules/new" && r.Method == http.MethodGet:
 		s.render(w, "rule_form", page{
-			Title:   "New rule",
-			Methods: methods,
-			Form:    formView{Action: "/_admin/rules", Submit: "Create rule", Method: http.MethodGet, StatusCode: "200", Enabled: true},
+			Title:           "New rule",
+			Methods:         methods,
+			Form:            formView{Action: "/_admin/rules", Submit: "Create rule", Method: http.MethodGet, StatusCode: "200", Enabled: true},
+			UpstreamChoices: s.upstreamChoices(""),
 		}, http.StatusOK)
 	case strings.HasPrefix(path, "/_admin/rules/"):
 		s.ruleRoute(w, r, strings.TrimPrefix(path, "/_admin/rules/"))
+	case path == "/_admin/upstreams" && r.Method == http.MethodPost:
+		s.createUpstream(w, r)
+	case path == "/_admin/upstreams" && r.Method == http.MethodGet:
+		s.upstreamsPage(w, http.StatusOK, "")
+	case path == "/_admin/upstreams/new" && r.Method == http.MethodGet:
+		s.render(w, "upstream_form", page{
+			Title:        "New upstream",
+			UpstreamForm: upstreamForm{Action: "/_admin/upstreams", Submit: "Create upstream"},
+		}, http.StatusOK)
+	case strings.HasPrefix(path, "/_admin/upstreams/"):
+		s.upstreamRoute(w, r, strings.TrimPrefix(path, "/_admin/upstreams/"))
 	case path == "/_admin/history" && r.Method == http.MethodGet:
 		s.historyPage(w, r)
 	case path == "/_admin/history/feed" && r.Method == http.MethodGet:
@@ -133,17 +172,18 @@ func (s *Server) rulesPage(w http.ResponseWriter, status int) {
 			kind = "wildcard"
 		}
 		rows = append(rows, ruleRow{
-			ID:      rule.ID,
-			Name:    name,
-			Method:  rule.Method,
-			Pattern: rule.PathPattern,
-			Kind:    kind,
-			Enabled: rule.Enabled,
-			Fresh:   rule.FreshRequest,
-			Status:  strconv.Itoa(rule.StatusCode),
+			ID:       rule.ID,
+			Name:     name,
+			Method:   rule.Method,
+			Pattern:  rule.PathPattern,
+			Kind:     kind,
+			Enabled:  rule.Enabled,
+			Fresh:    rule.FreshRequest,
+			Status:   strconv.Itoa(rule.StatusCode),
+			Upstream: s.upstreamLabel(rule.UpstreamID),
 		})
 	}
-	s.render(w, "rules", page{Title: "Rules", Rules: rows}, status)
+	s.render(w, "rules", page{Title: "Rules", Rules: rows, ActiveUpstream: s.activeUpstreamName()}, status)
 }
 
 func (s *Server) createRule(w http.ResponseWriter, r *http.Request) {
@@ -155,6 +195,10 @@ func (s *Server) createRule(w http.ResponseWriter, r *http.Request) {
 	view.Action = "/_admin/rules"
 	view.Submit = "Create rule"
 	if err != nil {
+		s.formError(w, "New rule", view, err)
+		return
+	}
+	if err := s.knownUpstream(draft.UpstreamID); err != nil {
 		s.formError(w, "New rule", view, err)
 		return
 	}
@@ -178,10 +222,11 @@ func (s *Server) editForm(w http.ResponseWriter, r *http.Request, id string, pos
 		view.Submit = "Save rule"
 	}
 	s.render(w, "rule_form", page{
-		Title:   "Edit rule",
-		Form:    view,
-		Methods: methods,
-		Error:   message,
+		Title:           "Edit rule",
+		Form:            view,
+		Methods:         methods,
+		UpstreamChoices: s.upstreamChoices(view.UpstreamID),
+		Error:           message,
 	}, statusFor(message))
 }
 
@@ -196,6 +241,10 @@ func (s *Server) updateRule(w http.ResponseWriter, r *http.Request, id string) {
 	}
 	draft, view, err := draftFromForm(r)
 	if err != nil {
+		s.editForm(w, r, id, view, err.Error())
+		return
+	}
+	if err := s.knownUpstream(draft.UpstreamID); err != nil {
 		s.editForm(w, r, id, view, err.Error())
 		return
 	}
@@ -220,6 +269,7 @@ func (s *Server) toggleRule(w http.ResponseWriter, r *http.Request, id string) {
 		Name:         rule.Name,
 		Enabled:      !rule.Enabled,
 		FreshRequest: rule.FreshRequest,
+		UpstreamID:   rule.UpstreamID,
 		Method:       rule.Method,
 		PathPattern:  rule.PathPattern,
 		StatusCode:   rule.StatusCode,
@@ -247,10 +297,11 @@ func (s *Server) deleteRule(w http.ResponseWriter, r *http.Request, id string) {
 
 func (s *Server) formError(w http.ResponseWriter, title string, view formView, err error) {
 	s.render(w, "rule_form", page{
-		Title:   title,
-		Form:    view,
-		Methods: methods,
-		Error:   err.Error(),
+		Title:           title,
+		Form:            view,
+		Methods:         methods,
+		UpstreamChoices: s.upstreamChoices(view.UpstreamID),
+		Error:           err.Error(),
 	}, http.StatusBadRequest)
 }
 

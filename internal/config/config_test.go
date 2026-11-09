@@ -1,6 +1,7 @@
 package config
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -27,6 +28,9 @@ func TestLoadDefaults(t *testing.T) {
 	}
 	if cfg.RulesPath != DefaultRulesPath {
 		t.Fatalf("rules path = %s", cfg.RulesPath)
+	}
+	if cfg.UpstreamsPath != "data/upstreams.json" {
+		t.Fatalf("upstreams path = %s", cfg.UpstreamsPath)
 	}
 	if cfg.HistoryLimit != DefaultHistoryLimit {
 		t.Fatalf("history limit = %d", cfg.HistoryLimit)
@@ -70,6 +74,9 @@ func TestLoadOverrides(t *testing.T) {
 	if cfg.RulesPath != "tmp/rules.json" || cfg.HistoryLimit != 12 || cfg.UpstreamTimeout != 2*time.Second {
 		t.Fatalf("cfg = %+v", cfg)
 	}
+	if cfg.UpstreamsPath != filepath.Join("tmp", "upstreams.json") {
+		t.Fatalf("upstreams path = %s", cfg.UpstreamsPath)
+	}
 }
 
 func TestLoadIPv6Loopback(t *testing.T) {
@@ -88,13 +95,26 @@ func TestLoadIPv6Loopback(t *testing.T) {
 	}
 }
 
+func TestLoadAllowsMissingUpstream(t *testing.T) {
+	cfg, err := Load(getenvFrom(map[string]string{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Upstream != nil {
+		t.Fatalf("upstream = %s", cfg.Upstream)
+	}
+	lines := StartupLines(cfg)
+	if len(lines) != 3 || !strings.Contains(lines[2], "no upstream configured") {
+		t.Fatalf("lines = %#v", lines)
+	}
+}
+
 func TestLoadRejectsBadSettings(t *testing.T) {
 	cases := []struct {
 		name   string
 		env    map[string]string
 		substr string
 	}{
-		{"missing upstream", map[string]string{}, "UPSTREAM_BASE_URL"},
 		{"bad scheme", map[string]string{"UPSTREAM_BASE_URL": "ftp://upstream.example"}, "UPSTREAM_BASE_URL"},
 		{"missing host", map[string]string{"UPSTREAM_BASE_URL": "http:///missing"}, "UPSTREAM_BASE_URL"},
 		{"query", map[string]string{"UPSTREAM_BASE_URL": "http://upstream.example/?a=1"}, "UPSTREAM_BASE_URL"},

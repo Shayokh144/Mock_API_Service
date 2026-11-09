@@ -8,6 +8,7 @@
   <dt>URL</dt><dd>{{.URL}}</dd>
   <dt>Status</dt><dd>{{.Status}}</dd>
   <dt>Source</dt><dd>{{.Source}}</dd>
+  <dt>Upstream</dt><dd>{{if .Upstream}}{{.Upstream}}{{else}}none{{end}}</dd>
   <dt>Timestamp</dt><dd>{{.When}}</dd>
   <dt>Rule id</dt><dd>{{if .RuleID}}{{.RuleID}}{{else}}none{{end}}</dd>
 </dl>

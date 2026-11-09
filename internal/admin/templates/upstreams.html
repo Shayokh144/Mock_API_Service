@@ -1,0 +1,45 @@
+{{define "upstreams"}}
+{{template "head" .}}
+{{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{end}}
+{{if .ActiveUpstream}}<p>Active upstream: {{.ActiveUpstream}}. The next passthrough request uses it. No restart is required.</p>{{else}}<p>No upstream is active. Passthrough returns an error until you add one.</p>{{end}}
+<p><a class="button" href="/_admin/upstreams/new">New upstream</a></p>
+{{if .Upstreams}}
+<table>
+  <caption>Saved upstreams</caption>
+  <thead>
+    <tr>
+      <th scope="col">Name</th>
+      <th scope="col">Base URL</th>
+      <th scope="col">Active</th>
+      <th scope="col">Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+    {{range .Upstreams}}
+    <tr>
+      <td>{{.Name}}</td>
+      <td><code>{{.BaseURL}}</code></td>
+      <td>{{if .Active}}active{{else}}inactive{{end}}</td>
+      <td>
+        <div class="actions">
+          <a href="/_admin/upstreams/{{.ID}}/edit">Edit</a>
+          {{if not .Active}}
+          <form class="inline" method="post" action="/_admin/upstreams/{{.ID}}/activate">
+            <button type="submit">Use</button>
+          </form>
+          {{end}}
+          <form class="inline" method="post" action="/_admin/upstreams/{{.ID}}/delete">
+            <button class="danger" type="submit">Delete</button>
+          </form>
+        </div>
+      </td>
+    </tr>
+    {{end}}
+  </tbody>
+</table>
+<p class="hint">Deleting an upstream sets rules that named it to Any upstream. The active upstream stays until you use another one.</p>
+{{else}}
+<p>No upstreams yet.</p>
+{{end}}
+{{template "foot" .}}
+{{end}}

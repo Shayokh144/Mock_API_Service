@@ -1,5 +1,6 @@
 {{define "rules"}}
 {{template "head" .}}
+{{if .ActiveUpstream}}<p>Active upstream: {{.ActiveUpstream}}.</p>{{else}}<p>No upstream is active. Add one on the Upstreams page. Passthrough then returns an error that points here.</p>{{end}}
 <p><a class="button" href="/_admin/rules/new">New rule</a></p>
 {{if .Rules}}
 <table>
@@ -12,6 +13,7 @@
       <th scope="col">Kind</th>
       <th scope="col">Enabled</th>
       <th scope="col">Request</th>
+      <th scope="col">Upstream</th>
       <th scope="col">Status</th>
       <th scope="col">Actions</th>
     </tr>
@@ -25,6 +27,7 @@
       <td>{{.Kind}}</td>
       <td>{{if .Enabled}}enabled{{else}}disabled{{end}}</td>
       <td>{{if .Fresh}}fresh{{else}}mock{{end}}</td>
+      <td>{{.Upstream}}</td>
       <td>{{.Status}}</td>
       <td>
         <div class="actions">

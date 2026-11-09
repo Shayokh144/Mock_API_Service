@@ -29,12 +29,13 @@ type historyPageData struct {
 }
 
 type historyRow struct {
-	ID     string
-	Method string
-	URL    string
-	Status int
-	Source string
-	When   string
+	ID       string
+	Method   string
+	URL      string
+	Status   int
+	Source   string
+	Upstream string
+	When     string
 }
 
 type historyDetail struct {
@@ -144,12 +145,13 @@ func (s *Server) historyFeed(w http.ResponseWriter, r *http.Request) {
 	for _, entry := range shown {
 		row := historyRowFrom(entry)
 		payload.Entries = append(payload.Entries, historyFeedRow{
-			ID:     row.ID,
-			Method: row.Method,
-			URL:    row.URL,
-			Status: row.Status,
-			Source: row.Source,
-			When:   row.When,
+			ID:       row.ID,
+			Method:   row.Method,
+			URL:      row.URL,
+			Status:   row.Status,
+			Source:   row.Source,
+			Upstream: row.Upstream,
+			When:     row.When,
 		})
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
@@ -247,12 +249,13 @@ func historyRowFrom(entry history.Entry) historyRow {
 		target += "?" + entry.RawQuery
 	}
 	return historyRow{
-		ID:     entry.ID,
-		Method: entry.Method,
-		URL:    target,
-		Status: entry.Status,
-		Source: historySourceLabel(entry),
-		When:   formatHistoryTime(entry.StartedAt),
+		ID:       entry.ID,
+		Method:   entry.Method,
+		URL:      target,
+		Status:   entry.Status,
+		Source:   historySourceLabel(entry),
+		Upstream: entry.UpstreamName,
+		When:     formatHistoryTime(entry.StartedAt),
 	}
 }
 
@@ -272,12 +275,13 @@ type historyFeed struct {
 }
 
 type historyFeedRow struct {
-	ID     string `json:"id"`
-	Method string `json:"method"`
-	URL    string `json:"url"`
-	Status int    `json:"status"`
-	Source string `json:"source"`
-	When   string `json:"when"`
+	ID       string `json:"id"`
+	Method   string `json:"method"`
+	URL      string `json:"url"`
+	Status   int    `json:"status"`
+	Source   string `json:"source"`
+	Upstream string `json:"upstream"`
+	When     string `json:"when"`
 }
 
 func headerLines(header map[string][]string) []headerLine {
