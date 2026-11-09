@@ -25,13 +25,6 @@ func readUpTo(r io.Reader, max int) ([]byte, error) {
 	return payload, nil
 }
 
-func preview(payload []byte) (string, bool) {
-	if len(payload) <= config.HistoryBodyPreview {
-		return string(payload), false
-	}
-	return string(payload[:config.HistoryBodyPreview]), true
-}
-
 type bodyCapture struct {
 	http.ResponseWriter
 	status    int
@@ -53,7 +46,7 @@ func (c *bodyCapture) Write(p []byte) (int, error) {
 	if !c.wrote {
 		c.WriteHeader(http.StatusOK)
 	}
-	room := config.HistoryBodyPreview - c.buf.Len()
+	room := config.MaxBufferedBody - c.buf.Len()
 	if room > 0 {
 		if len(p) <= room {
 			_, _ = c.buf.Write(p)
@@ -67,11 +60,13 @@ func (c *bodyCapture) Write(p []byte) (int, error) {
 	return c.ResponseWriter.Write(p)
 }
 
-func (c *bodyCapture) snapshot() (int, http.Header, string, bool) {
+func (c *bodyCapture) snapshot() (int, http.Header, []byte, bool) {
 	status := c.status
 	if status == 0 {
 		status = http.StatusOK
 	}
 	header := c.Header().Clone()
-	return status, header, c.buf.String(), c.truncated
+	body := append([]byte(nil), c.buf.Bytes()...)
+	c.buf.Reset()
+	return status, header, body, c.truncated
 }
