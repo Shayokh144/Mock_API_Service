@@ -302,6 +302,8 @@ A fresh-request rule is a real server response, not a mock. Its source stays `up
 
 Open a row to see headers and bodies. A preview longer than 64 KiB is marked truncated. The full body is still what the client and the upstream server exchanged, up to the 8 MiB buffer limit.
 
+History stores a decoded copy of the body when `Content-Encoding` is `gzip`, `deflate` (zlib or raw), `br`, or `identity`. Stacked encodings are undone from the outside in. The bytes and headers sent to the client stay unchanged. The decoded copy stops at 64 KiB. A corrupt or unknown encoding is a short note, not compressed bytes. A binary or non-UTF-8 body is a note with the size and content type. JSON is indented. Request bodies follow the same rules. Decoding happens when the row is recorded, so history keeps the preview text.
+
 Delete one row from the list or the detail page. The list returns to the same filter. **Clear all history** opens a confirm page first. Clear removes every entry, including rows the filter is hiding. Both actions keep the rules. The pages say that rules are kept.
 
 ## Tests

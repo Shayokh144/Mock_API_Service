@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httputil"
@@ -264,8 +265,16 @@ func (h *Handler) record(started time.Time, r *http.Request, reqHeaders http.Hea
 	if h.history == nil {
 		return
 	}
-	status, respHeaders, respBody, respTrunc := capw.snapshot()
-	reqBody, reqTrunc := preview(payload)
+	status, respHeaders, respRaw, respCut := capw.snapshot()
+	var respBody string
+	var respTrunc bool
+	if respCut {
+		respBody = fmt.Sprintf("body exceeds %d bytes and was not decoded", config.MaxBufferedBody)
+		respTrunc = true
+	} else {
+		respBody, respTrunc = displayBody(respHeaders, respRaw)
+	}
+	reqBody, reqTrunc := displayBody(reqHeaders, payload)
 	h.history.Add(history.Entry{
 		StartedAt:             started,
 		Method:                r.Method,
