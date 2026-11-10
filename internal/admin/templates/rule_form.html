@@ -25,6 +25,9 @@
   <p class="hint">Use an exact path, or * for one whole segment. Example: /api/users/*</p>
   <label for="status_code">Status code</label>
   <input id="status_code" name="status_code" type="number" min="100" max="599" required value="{{.Form.StatusCode}}">
+  <label for="delay_ms">Delay (ms)</label>
+  <input id="delay_ms" name="delay_ms" type="number" min="0" max="60000" step="1" value="{{.Form.DelayMS}}">
+  <p class="hint">Optional. Wait this many milliseconds before the response is written. Use it to try loading states, spinners, and client timeouts. 0 means no wait. The maximum is 60000.</p>
   <label for="headers">Headers</label>
   <textarea id="headers" name="headers">{{.Form.Headers}}</textarea>
   <p class="hint">One header per line, as Name: value.</p>

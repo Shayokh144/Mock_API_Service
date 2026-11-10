@@ -15,6 +15,7 @@
       <th scope="col">Request</th>
       <th scope="col">Upstream</th>
       <th scope="col">Status</th>
+      <th scope="col">Delay</th>
       <th scope="col">Actions</th>
     </tr>
   </thead>
@@ -29,6 +30,7 @@
       <td>{{if .Fresh}}fresh{{else}}mock{{end}}</td>
       <td>{{.Upstream}}</td>
       <td>{{.Status}}</td>
+      <td>{{.Delay}}</td>
       <td>
         <div class="actions">
           <a href="/_admin/rules/{{.ID}}/edit">Edit</a>

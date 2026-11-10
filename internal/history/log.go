@@ -39,6 +39,7 @@ type Entry struct {
 	ResponseBody          string
 	Source                Source
 	RuleID                string
+	DelayMS               int
 	UpstreamID            string
 	UpstreamName          string
 	RequestBodyTruncated  bool

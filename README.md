@@ -256,9 +256,19 @@ When several enabled rules match, an exact path wins. After that, the wildcard w
 
 An empty body is the right shape for `204`. Invalid JSON is rejected and the rules file is left unchanged.
 
+## Delay
+
+**Delay (ms)** waits before the response is written. Leave it at `0` for no wait. The maximum is `60000` (60 seconds).
+
+The wait applies to a saved mock and to a Fresh request rule. A fresh rule waits, then forwards. If the app cancels during the wait, the proxy stops and does not write a response.
+
+Use a delay to try loading states, spinners, retry logic, and client timeouts without a slow server.
+
+The rules list shows `1500 ms`. A zero delay is left blank. History records the delay that was applied. The detail page shows it, and the list shows it when it is not zero. An older rules file with no `delay_ms` field loads as `0`.
+
 ## Fresh request
 
-Check **Fresh request** on a rule when you want the upstream response instead of the saved mock. The rule still matches the method and path. The proxy then forwards the call and does not use the saved status or body.
+Check **Fresh request** on a rule when you want the upstream response instead of the saved mock. The rule still matches the method and path. The proxy waits for **Delay (ms)**, then forwards the call and does not use the saved status or body.
 
 The upstream server must be reachable. This is pass-through of fresh data, not a mock. The response does not include `X-Mock-Response`.
 
@@ -362,6 +372,7 @@ Use this on a Mac after the automated tests pass. The implementation environment
 18. History can show All, Mocked, or Real server. A fresh-request row appears under Real server as `upstream (fresh rule)`. A bad source query shows All. Delete keeps the filter. Clear all still removes every entry.
 19. The Upstreams page can add two base URLs, and **Set as fallback** switches the no-prefix default without a restart. A rule for one upstream does not match requests that resolve to the other. An Any rule still matches. History shows the upstream name. An old rules file still loads.
 20. Two prefixed upstreams can serve at once. `/okya/api/v1/x?page=2` is forwarded as `/api/v1/x?page=2`, and `/okyax` does not match `/okya`. A request with no prefix uses the fallback upstream. History keeps the original path and the forwarded path. An old upstreams file with no prefix field still loads.
+21. A rule can wait up to 60000 ms before the response is written. `0` does not wait. The rules list shows `1500 ms` and leaves `0` blank. History records the delay. An older rules file with no `delay_ms` field loads as `0`. Cancelling during the wait writes no response.
 
 ## Troubleshooting
 

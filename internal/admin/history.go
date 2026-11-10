@@ -47,6 +47,7 @@ type historyRow struct {
 	Status   int
 	Source   string
 	Upstream string
+	Delay    string
 	When     string
 }
 
@@ -167,6 +168,7 @@ func (s *Server) historyFeed(w http.ResponseWriter, r *http.Request) {
 			Status:   row.Status,
 			Source:   row.Source,
 			Upstream: row.Upstream,
+			Delay:    row.Delay,
 			When:     row.When,
 		})
 	}
@@ -356,6 +358,7 @@ func historyRowFrom(entry history.Entry) historyRow {
 		Status:   entry.Status,
 		Source:   historySourceLabel(entry),
 		Upstream: entry.UpstreamName,
+		Delay:    delayLabel(entry.DelayMS),
 		When:     formatHistoryTime(entry.StartedAt),
 	}
 }
@@ -395,6 +398,7 @@ type historyFeedRow struct {
 	Status   int    `json:"status"`
 	Source   string `json:"source"`
 	Upstream string `json:"upstream"`
+	Delay    string `json:"delay"`
 	When     string `json:"when"`
 }
 

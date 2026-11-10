@@ -30,6 +30,7 @@ type formView struct {
 	Method       string
 	PathPattern  string
 	StatusCode   string
+	DelayMS      string
 	Headers      string
 	Body         string
 }
@@ -46,12 +47,17 @@ func draftFromForm(r *http.Request) (rules.Draft, formView, error) {
 		Method:       strings.ToUpper(strings.TrimSpace(r.FormValue("method"))),
 		PathPattern:  strings.TrimSpace(r.FormValue("path_pattern")),
 		StatusCode:   strings.TrimSpace(r.FormValue("status_code")),
+		DelayMS:      strings.TrimSpace(r.FormValue("delay_ms")),
 		Headers:      r.FormValue("headers"),
 		Body:         r.FormValue("body"),
 	}
 	status, err := strconv.Atoi(view.StatusCode)
 	if err != nil {
 		return rules.Draft{}, view, fmt.Errorf("status_code must be from 100 through 599")
+	}
+	delay, err := parseDelayMS(view.DelayMS)
+	if err != nil {
+		return rules.Draft{}, view, err
 	}
 	headers, err := parseHeaderLines(view.Headers)
 	if err != nil {
@@ -65,9 +71,28 @@ func draftFromForm(r *http.Request) (rules.Draft, formView, error) {
 		Method:       view.Method,
 		PathPattern:  view.PathPattern,
 		StatusCode:   status,
+		DelayMS:      delay,
 		Headers:      headers,
 		Body:         view.Body,
 	}, view, nil
+}
+
+func parseDelayMS(raw string) (int, error) {
+	if raw == "" {
+		return 0, nil
+	}
+	delay, err := strconv.Atoi(raw)
+	if err != nil || delay < 0 || delay > 60000 {
+		return 0, fmt.Errorf("delay_ms must be from 0 through 60000")
+	}
+	return delay, nil
+}
+
+func delayLabel(ms int) string {
+	if ms <= 0 {
+		return ""
+	}
+	return strconv.Itoa(ms) + " ms"
 }
 
 func parseHeaderLines(text string) (map[string]string, error) {
@@ -118,6 +143,7 @@ func viewFromRule(rule rules.Rule, action, submit string) formView {
 		Method:       rule.Method,
 		PathPattern:  rule.PathPattern,
 		StatusCode:   strconv.Itoa(rule.StatusCode),
+		DelayMS:      strconv.Itoa(rule.DelayMS),
 		Headers:      formatHeaders(rule.Headers),
 		Body:         string(rule.Body),
 	}
