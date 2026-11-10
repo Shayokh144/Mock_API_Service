@@ -56,6 +56,7 @@ type ruleRow struct {
 	Fresh    bool
 	Status   string
 	Delay    string
+	Mode     string
 	Upstream string
 }
 
@@ -187,6 +188,7 @@ func (s *Server) rulesPage(w http.ResponseWriter, status int) {
 			Fresh:    rule.FreshRequest,
 			Status:   strconv.Itoa(rule.StatusCode),
 			Delay:    delayLabel(rule.DelayMS),
+			Mode:     modeLabel(rule.ResponseMode),
 			Upstream: s.upstreamLabel(rule.UpstreamID),
 		})
 	}
@@ -281,6 +283,9 @@ func (s *Server) toggleRule(w http.ResponseWriter, r *http.Request, id string) {
 		PathPattern:  rule.PathPattern,
 		StatusCode:   rule.StatusCode,
 		DelayMS:      rule.DelayMS,
+		ResponseMode: rule.ResponseMode,
+		RawResponse:  rule.RawResponse,
+		MockHeader:   rule.MockHeader,
 		Headers:      rule.Headers,
 		Body:         string(rule.Body),
 	}
@@ -319,7 +324,11 @@ func (s *Server) render(w http.ResponseWriter, name string, data page, status in
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Referrer-Policy", "same-origin")
 	w.Header().Set("X-Frame-Options", "DENY")
-	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
+	csp := "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
+	if name == "rule_form" {
+		csp = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
+	}
+	w.Header().Set("Content-Security-Policy", csp)
 	w.WriteHeader(status)
 	if err := s.tmpl.ExecuteTemplate(w, name, data); err != nil {
 		http.Error(w, "template error", http.StatusInternalServerError)

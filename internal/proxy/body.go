@@ -1,9 +1,12 @@
 package proxy
 
 import (
+	"bufio"
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
+	"net"
 	"net/http"
 
 	"github.com/Shayokh144/Mock_API_Service/internal/config"
@@ -58,6 +61,25 @@ func (c *bodyCapture) Write(p []byte) (int, error) {
 		c.truncated = true
 	}
 	return c.ResponseWriter.Write(p)
+}
+
+func (c *bodyCapture) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	hj, ok := c.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, fmt.Errorf("hijack is not available")
+	}
+	return hj.Hijack()
+}
+
+func (c *bodyCapture) note(status int, body []byte) {
+	c.wrote = true
+	c.status = status
+	if len(body) > config.MaxBufferedBody {
+		_, _ = c.buf.Write(body[:config.MaxBufferedBody])
+		c.truncated = true
+		return
+	}
+	_, _ = c.buf.Write(body)
 }
 
 func (c *bodyCapture) snapshot() (int, http.Header, []byte, bool) {

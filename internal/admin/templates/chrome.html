@@ -27,6 +27,12 @@
     .error { background: #fde8e8; color: #6d1414; padding: 0.7rem 0.9rem; border: 1px solid #e3b0b0; }
     .hint { color: #333; }
     .actions { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+    form.mode-fields .raw-only { display: none; }
+    form.mode-raw .fields-only { display: none; }
+    form:has(#mode_raw:checked) .raw-only { display: block; }
+    form:has(#mode_raw:checked) .fields-only { display: none; }
+    form:has(#mode_fields:checked) .fields-only { display: block; }
+    form:has(#mode_fields:checked) .raw-only { display: none; }
     a[aria-current="page"] { font-weight: 700; text-decoration: underline; }
   </style>
 </head>

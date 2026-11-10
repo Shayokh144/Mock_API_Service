@@ -36,6 +36,25 @@ func TestWildcardSegmentRules(t *testing.T) {
 	}
 }
 
+func TestPathPatternRejectsQueryAndFragment(t *testing.T) {
+	cases := []struct {
+		pattern string
+		want    string
+	}{
+		{"/oauth/token?refresh_token", "path pattern can't include a query string. Use /oauth/token. Rules match the path only, so any query matches."},
+		{"/oauth/token#section", "path pattern can't include a fragment. Use /oauth/token. Rules match the path only, so any query matches."},
+		{"/v1/items?page=2#top", "path pattern can't include a query string. Use /v1/items. Rules match the path only, so any query matches."},
+	}
+	for _, tc := range cases {
+		draft := sampleDraft()
+		draft.PathPattern = tc.pattern
+		_, err := NewMemory().Create(draft)
+		if err == nil || err.Error() != tc.want {
+			t.Fatalf("%s err = %v", tc.pattern, err)
+		}
+	}
+}
+
 func TestRejectedWildcardPatterns(t *testing.T) {
 	cases := []struct {
 		pattern string
@@ -46,7 +65,7 @@ func TestRejectedWildcardPatterns(t *testing.T) {
 		{pattern: "/v1/users/**", substr: "whole segment"},
 		{pattern: "/v1/users/*/**", substr: "whole segment"},
 		{pattern: "v1/users", substr: "start with /"},
-		{pattern: "/v1/users/?", substr: "whole segment"},
+		{pattern: "/v1/users/?", substr: "query string"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.pattern, func(t *testing.T) {

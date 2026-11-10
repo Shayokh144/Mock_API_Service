@@ -29,6 +29,9 @@ type Rule struct {
 	PathPattern  string            `json:"path_pattern"`
 	StatusCode   int               `json:"status_code"`
 	DelayMS      int               `json:"delay_ms,omitempty"`
+	ResponseMode string            `json:"response_mode,omitempty"`
+	RawResponse  string            `json:"raw_response,omitempty"`
+	MockHeader   bool              `json:"mock_header,omitempty"`
 	Headers      map[string]string `json:"headers"`
 	Body         json.RawMessage   `json:"body"`
 	CreatedAt    timeValue         `json:"created_at"`
@@ -45,6 +48,9 @@ type Draft struct {
 	PathPattern  string
 	StatusCode   int
 	DelayMS      int
+	ResponseMode string
+	RawResponse  string
+	MockHeader   bool
 	Headers      map[string]string
 	Body         string
 }
@@ -83,14 +89,38 @@ func normalize(d Draft, allowWildcard bool) (Rule, error) {
 	if _, ok := allowedMethods[method]; !ok {
 		return Rule{}, fmt.Errorf("method must be one of GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS")
 	}
-	if d.StatusCode < 100 || d.StatusCode > 599 {
-		return Rule{}, fmt.Errorf("status_code must be from 100 through 599")
-	}
 	if d.DelayMS < 0 || d.DelayMS > maxDelayMS {
 		return Rule{}, fmt.Errorf("delay_ms must be from 0 through %d", maxDelayMS)
 	}
+	mode, err := responseMode(d.ResponseMode)
+	if err != nil {
+		return Rule{}, err
+	}
 	if err := validatePattern(d.PathPattern, allowWildcard); err != nil {
 		return Rule{}, err
+	}
+	if mode == ModeRaw {
+		parsed, err := ParseRawResponse(d.RawResponse)
+		if err != nil {
+			return Rule{}, err
+		}
+		return Rule{
+			Name:         name,
+			Enabled:      d.Enabled,
+			FreshRequest: d.FreshRequest,
+			UpstreamID:   upstreamID,
+			Method:       method,
+			PathPattern:  d.PathPattern,
+			StatusCode:   parsed.Code,
+			DelayMS:      d.DelayMS,
+			ResponseMode: ModeRaw,
+			RawResponse:  d.RawResponse,
+			MockHeader:   d.MockHeader,
+			Headers:      map[string]string{},
+		}, nil
+	}
+	if d.StatusCode < 100 || d.StatusCode > 599 {
+		return Rule{}, fmt.Errorf("status_code must be from 100 through 599")
 	}
 	headers, err := normalizeHeaders(d.Headers)
 	if err != nil {
@@ -126,8 +156,11 @@ func normalizeUpstreamID(raw string) (string, error) {
 }
 
 func validatePattern(pattern string, allowWildcard bool) error {
+	if err := rejectQueryOrFragment(pattern); err != nil {
+		return err
+	}
 	if pattern == "" || !strings.HasPrefix(pattern, "/") {
-		return fmt.Errorf("path pattern must start with /")
+		return fmt.Errorf("path pattern must start with /, for example /v1/items")
 	}
 	if len(pattern) > maxPatternLength {
 		return fmt.Errorf("path pattern is too long")
@@ -163,6 +196,22 @@ func validatePattern(pattern string, allowWildcard bool) error {
 		}
 	}
 	return nil
+}
+
+func rejectQueryOrFragment(pattern string) error {
+	i := strings.IndexAny(pattern, "?#")
+	if i < 0 {
+		return nil
+	}
+	path := pattern[:i]
+	if path == "" {
+		path = "/"
+	}
+	kind := "a query string"
+	if pattern[i] == '#' {
+		kind = "a fragment"
+	}
+	return fmt.Errorf("path pattern can't include %s. Use %s. Rules match the path only, so any query matches.", kind, path)
 }
 
 func normalizeHeaders(in map[string]string) (map[string]string, error) {

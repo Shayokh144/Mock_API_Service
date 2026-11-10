@@ -31,6 +31,9 @@ type formView struct {
 	PathPattern  string
 	StatusCode   string
 	DelayMS      string
+	ResponseMode string
+	RawResponse  string
+	MockHeader   bool
 	Headers      string
 	Body         string
 }
@@ -48,18 +51,30 @@ func draftFromForm(r *http.Request) (rules.Draft, formView, error) {
 		PathPattern:  strings.TrimSpace(r.FormValue("path_pattern")),
 		StatusCode:   strings.TrimSpace(r.FormValue("status_code")),
 		DelayMS:      strings.TrimSpace(r.FormValue("delay_ms")),
+		ResponseMode: r.FormValue("response_mode"),
+		RawResponse:  r.FormValue("raw_response"),
+		MockHeader:   r.FormValue("mock_header") == "on",
 		Headers:      r.FormValue("headers"),
 		Body:         r.FormValue("body"),
 	}
-	status, err := strconv.Atoi(view.StatusCode)
-	if err != nil {
-		return rules.Draft{}, view, fmt.Errorf("status_code must be from 100 through 599")
+	rawMode := strings.EqualFold(strings.TrimSpace(view.ResponseMode), rules.ModeRaw)
+	status := 200
+	var headers map[string]string
+	body := ""
+	if !rawMode {
+		parsedStatus, err := strconv.Atoi(view.StatusCode)
+		if err != nil {
+			return rules.Draft{}, view, fmt.Errorf("status_code must be from 100 through 599")
+		}
+		status = parsedStatus
+		parsedHeaders, err := parseHeaderLines(view.Headers)
+		if err != nil {
+			return rules.Draft{}, view, err
+		}
+		headers = parsedHeaders
+		body = view.Body
 	}
 	delay, err := parseDelayMS(view.DelayMS)
-	if err != nil {
-		return rules.Draft{}, view, err
-	}
-	headers, err := parseHeaderLines(view.Headers)
 	if err != nil {
 		return rules.Draft{}, view, err
 	}
@@ -72,9 +87,16 @@ func draftFromForm(r *http.Request) (rules.Draft, formView, error) {
 		PathPattern:  view.PathPattern,
 		StatusCode:   status,
 		DelayMS:      delay,
+		ResponseMode: view.ResponseMode,
+		RawResponse:  view.RawResponse,
+		MockHeader:   view.MockHeader && rawMode,
 		Headers:      headers,
-		Body:         view.Body,
+		Body:         body,
 	}, view, nil
+}
+
+func (formView) RawPlaceholder() string {
+	return "HTTP/1.1 401 Unauthorized\nContent-Type: application/json\n\n{\"error\":\"unauthorized\"}"
 }
 
 func parseDelayMS(raw string) (int, error) {
@@ -86,6 +108,13 @@ func parseDelayMS(raw string) (int, error) {
 		return 0, fmt.Errorf("delay_ms must be from 0 through 60000")
 	}
 	return delay, nil
+}
+
+func modeLabel(mode string) string {
+	if mode == rules.ModeRaw {
+		return "Raw"
+	}
+	return "Fields"
 }
 
 func delayLabel(ms int) string {
@@ -144,6 +173,9 @@ func viewFromRule(rule rules.Rule, action, submit string) formView {
 		PathPattern:  rule.PathPattern,
 		StatusCode:   strconv.Itoa(rule.StatusCode),
 		DelayMS:      strconv.Itoa(rule.DelayMS),
+		ResponseMode: rule.ResponseMode,
+		RawResponse:  rule.RawResponse,
+		MockHeader:   rule.MockHeader,
 		Headers:      formatHeaders(rule.Headers),
 		Body:         string(rule.Body),
 	}

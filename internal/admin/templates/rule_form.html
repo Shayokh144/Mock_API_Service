@@ -1,7 +1,7 @@
 {{define "rule_form"}}
 {{template "head" .}}
 {{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{end}}
-<form method="post" action="{{.Form.Action}}">
+<form id="rule-form" class="{{if eq .Form.ResponseMode "raw"}}mode-raw{{else}}mode-fields{{end}}" method="post" action="{{.Form.Action}}">
   <label for="name">Name</label>
   <input id="name" name="name" type="text" maxlength="80" value="{{.Form.Name}}">
   <label for="enabled"><input id="enabled" name="enabled" type="checkbox" value="on" {{if .Form.Enabled}}checked{{end}}> Enabled</label>
@@ -22,19 +22,61 @@
   </select>
   <label for="path_pattern">Path pattern</label>
   <input id="path_pattern" name="path_pattern" type="text" required value="{{.Form.PathPattern}}">
-  <p class="hint">Use an exact path, or * for one whole segment. Example: /api/users/*</p>
-  <label for="status_code">Status code</label>
-  <input id="status_code" name="status_code" type="number" min="100" max="599" required value="{{.Form.StatusCode}}">
+  <p class="hint">Use an exact path, or * for one whole segment. Example: /api/users/*. The query string is not part of the pattern, so do not include ?.</p>
   <label for="delay_ms">Delay (ms)</label>
   <input id="delay_ms" name="delay_ms" type="number" min="0" max="60000" step="1" value="{{.Form.DelayMS}}">
   <p class="hint">Optional. Wait this many milliseconds before the response is written. Use it to try loading states, spinners, and client timeouts. 0 means no wait. The maximum is 60000.</p>
-  <label for="headers">Headers</label>
-  <textarea id="headers" name="headers">{{.Form.Headers}}</textarea>
-  <p class="hint">One header per line, as Name: value.</p>
-  <label for="body">JSON body</label>
-  <textarea id="body" name="body">{{.Form.Body}}</textarea>
-  <p class="hint">Leave the body empty for no response body.</p>
+  <fieldset>
+    <legend>Response mode</legend>
+    <label for="mode_fields"><input id="mode_fields" name="response_mode" type="radio" value="fields" {{if ne .Form.ResponseMode "raw"}}checked{{end}}> Fields</label>
+    <label for="mode_raw"><input id="mode_raw" name="response_mode" type="radio" value="raw" {{if eq .Form.ResponseMode "raw"}}checked{{end}}> Raw response</label>
+    <p class="hint">Fields builds the response from a status, headers, and JSON body. Raw response sends the pasted HTTP response instead. Fresh request still forwards to the upstream and ignores both.</p>
+  </fieldset>
+  <div class="raw-only">
+    <label for="raw_response">Raw response</label>
+    <textarea id="raw_response" name="raw_response" placeholder="{{.Form.RawPlaceholder}}">{{.Form.RawResponse}}</textarea>
+    <p class="hint">Paste a status line, headers, a blank line, and the body. CRLF and LF both work. Content-Length is recomputed. Do not set Transfer-Encoding.</p>
+    <label for="mock_header"><input id="mock_header" name="mock_header" type="checkbox" value="on" {{if .Form.MockHeader}}checked{{end}}> Add X-Mock-Response: true</label>
+    <p class="hint">Raw responses omit this header unless you check it. Fields mode always adds it.</p>
+  </div>
+  <div class="fields-only">
+    <label for="status_code">Status code</label>
+    <input id="status_code" name="status_code" type="number" min="100" max="599" {{if ne .Form.ResponseMode "raw"}}required{{end}} value="{{.Form.StatusCode}}">
+    <label for="headers">Headers</label>
+    <textarea id="headers" name="headers">{{.Form.Headers}}</textarea>
+    <p class="hint">One header per line, as Name: value. Used in Fields mode.</p>
+    <label for="body">JSON body</label>
+    <textarea id="body" name="body">{{.Form.Body}}</textarea>
+    <p class="hint">Leave the body empty for no response body. Used in Fields mode.</p>
+  </div>
   <p><button type="submit">{{.Form.Submit}}</button></p>
 </form>
+<script>
+(function () {
+  var form = document.getElementById("rule-form");
+  if (!form) {
+    return;
+  }
+  var status = document.getElementById("status_code");
+  function apply() {
+    var selected = form.querySelector('input[name="response_mode"]:checked');
+    var raw = selected && selected.value === "raw";
+    form.classList.toggle("mode-raw", raw);
+    form.classList.toggle("mode-fields", !raw);
+    if (status) {
+      if (raw) {
+        status.removeAttribute("required");
+      } else {
+        status.setAttribute("required", "");
+      }
+    }
+  }
+  var radios = form.querySelectorAll('input[name="response_mode"]');
+  for (var i = 0; i < radios.length; i++) {
+    radios[i].addEventListener("change", apply);
+  }
+  apply();
+})();
+</script>
 {{template "foot" .}}
 {{end}}
