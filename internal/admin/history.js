@@ -43,7 +43,7 @@
     table.appendChild(caption);
     var head = document.createElement("thead");
     var headRow = document.createElement("tr");
-    ["Method", "URL", "Status", "Source", "Upstream", "Timestamp", "Actions"].forEach(function (label) {
+    ["Method", "URL", "Status", "Source", "Upstream", "Delay", "Timestamp", "Actions"].forEach(function (label) {
       var th = document.createElement("th");
       th.scope = "col";
       th.textContent = label;
@@ -77,6 +77,7 @@
     tr.appendChild(cell(String(entry.status)));
     tr.appendChild(cell(entry.source));
     tr.appendChild(cell(entry.upstream || ""));
+    tr.appendChild(cell(entry.delay || ""));
     tr.appendChild(cell(entry.when));
     var action = document.createElement("td");
     var form = document.createElement("form");

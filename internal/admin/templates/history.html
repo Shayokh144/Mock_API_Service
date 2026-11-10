@@ -32,6 +32,7 @@
       <th scope="col">Status</th>
       <th scope="col">Source</th>
       <th scope="col">Upstream</th>
+      <th scope="col">Delay</th>
       <th scope="col">Timestamp</th>
       <th scope="col">Actions</th>
     </tr>
@@ -44,6 +45,7 @@
       <td>{{.Status}}</td>
       <td>{{.Source}}</td>
       <td>{{.Upstream}}</td>
+      <td>{{.Delay}}</td>
       <td>{{.When}}</td>
       <td>
         <form method="post" action="/_admin/history/{{.ID}}/delete{{$.FilterQuery}}">

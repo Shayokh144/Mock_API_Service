@@ -340,6 +340,7 @@ func validateLoaded(rule Rule, allowWildcard bool) error {
 		Method:       rule.Method,
 		PathPattern:  rule.PathPattern,
 		StatusCode:   rule.StatusCode,
+		DelayMS:      rule.DelayMS,
 		Headers:      rule.Headers,
 		Body:         string(rule.Body),
 	}

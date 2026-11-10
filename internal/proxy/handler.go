@@ -44,6 +44,7 @@ type Handler struct {
 	rules     *rules.Store
 	history   *history.Log
 	admin     http.Handler
+	wait      func(context.Context, time.Duration) error
 }
 
 // New returns a handler that forwards every non-admin request.
@@ -101,9 +102,12 @@ func (h *Handler) serveAPI(w http.ResponseWriter, r *http.Request) {
 	capw := &bodyCapture{ResponseWriter: w}
 	if h.rules != nil {
 		if rule, ok := h.rules.MatchActive(r.Method, forwarded, id); ok {
+			if err := h.pause(r.Context(), rule.DelayMS); err != nil {
+				return
+			}
 			if rule.FreshRequest {
 				if !hasTarget {
-					h.unavailable(capw, started, r, reqHeaders, payload, rule.ID, forwarded)
+					h.unavailable(capw, started, r, reqHeaders, payload, rule.ID, forwarded, rule.DelayMS)
 					return
 				}
 				prepareFreshRequest(r.Header)
@@ -112,16 +116,16 @@ func (h *Handler) serveAPI(w http.ResponseWriter, r *http.Request) {
 				if failed {
 					source = history.SourceUpstreamError
 				}
-				h.record(started, r, reqHeaders, payload, capw, source, rule.ID, id, name, forwarded)
+				h.record(started, r, reqHeaders, payload, capw, source, rule.ID, id, name, forwarded, rule.DelayMS)
 				return
 			}
 			writeMock(capw, rule)
-			h.record(started, r, reqHeaders, payload, capw, history.SourceMock, rule.ID, id, name, forwarded)
+			h.record(started, r, reqHeaders, payload, capw, history.SourceMock, rule.ID, id, name, forwarded, rule.DelayMS)
 			return
 		}
 	}
 	if !hasTarget {
-		h.unavailable(capw, started, r, reqHeaders, payload, "", forwarded)
+		h.unavailable(capw, started, r, reqHeaders, payload, "", forwarded, 0)
 		return
 	}
 	failed := h.forward(capw, r, dest, forwarded)
@@ -129,18 +133,40 @@ func (h *Handler) serveAPI(w http.ResponseWriter, r *http.Request) {
 	if failed {
 		source = history.SourceUpstreamError
 	}
-	h.record(started, r, reqHeaders, payload, capw, source, "", id, name, forwarded)
+	h.record(started, r, reqHeaders, payload, capw, source, "", id, name, forwarded, 0)
 }
 
-func (h *Handler) unavailable(w *bodyCapture, started time.Time, r *http.Request, reqHeaders http.Header, payload []byte, ruleID, forwarded string) {
+func (h *Handler) pause(ctx context.Context, delayMS int) error {
+	if delayMS <= 0 {
+		return nil
+	}
+	wait := h.wait
+	if wait == nil {
+		wait = sleepContext
+	}
+	return wait(ctx, time.Duration(delayMS)*time.Millisecond)
+}
+
+func sleepContext(ctx context.Context, d time.Duration) error {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
+func (h *Handler) unavailable(w *bodyCapture, started time.Time, r *http.Request, reqHeaders http.Header, payload []byte, ruleID, forwarded string, delayMS int) {
 	writeJSONError(w, http.StatusServiceUnavailable, noUpstreamMessage)
-	h.record(started, r, reqHeaders, payload, w, history.SourceUpstreamError, ruleID, "", "none", forwarded)
+	h.record(started, r, reqHeaders, payload, w, history.SourceUpstreamError, ruleID, "", "none", forwarded, delayMS)
 }
 
 func (h *Handler) finish(w http.ResponseWriter, r *http.Request, started time.Time, reqHeaders http.Header, payload []byte, source history.Source, ruleID, upstreamID, upstreamName string, status int, reason string) {
 	capw := &bodyCapture{ResponseWriter: w}
 	writeJSONError(capw, status, reason)
-	h.record(started, r, reqHeaders, payload, capw, source, ruleID, upstreamID, upstreamName, r.URL.Path)
+	h.record(started, r, reqHeaders, payload, capw, source, ruleID, upstreamID, upstreamName, r.URL.Path, 0)
 }
 
 func (h *Handler) resolve(path string) (name, id, forwarded string, dest *url.URL, ok bool) {
@@ -254,7 +280,7 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, upstream *url.
 	return failed
 }
 
-func (h *Handler) record(started time.Time, r *http.Request, reqHeaders http.Header, payload []byte, capw *bodyCapture, source history.Source, ruleID, upstreamID, upstreamName, forwardedPath string) {
+func (h *Handler) record(started time.Time, r *http.Request, reqHeaders http.Header, payload []byte, capw *bodyCapture, source history.Source, ruleID, upstreamID, upstreamName, forwardedPath string, delayMS int) {
 	if h.history == nil {
 		return
 	}
@@ -281,6 +307,7 @@ func (h *Handler) record(started time.Time, r *http.Request, reqHeaders http.Hea
 		ResponseBody:          respBody,
 		Source:                source,
 		RuleID:                ruleID,
+		DelayMS:               delayMS,
 		UpstreamID:            upstreamID,
 		UpstreamName:          upstreamName,
 		RequestBodyTruncated:  reqTrunc,

@@ -15,6 +15,9 @@ import (
 
 const maxPatternLength = 2048
 
+// maxDelayMS is the longest pause a rule may add before the response is written.
+const maxDelayMS = 60000
+
 // Rule is one saved mock. Body is null when the response has no body.
 type Rule struct {
 	ID           string            `json:"id"`
@@ -25,6 +28,7 @@ type Rule struct {
 	Method       string            `json:"method"`
 	PathPattern  string            `json:"path_pattern"`
 	StatusCode   int               `json:"status_code"`
+	DelayMS      int               `json:"delay_ms,omitempty"`
 	Headers      map[string]string `json:"headers"`
 	Body         json.RawMessage   `json:"body"`
 	CreatedAt    timeValue         `json:"created_at"`
@@ -40,6 +44,7 @@ type Draft struct {
 	Method       string
 	PathPattern  string
 	StatusCode   int
+	DelayMS      int
 	Headers      map[string]string
 	Body         string
 }
@@ -81,6 +86,9 @@ func normalize(d Draft, allowWildcard bool) (Rule, error) {
 	if d.StatusCode < 100 || d.StatusCode > 599 {
 		return Rule{}, fmt.Errorf("status_code must be from 100 through 599")
 	}
+	if d.DelayMS < 0 || d.DelayMS > maxDelayMS {
+		return Rule{}, fmt.Errorf("delay_ms must be from 0 through %d", maxDelayMS)
+	}
 	if err := validatePattern(d.PathPattern, allowWildcard); err != nil {
 		return Rule{}, err
 	}
@@ -100,6 +108,7 @@ func normalize(d Draft, allowWildcard bool) (Rule, error) {
 		Method:       method,
 		PathPattern:  d.PathPattern,
 		StatusCode:   d.StatusCode,
+		DelayMS:      d.DelayMS,
 		Headers:      headers,
 		Body:         body,
 	}, nil

@@ -55,6 +55,7 @@ type ruleRow struct {
 	Enabled  bool
 	Fresh    bool
 	Status   string
+	Delay    string
 	Upstream string
 }
 
@@ -99,7 +100,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.render(w, "rule_form", page{
 			Title:           "New rule",
 			Methods:         methods,
-			Form:            formView{Action: "/_admin/rules", Submit: "Create rule", Method: http.MethodGet, StatusCode: "200", Enabled: true},
+			Form:            formView{Action: "/_admin/rules", Submit: "Create rule", Method: http.MethodGet, StatusCode: "200", DelayMS: "0", Enabled: true},
 			UpstreamChoices: s.upstreamChoices(""),
 		}, http.StatusOK)
 	case strings.HasPrefix(path, "/_admin/rules/"):
@@ -185,6 +186,7 @@ func (s *Server) rulesPage(w http.ResponseWriter, status int) {
 			Enabled:  rule.Enabled,
 			Fresh:    rule.FreshRequest,
 			Status:   strconv.Itoa(rule.StatusCode),
+			Delay:    delayLabel(rule.DelayMS),
 			Upstream: s.upstreamLabel(rule.UpstreamID),
 		})
 	}
@@ -278,6 +280,7 @@ func (s *Server) toggleRule(w http.ResponseWriter, r *http.Request, id string) {
 		Method:       rule.Method,
 		PathPattern:  rule.PathPattern,
 		StatusCode:   rule.StatusCode,
+		DelayMS:      rule.DelayMS,
 		Headers:      rule.Headers,
 		Body:         string(rule.Body),
 	}
