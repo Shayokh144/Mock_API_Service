@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -191,6 +192,10 @@ func (h *Handler) resolve(path string) (name, id, forwarded string, dest *url.UR
 }
 
 func writeMock(w http.ResponseWriter, rule rules.Rule) {
+	if rule.ResponseMode == rules.ModeRaw {
+		writeRaw(w, rule)
+		return
+	}
 	for name, value := range rule.Headers {
 		canon := http.CanonicalHeaderKey(name)
 		if canon == "X-Mock-Response" || isHopByHop(canon) {
@@ -208,6 +213,54 @@ func writeMock(w http.ResponseWriter, rule rules.Rule) {
 	if len(body) > 0 {
 		_, _ = w.Write(body)
 	}
+}
+
+func writeRaw(w http.ResponseWriter, rule rules.Rule) {
+	parsed, err := rules.ParseRawResponse(rule.RawResponse)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "saved raw response is invalid")
+		return
+	}
+	if rules.WantsClose(parsed) && writeRawClosed(w, parsed, rule.MockHeader) {
+		return
+	}
+	setRawHeaders(w, parsed, rule.MockHeader)
+	w.WriteHeader(parsed.Code)
+	if len(parsed.Body) > 0 {
+		_, _ = w.Write(parsed.Body)
+	}
+}
+
+func setRawHeaders(w http.ResponseWriter, parsed rules.ParsedRaw, mockHeader bool) {
+	for _, header := range parsed.Headers {
+		if strings.EqualFold(header.Name, "Content-Length") || strings.EqualFold(header.Name, "Transfer-Encoding") {
+			continue
+		}
+		w.Header().Add(header.Name, header.Value)
+	}
+	if mockHeader {
+		w.Header().Set("X-Mock-Response", "true")
+	}
+	w.Header().Set("Content-Length", strconv.Itoa(len(parsed.Body)))
+}
+
+func writeRawClosed(w http.ResponseWriter, parsed rules.ParsedRaw, mockHeader bool) bool {
+	hj, ok := w.(http.Hijacker)
+	if !ok {
+		return false
+	}
+	conn, bufrw, err := hj.Hijack()
+	if err != nil {
+		return false
+	}
+	setRawHeaders(w, parsed, mockHeader)
+	if capture, ok := w.(*bodyCapture); ok {
+		capture.note(parsed.Code, parsed.Body)
+	}
+	_, _ = bufrw.Write(rules.WireBytes(parsed, mockHeader))
+	_ = bufrw.Flush()
+	_ = conn.Close()
+	return true
 }
 
 func isHopByHop(canon string) bool {

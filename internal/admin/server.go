@@ -56,6 +56,7 @@ type ruleRow struct {
 	Fresh    bool
 	Status   string
 	Delay    string
+	Mode     string
 	Upstream string
 }
 
@@ -187,6 +188,7 @@ func (s *Server) rulesPage(w http.ResponseWriter, status int) {
 			Fresh:    rule.FreshRequest,
 			Status:   strconv.Itoa(rule.StatusCode),
 			Delay:    delayLabel(rule.DelayMS),
+			Mode:     modeLabel(rule.ResponseMode),
 			Upstream: s.upstreamLabel(rule.UpstreamID),
 		})
 	}
@@ -281,6 +283,9 @@ func (s *Server) toggleRule(w http.ResponseWriter, r *http.Request, id string) {
 		PathPattern:  rule.PathPattern,
 		StatusCode:   rule.StatusCode,
 		DelayMS:      rule.DelayMS,
+		ResponseMode: rule.ResponseMode,
+		RawResponse:  rule.RawResponse,
+		MockHeader:   rule.MockHeader,
 		Headers:      rule.Headers,
 		Body:         string(rule.Body),
 	}

@@ -29,6 +29,9 @@ type Rule struct {
 	PathPattern  string            `json:"path_pattern"`
 	StatusCode   int               `json:"status_code"`
 	DelayMS      int               `json:"delay_ms,omitempty"`
+	ResponseMode string            `json:"response_mode,omitempty"`
+	RawResponse  string            `json:"raw_response,omitempty"`
+	MockHeader   bool              `json:"mock_header,omitempty"`
 	Headers      map[string]string `json:"headers"`
 	Body         json.RawMessage   `json:"body"`
 	CreatedAt    timeValue         `json:"created_at"`
@@ -45,6 +48,9 @@ type Draft struct {
 	PathPattern  string
 	StatusCode   int
 	DelayMS      int
+	ResponseMode string
+	RawResponse  string
+	MockHeader   bool
 	Headers      map[string]string
 	Body         string
 }
@@ -83,14 +89,47 @@ func normalize(d Draft, allowWildcard bool) (Rule, error) {
 	if _, ok := allowedMethods[method]; !ok {
 		return Rule{}, fmt.Errorf("method must be one of GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS")
 	}
-	if d.StatusCode < 100 || d.StatusCode > 599 {
-		return Rule{}, fmt.Errorf("status_code must be from 100 through 599")
-	}
 	if d.DelayMS < 0 || d.DelayMS > maxDelayMS {
 		return Rule{}, fmt.Errorf("delay_ms must be from 0 through %d", maxDelayMS)
 	}
+	mode, err := responseMode(d.ResponseMode)
+	if err != nil {
+		return Rule{}, err
+	}
 	if err := validatePattern(d.PathPattern, allowWildcard); err != nil {
 		return Rule{}, err
+	}
+	if mode == ModeRaw {
+		parsed, err := ParseRawResponse(d.RawResponse)
+		if err != nil {
+			return Rule{}, err
+		}
+		headers, err := normalizeHeaders(d.Headers)
+		if err != nil {
+			return Rule{}, err
+		}
+		body, err := normalizeBody(d.Body)
+		if err != nil {
+			return Rule{}, err
+		}
+		return Rule{
+			Name:         name,
+			Enabled:      d.Enabled,
+			FreshRequest: d.FreshRequest,
+			UpstreamID:   upstreamID,
+			Method:       method,
+			PathPattern:  d.PathPattern,
+			StatusCode:   parsed.Code,
+			DelayMS:      d.DelayMS,
+			ResponseMode: ModeRaw,
+			RawResponse:  d.RawResponse,
+			MockHeader:   d.MockHeader,
+			Headers:      headers,
+			Body:         body,
+		}, nil
+	}
+	if d.StatusCode < 100 || d.StatusCode > 599 {
+		return Rule{}, fmt.Errorf("status_code must be from 100 through 599")
 	}
 	headers, err := normalizeHeaders(d.Headers)
 	if err != nil {

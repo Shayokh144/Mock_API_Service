@@ -31,6 +31,9 @@ type formView struct {
 	PathPattern  string
 	StatusCode   string
 	DelayMS      string
+	ResponseMode string
+	RawResponse  string
+	MockHeader   bool
 	Headers      string
 	Body         string
 }
@@ -48,12 +51,23 @@ func draftFromForm(r *http.Request) (rules.Draft, formView, error) {
 		PathPattern:  strings.TrimSpace(r.FormValue("path_pattern")),
 		StatusCode:   strings.TrimSpace(r.FormValue("status_code")),
 		DelayMS:      strings.TrimSpace(r.FormValue("delay_ms")),
+		ResponseMode: r.FormValue("response_mode"),
+		RawResponse:  r.FormValue("raw_response"),
+		MockHeader:   r.FormValue("mock_header") == "on",
 		Headers:      r.FormValue("headers"),
 		Body:         r.FormValue("body"),
 	}
-	status, err := strconv.Atoi(view.StatusCode)
-	if err != nil {
-		return rules.Draft{}, view, fmt.Errorf("status_code must be from 100 through 599")
+	status := 200
+	if strings.ToLower(strings.TrimSpace(view.ResponseMode)) != rules.ModeRaw {
+		parsedStatus, err := strconv.Atoi(view.StatusCode)
+		if err != nil {
+			return rules.Draft{}, view, fmt.Errorf("status_code must be from 100 through 599")
+		}
+		status = parsedStatus
+	} else if strings.TrimSpace(view.StatusCode) != "" {
+		if parsedStatus, err := strconv.Atoi(view.StatusCode); err == nil {
+			status = parsedStatus
+		}
 	}
 	delay, err := parseDelayMS(view.DelayMS)
 	if err != nil {
@@ -72,6 +86,9 @@ func draftFromForm(r *http.Request) (rules.Draft, formView, error) {
 		PathPattern:  view.PathPattern,
 		StatusCode:   status,
 		DelayMS:      delay,
+		ResponseMode: view.ResponseMode,
+		RawResponse:  view.RawResponse,
+		MockHeader:   view.MockHeader,
 		Headers:      headers,
 		Body:         view.Body,
 	}, view, nil
@@ -86,6 +103,13 @@ func parseDelayMS(raw string) (int, error) {
 		return 0, fmt.Errorf("delay_ms must be from 0 through 60000")
 	}
 	return delay, nil
+}
+
+func modeLabel(mode string) string {
+	if mode == rules.ModeRaw {
+		return "Raw"
+	}
+	return "Fields"
 }
 
 func delayLabel(ms int) string {
@@ -144,6 +168,9 @@ func viewFromRule(rule rules.Rule, action, submit string) formView {
 		PathPattern:  rule.PathPattern,
 		StatusCode:   strconv.Itoa(rule.StatusCode),
 		DelayMS:      strconv.Itoa(rule.DelayMS),
+		ResponseMode: rule.ResponseMode,
+		RawResponse:  rule.RawResponse,
+		MockHeader:   rule.MockHeader,
 		Headers:      formatHeaders(rule.Headers),
 		Body:         string(rule.Body),
 	}

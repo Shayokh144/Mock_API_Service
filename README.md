@@ -207,7 +207,7 @@ A physical device is out of scope for this loopback-only MVP.
 
 ## Sentry
 
-Every mocked response includes `X-Mock-Response: true`. A passthrough response does not add that header. Proxy `413` and `502` responses do not add it either, so real local failures can still reach Sentry.
+A Fields mock includes `X-Mock-Response: true`. A raw response omits that header unless you check **Add X-Mock-Response: true**. A passthrough response does not add it. Proxy `413` and `502` responses do not add it either, so real local failures can still reach Sentry.
 
 In the Flutter debug build, drop an event in `beforeSend` when the HTTP response header `X-Mock-Response` equals `true`. Header names are case-insensitive. The Dart types depend on the app's Sentry SDK version. Use the header contract with the response type that version exposes.
 
@@ -234,6 +234,27 @@ curl -i 'http://127.0.0.1:8080/api/v1/profile?page=2'
 ```
 
 The status is `500`. The body is the JSON you saved. The query string does not change which rule matches. The response includes `X-Mock-Response: true`.
+
+## Raw response
+
+Choose **Raw response** when the mock has to look like a captured HTTP response. Paste the status line, the headers, a blank line, and the body. CRLF and LF both work. The body bytes are sent unchanged. `Content-Length` is recomputed from that body. `Transfer-Encoding` is rejected.
+
+`X-Mock-Response` is left off unless you check **Add X-Mock-Response: true**. History still records the row as `mock`, with the rule id and the delay. **Delay (ms)** waits before the raw response is written.
+
+This example returns `401` and closes the connection:
+
+```
+HTTP/1.1 401 Unauthorized
+Content-Type: application/json; charset=utf-8
+Connection: close
+
+{
+  "error": "unauthorized",
+  "message": "The access token has expired or is invalid."
+}
+```
+
+The rules list shows the mode as Raw or Fields. An older rules file with no `response_mode` stays in Fields mode.
 
 Wildcard user:
 
@@ -373,6 +394,7 @@ Use this on a Mac after the automated tests pass. The implementation environment
 19. The Upstreams page can add two base URLs, and **Set as fallback** switches the no-prefix default without a restart. A rule for one upstream does not match requests that resolve to the other. An Any rule still matches. History shows the upstream name. An old rules file still loads.
 20. Two prefixed upstreams can serve at once. `/okya/api/v1/x?page=2` is forwarded as `/api/v1/x?page=2`, and `/okyax` does not match `/okya`. A request with no prefix uses the fallback upstream. History keeps the original path and the forwarded path. An old upstreams file with no prefix field still loads.
 21. A rule can wait up to 60000 ms before the response is written. `0` does not wait. The rules list shows `1500 ms` and leaves `0` blank. History records the delay. An older rules file with no `delay_ms` field loads as `0`. Cancelling during the wait writes no response.
+22. A raw response rule sends the pasted status, headers, and body. `Connection: close` closes the connection. `X-Mock-Response` is omitted unless the checkbox is on. An older rules file stays in Fields mode. The delay still applies.
 
 ## Troubleshooting
 

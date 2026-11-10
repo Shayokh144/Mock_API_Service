@@ -341,6 +341,9 @@ func validateLoaded(rule Rule, allowWildcard bool) error {
 		PathPattern:  rule.PathPattern,
 		StatusCode:   rule.StatusCode,
 		DelayMS:      rule.DelayMS,
+		ResponseMode: rule.ResponseMode,
+		RawResponse:  rule.RawResponse,
+		MockHeader:   rule.MockHeader,
 		Headers:      rule.Headers,
 		Body:         string(rule.Body),
 	}
