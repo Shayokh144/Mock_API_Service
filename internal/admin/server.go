@@ -59,10 +59,14 @@ type ruleRow struct {
 }
 
 type upstreamRow struct {
-	ID      string
-	Name    string
-	BaseURL string
-	Active  bool
+	ID         string
+	Name       string
+	BaseURL    string
+	Prefix     string
+	LocalURL   string
+	AndroidURL string
+	Routing    string
+	Active     bool
 }
 
 type upstreamForm struct {
@@ -70,6 +74,7 @@ type upstreamForm struct {
 	Submit  string
 	Name    string
 	BaseURL string
+	Prefix  string
 }
 
 type upstreamChoice struct {
@@ -102,7 +107,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case path == "/_admin/upstreams" && r.Method == http.MethodPost:
 		s.createUpstream(w, r)
 	case path == "/_admin/upstreams" && r.Method == http.MethodGet:
-		s.upstreamsPage(w, http.StatusOK, "")
+		s.upstreamsPage(w, r, http.StatusOK, "")
 	case path == "/_admin/upstreams/new" && r.Method == http.MethodGet:
 		s.render(w, "upstream_form", page{
 			Title:        "New upstream",

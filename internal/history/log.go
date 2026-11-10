@@ -31,6 +31,7 @@ type Entry struct {
 	Method                string
 	Path                  string
 	RawQuery              string
+	ForwardedPath         string
 	RequestHeaders        http.Header
 	RequestBody           string
 	Status                int

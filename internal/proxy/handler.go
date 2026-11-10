@@ -97,81 +97,71 @@ func (h *Handler) serveAPI(w http.ResponseWriter, r *http.Request) {
 		return io.NopCloser(bytes.NewReader(payload)), nil
 	}
 
-	activeName, activeID, dest, hasTarget := h.activeTarget()
+	name, id, forwarded, dest, hasTarget := h.resolve(r.URL.Path)
 	capw := &bodyCapture{ResponseWriter: w}
 	if h.rules != nil {
-		if rule, ok := h.rules.MatchActive(r.Method, r.URL.Path, activeID); ok {
+		if rule, ok := h.rules.MatchActive(r.Method, forwarded, id); ok {
 			if rule.FreshRequest {
 				if !hasTarget {
-					h.unavailable(capw, started, r, reqHeaders, payload, rule.ID)
+					h.unavailable(capw, started, r, reqHeaders, payload, rule.ID, forwarded)
 					return
 				}
 				prepareFreshRequest(r.Header)
-				failed := h.forward(capw, r, dest)
+				failed := h.forward(capw, r, dest, forwarded)
 				source := history.SourceUpstream
 				if failed {
 					source = history.SourceUpstreamError
 				}
-				h.record(started, r, reqHeaders, payload, capw, source, rule.ID, activeID, activeName)
+				h.record(started, r, reqHeaders, payload, capw, source, rule.ID, id, name, forwarded)
 				return
 			}
 			writeMock(capw, rule)
-			mockID, mockName := h.mockUpstream(rule)
-			h.record(started, r, reqHeaders, payload, capw, history.SourceMock, rule.ID, mockID, mockName)
+			h.record(started, r, reqHeaders, payload, capw, history.SourceMock, rule.ID, id, name, forwarded)
 			return
 		}
 	}
 	if !hasTarget {
-		h.unavailable(capw, started, r, reqHeaders, payload, "")
+		h.unavailable(capw, started, r, reqHeaders, payload, "", forwarded)
 		return
 	}
-	failed := h.forward(capw, r, dest)
+	failed := h.forward(capw, r, dest, forwarded)
 	source := history.SourceUpstream
 	if failed {
 		source = history.SourceUpstreamError
 	}
-	h.record(started, r, reqHeaders, payload, capw, source, "", activeID, activeName)
+	h.record(started, r, reqHeaders, payload, capw, source, "", id, name, forwarded)
 }
 
-func (h *Handler) unavailable(w *bodyCapture, started time.Time, r *http.Request, reqHeaders http.Header, payload []byte, ruleID string) {
+func (h *Handler) unavailable(w *bodyCapture, started time.Time, r *http.Request, reqHeaders http.Header, payload []byte, ruleID, forwarded string) {
 	writeJSONError(w, http.StatusServiceUnavailable, noUpstreamMessage)
-	h.record(started, r, reqHeaders, payload, w, history.SourceUpstreamError, ruleID, "", "none")
+	h.record(started, r, reqHeaders, payload, w, history.SourceUpstreamError, ruleID, "", "none", forwarded)
 }
 
 func (h *Handler) finish(w http.ResponseWriter, r *http.Request, started time.Time, reqHeaders http.Header, payload []byte, source history.Source, ruleID, upstreamID, upstreamName string, status int, reason string) {
 	capw := &bodyCapture{ResponseWriter: w}
 	writeJSONError(capw, status, reason)
-	h.record(started, r, reqHeaders, payload, capw, source, ruleID, upstreamID, upstreamName)
+	h.record(started, r, reqHeaders, payload, capw, source, ruleID, upstreamID, upstreamName, r.URL.Path)
 }
 
-func (h *Handler) activeTarget() (name, id string, dest *url.URL, ok bool) {
+func (h *Handler) resolve(path string) (name, id, forwarded string, dest *url.URL, ok bool) {
+	if path == "" {
+		path = "/"
+	}
 	if h.upstreams != nil {
-		item, found := h.upstreams.Active()
+		route, found := h.upstreams.Route(path)
 		if !found {
-			return "none", "", nil, false
+			return "none", "", path, nil, false
 		}
-		parsed, err := url.Parse(item.BaseURL)
+		parsed, err := url.Parse(route.Upstream.BaseURL)
 		if err != nil || parsed.Host == "" {
-			return "none", item.ID, nil, false
+			return "none", route.Upstream.ID, route.ForwardedPath, nil, false
 		}
-		return item.Name, item.ID, parsed, true
+		return route.Upstream.Name, route.Upstream.ID, route.ForwardedPath, parsed, true
 	}
 	if h.upstream != nil {
-		return "", "", h.upstream, true
+		return "", "", path, h.upstream, true
 	}
-	return "none", "", nil, false
-}
-
-func (h *Handler) mockUpstream(rule rules.Rule) (string, string) {
-	if rule.UpstreamID == "" {
-		return history.UpstreamAny, "any"
-	}
-	if h.upstreams != nil {
-		if item, ok := h.upstreams.Get(rule.UpstreamID); ok {
-			return item.ID, item.Name
-		}
-	}
-	return rule.UpstreamID, "unknown"
+	return "none", "", path, nil, false
 }
 
 func writeMock(w http.ResponseWriter, rule rules.Rule) {
@@ -214,8 +204,11 @@ func isAdmin(path string) bool {
 	return path == "/_admin" || strings.HasPrefix(path, "/_admin/")
 }
 
-func (h *Handler) forward(w http.ResponseWriter, r *http.Request, upstream *url.URL) bool {
-	incomingPath := r.URL.Path
+func (h *Handler) forward(w http.ResponseWriter, r *http.Request, upstream *url.URL, forwardedPath string) bool {
+	incomingPath := forwardedPath
+	if incomingPath == "" {
+		incomingPath = r.URL.Path
+	}
 	incomingQuery := r.URL.RawQuery
 	ctx, cancel := context.WithTimeout(r.Context(), h.timeout)
 	defer cancel()
@@ -261,7 +254,7 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, upstream *url.
 	return failed
 }
 
-func (h *Handler) record(started time.Time, r *http.Request, reqHeaders http.Header, payload []byte, capw *bodyCapture, source history.Source, ruleID, upstreamID, upstreamName string) {
+func (h *Handler) record(started time.Time, r *http.Request, reqHeaders http.Header, payload []byte, capw *bodyCapture, source history.Source, ruleID, upstreamID, upstreamName, forwardedPath string) {
 	if h.history == nil {
 		return
 	}
@@ -280,6 +273,7 @@ func (h *Handler) record(started time.Time, r *http.Request, reqHeaders http.Hea
 		Method:                r.Method,
 		Path:                  r.URL.Path,
 		RawQuery:              r.URL.RawQuery,
+		ForwardedPath:         forwardedPath,
 		RequestHeaders:        reqHeaders,
 		RequestBody:           reqBody,
 		Status:                status,
