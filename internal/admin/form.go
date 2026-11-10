@@ -29,6 +29,8 @@ type formView struct {
 	UpstreamID   string
 	Method       string
 	PathPattern  string
+	Query        string
+	BodyMatch    string
 	StatusCode   string
 	DelayMS      string
 	ResponseMode string
@@ -49,6 +51,8 @@ func draftFromForm(r *http.Request) (rules.Draft, formView, error) {
 		UpstreamID:   strings.TrimSpace(r.FormValue("upstream_id")),
 		Method:       strings.ToUpper(strings.TrimSpace(r.FormValue("method"))),
 		PathPattern:  strings.TrimSpace(r.FormValue("path_pattern")),
+		Query:        r.FormValue("query_conditions"),
+		BodyMatch:    r.FormValue("body_conditions"),
 		StatusCode:   strings.TrimSpace(r.FormValue("status_code")),
 		DelayMS:      strings.TrimSpace(r.FormValue("delay_ms")),
 		ResponseMode: r.FormValue("response_mode"),
@@ -78,6 +82,14 @@ func draftFromForm(r *http.Request) (rules.Draft, formView, error) {
 	if err != nil {
 		return rules.Draft{}, view, err
 	}
+	query, err := rules.ParseConditions(view.Query, "query")
+	if err != nil {
+		return rules.Draft{}, view, err
+	}
+	bodyMatch, err := rules.ParseConditions(view.BodyMatch, "body")
+	if err != nil {
+		return rules.Draft{}, view, err
+	}
 	return rules.Draft{
 		Name:         view.Name,
 		Enabled:      view.Enabled,
@@ -85,6 +97,7 @@ func draftFromForm(r *http.Request) (rules.Draft, formView, error) {
 		UpstreamID:   view.UpstreamID,
 		Method:       view.Method,
 		PathPattern:  view.PathPattern,
+		Match:        rules.MatchSpec{Query: query, Body: bodyMatch},
 		StatusCode:   status,
 		DelayMS:      delay,
 		ResponseMode: view.ResponseMode,
@@ -171,6 +184,8 @@ func viewFromRule(rule rules.Rule, action, submit string) formView {
 		UpstreamID:   rule.UpstreamID,
 		Method:       rule.Method,
 		PathPattern:  rule.PathPattern,
+		Query:        rules.FormatConditions(rule.Match.Query),
+		BodyMatch:    rules.FormatConditions(rule.Match.Body),
 		StatusCode:   strconv.Itoa(rule.StatusCode),
 		DelayMS:      strconv.Itoa(rule.DelayMS),
 		ResponseMode: rule.ResponseMode,

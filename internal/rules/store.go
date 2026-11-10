@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,8 +19,8 @@ import (
 // ErrNotFound means the id is not in the store.
 var ErrNotFound = errors.New("rule not found")
 
-// ErrDuplicate means another rule already uses this method and path pattern.
-var ErrDuplicate = errors.New("a rule with this method and path pattern already exists")
+// ErrDuplicate means another rule already uses this method, path, upstream, and conditions.
+var ErrDuplicate = errors.New("a rule with this method, path, and conditions already exists")
 
 // Store is the in-memory rule collection. The mutex guards rules.
 // Match copies the winner and releases the lock before the caller writes a response.
@@ -68,7 +70,7 @@ func Load(path string) (*Store, error) {
 		if err := validateLoaded(rule, store.wildcards()); err != nil {
 			return nil, fmt.Errorf("RULES_PATH %s: %w", path, err)
 		}
-		key := rule.Method + " " + rule.PathPattern + " " + rule.UpstreamID
+		key := ruleSignature(rule)
 		if _, ok := seen[key]; ok {
 			return nil, fmt.Errorf("RULES_PATH %s: duplicate rule %s %s", path, rule.Method, rule.PathPattern)
 		}
@@ -103,7 +105,7 @@ func (s *Store) Create(d Draft) (Rule, error) {
 	rule.ID = id
 	rule.CreatedAt = now
 	rule.UpdatedAt = now
-	if s.duplicate(rule.Method, rule.PathPattern, rule.UpstreamID, "") {
+	if s.duplicate(rule, "") {
 		return Rule{}, ErrDuplicate
 	}
 	next := append(append([]Rule{}, s.rules...), rule)
@@ -129,7 +131,7 @@ func (s *Store) Update(id string, d Draft) (Rule, error) {
 	rule.ID = id
 	rule.CreatedAt = s.rules[index].CreatedAt
 	rule.UpdatedAt = utc(s.now())
-	if s.duplicate(rule.Method, rule.PathPattern, rule.UpstreamID, id) {
+	if s.duplicate(rule, id) {
 		return Rule{}, ErrDuplicate
 	}
 	next := append([]Rule{}, s.rules...)
@@ -189,24 +191,60 @@ func (s *Store) Match(method, path string) (Rule, bool) {
 
 // MatchActive returns a copy of the winning enabled rule.
 // A rule matches when its upstream id is empty or equal to activeID.
+// Query and body conditions are not available here, so a rule that has them does not match.
 func (s *Store) MatchActive(method, path, activeID string) (Rule, bool) {
+	return s.match(method, path, activeID, url.Values{}, nil, nil, false)
+}
+
+// MatchHTTP returns the winning enabled rule for a proxied request.
+// rawQuery is the request's raw query string. body is the original request bytes.
+// A body larger than MaxMatchBody, or one that cannot be decoded, does not satisfy body conditions.
+// The caller keeps body and forwards those original bytes.
+func (s *Store) MatchHTTP(method, path, upstreamID, rawQuery string, header http.Header, body []byte) (Rule, bool) {
+	query, _ := url.ParseQuery(rawQuery)
+	return s.match(method, path, upstreamID, query, header, body, true)
+}
+
+func (s *Store) match(method, path, upstreamID string, query url.Values, header http.Header, body []byte, useBody bool) (Rule, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	method = strings.ToUpper(method)
 	var (
-		winner Rule
-		found  bool
+		winner  Rule
+		found   bool
+		decoded []byte
+		bodyOK  bool
+		ready   bool
 	)
+	prepare := func() ([]byte, bool) {
+		if !ready {
+			decoded, bodyOK = decodeMatchBody(header, body)
+			ready = true
+		}
+		return decoded, bodyOK
+	}
 	for i := range s.rules {
 		rule := s.rules[i]
 		if !rule.Enabled || !strings.EqualFold(rule.Method, method) {
 			continue
 		}
-		if rule.UpstreamID != "" && rule.UpstreamID != activeID {
+		if rule.UpstreamID != "" && rule.UpstreamID != upstreamID {
 			continue
 		}
 		if !matchPattern(rule.PathPattern, path) {
 			continue
+		}
+		if !queryMatches(rule.Match.Query, query) {
+			continue
+		}
+		if len(rule.Match.Body) > 0 {
+			if !useBody {
+				continue
+			}
+			decoded, ok := prepare()
+			if !ok || !bodyMatches(rule.Match.Body, header, decoded) {
+				continue
+			}
 		}
 		if !found || better(rule, winner) {
 			winner = rule
@@ -221,7 +259,7 @@ func (s *Store) MatchActive(method, path, activeID string) (Rule, bool) {
 
 // DetachUpstream clears upstream id on every rule that used it.
 // Those rules become Any upstream. The change is refused when two of them
-// would share a method and path with an existing Any rule.
+// would share a method, path, and conditions with an existing Any rule.
 func (s *Store) DetachUpstream(id string) error {
 	id = strings.TrimSpace(id)
 	if id == "" {
@@ -244,7 +282,7 @@ func (s *Store) DetachUpstream(id string) error {
 	}
 	seen := map[string]struct{}{}
 	for _, rule := range next {
-		key := rule.Method + " " + rule.PathPattern + " " + rule.UpstreamID
+		key := ruleSignature(rule)
 		if _, ok := seen[key]; ok {
 			return fmt.Errorf("deleting this upstream would make a duplicate Any rule for %s %s", rule.Method, rule.PathPattern)
 		}
@@ -339,6 +377,7 @@ func validateLoaded(rule Rule, allowWildcard bool) error {
 		UpstreamID:   rule.UpstreamID,
 		Method:       rule.Method,
 		PathPattern:  rule.PathPattern,
+		Match:        rule.Match,
 		StatusCode:   rule.StatusCode,
 		DelayMS:      rule.DelayMS,
 		ResponseMode: rule.ResponseMode,
@@ -363,12 +402,13 @@ func (s *Store) index(id string) int {
 	return -1
 }
 
-func (s *Store) duplicate(method, pattern, upstreamID, exceptID string) bool {
+func (s *Store) duplicate(candidate Rule, exceptID string) bool {
+	key := ruleSignature(candidate)
 	for _, rule := range s.rules {
 		if rule.ID == exceptID {
 			continue
 		}
-		if rule.Method == method && rule.PathPattern == pattern && rule.UpstreamID == upstreamID {
+		if ruleSignature(rule) == key {
 			return true
 		}
 	}

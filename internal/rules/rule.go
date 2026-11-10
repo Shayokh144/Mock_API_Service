@@ -27,6 +27,7 @@ type Rule struct {
 	UpstreamID   string            `json:"upstream_id,omitempty"`
 	Method       string            `json:"method"`
 	PathPattern  string            `json:"path_pattern"`
+	Match        MatchSpec         `json:"match,omitempty"`
 	StatusCode   int               `json:"status_code"`
 	DelayMS      int               `json:"delay_ms,omitempty"`
 	ResponseMode string            `json:"response_mode,omitempty"`
@@ -46,6 +47,7 @@ type Draft struct {
 	UpstreamID   string
 	Method       string
 	PathPattern  string
+	Match        MatchSpec
 	StatusCode   int
 	DelayMS      int
 	ResponseMode string
@@ -99,6 +101,10 @@ func normalize(d Draft, allowWildcard bool) (Rule, error) {
 	if err := validatePattern(d.PathPattern, allowWildcard); err != nil {
 		return Rule{}, err
 	}
+	match, err := canonicalMatch(d.Match)
+	if err != nil {
+		return Rule{}, err
+	}
 	if mode == ModeRaw {
 		parsed, err := ParseRawResponse(d.RawResponse)
 		if err != nil {
@@ -111,6 +117,7 @@ func normalize(d Draft, allowWildcard bool) (Rule, error) {
 			UpstreamID:   upstreamID,
 			Method:       method,
 			PathPattern:  d.PathPattern,
+			Match:        match,
 			StatusCode:   parsed.Code,
 			DelayMS:      d.DelayMS,
 			ResponseMode: ModeRaw,
@@ -137,6 +144,7 @@ func normalize(d Draft, allowWildcard bool) (Rule, error) {
 		UpstreamID:   upstreamID,
 		Method:       method,
 		PathPattern:  d.PathPattern,
+		Match:        match,
 		StatusCode:   d.StatusCode,
 		DelayMS:      d.DelayMS,
 		Headers:      headers,
@@ -287,5 +295,6 @@ func cloneRule(rule Rule) Rule {
 		copy(body, rule.Body)
 		rule.Body = body
 	}
+	rule.Match = cloneMatch(rule.Match)
 	return rule
 }

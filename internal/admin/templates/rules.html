@@ -10,6 +10,7 @@
       <th scope="col">Name</th>
       <th scope="col">Method</th>
       <th scope="col">Pattern</th>
+      <th scope="col">Conditions</th>
       <th scope="col">Kind</th>
       <th scope="col">Enabled</th>
       <th scope="col">Request</th>
@@ -26,6 +27,7 @@
       <td>{{.Name}}</td>
       <td>{{.Method}}</td>
       <td><code>{{.Pattern}}</code></td>
+      <td>{{.Conditions}}</td>
       <td>{{.Kind}}</td>
       <td>{{if .Enabled}}enabled{{else}}disabled{{end}}</td>
       <td>{{if .Fresh}}fresh{{else}}mock{{end}}</td>

@@ -23,6 +23,12 @@
   <label for="path_pattern">Path pattern</label>
   <input id="path_pattern" name="path_pattern" type="text" required value="{{.Form.PathPattern}}">
   <p class="hint">Use an exact path, or * for one whole segment. Example: /api/users/*. The query string is not part of the pattern, so do not include ?.</p>
+  <label for="query_conditions">Query conditions</label>
+  <textarea id="query_conditions" name="query_conditions">{{.Form.Query}}</textarea>
+  <p class="hint">Optional. One condition per line. refresh_token means that query key is present. page=2 means that exact value. Every line must match.</p>
+  <label for="body_conditions">Body conditions</label>
+  <textarea id="body_conditions" name="body_conditions">{{.Form.BodyMatch}}</textarea>
+  <p class="hint">Optional. One condition per line, for a form body or a JSON body. grant_type=refresh_token matches a form field. user.role=admin matches a JSON path. Numbers and booleans match their text, so active=true matches true. A body over 1 MiB does not match. Every line must match.</p>
   <label for="delay_ms">Delay (ms)</label>
   <input id="delay_ms" name="delay_ms" type="number" min="0" max="60000" step="1" value="{{.Form.DelayMS}}">
   <p class="hint">Optional. Wait this many milliseconds before the response is written. Use it to try loading states, spinners, and client timeouts. 0 means no wait. The maximum is 60000.</p>

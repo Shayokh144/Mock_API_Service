@@ -102,7 +102,7 @@ func (h *Handler) serveAPI(w http.ResponseWriter, r *http.Request) {
 	name, id, forwarded, dest, hasTarget := h.resolve(r.URL.Path)
 	capw := &bodyCapture{ResponseWriter: w}
 	if h.rules != nil {
-		if rule, ok := h.rules.MatchActive(r.Method, forwarded, id); ok {
+		if rule, ok := h.rules.MatchHTTP(r.Method, forwarded, id, r.URL.RawQuery, r.Header, payload); ok {
 			if err := h.pause(r.Context(), rule.DelayMS); err != nil {
 				return
 			}
