@@ -57,23 +57,24 @@ func draftFromForm(r *http.Request) (rules.Draft, formView, error) {
 		Headers:      r.FormValue("headers"),
 		Body:         r.FormValue("body"),
 	}
+	rawMode := strings.EqualFold(strings.TrimSpace(view.ResponseMode), rules.ModeRaw)
 	status := 200
-	if strings.ToLower(strings.TrimSpace(view.ResponseMode)) != rules.ModeRaw {
+	var headers map[string]string
+	body := ""
+	if !rawMode {
 		parsedStatus, err := strconv.Atoi(view.StatusCode)
 		if err != nil {
 			return rules.Draft{}, view, fmt.Errorf("status_code must be from 100 through 599")
 		}
 		status = parsedStatus
-	} else if strings.TrimSpace(view.StatusCode) != "" {
-		if parsedStatus, err := strconv.Atoi(view.StatusCode); err == nil {
-			status = parsedStatus
+		parsedHeaders, err := parseHeaderLines(view.Headers)
+		if err != nil {
+			return rules.Draft{}, view, err
 		}
+		headers = parsedHeaders
+		body = view.Body
 	}
 	delay, err := parseDelayMS(view.DelayMS)
-	if err != nil {
-		return rules.Draft{}, view, err
-	}
-	headers, err := parseHeaderLines(view.Headers)
 	if err != nil {
 		return rules.Draft{}, view, err
 	}
@@ -88,10 +89,14 @@ func draftFromForm(r *http.Request) (rules.Draft, formView, error) {
 		DelayMS:      delay,
 		ResponseMode: view.ResponseMode,
 		RawResponse:  view.RawResponse,
-		MockHeader:   view.MockHeader,
+		MockHeader:   view.MockHeader && rawMode,
 		Headers:      headers,
-		Body:         view.Body,
+		Body:         body,
 	}, view, nil
+}
+
+func (formView) RawPlaceholder() string {
+	return "HTTP/1.1 401 Unauthorized\nContent-Type: application/json\n\n{\"error\":\"unauthorized\"}"
 }
 
 func parseDelayMS(raw string) (int, error) {

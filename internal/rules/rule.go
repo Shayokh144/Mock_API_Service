@@ -104,14 +104,6 @@ func normalize(d Draft, allowWildcard bool) (Rule, error) {
 		if err != nil {
 			return Rule{}, err
 		}
-		headers, err := normalizeHeaders(d.Headers)
-		if err != nil {
-			return Rule{}, err
-		}
-		body, err := normalizeBody(d.Body)
-		if err != nil {
-			return Rule{}, err
-		}
 		return Rule{
 			Name:         name,
 			Enabled:      d.Enabled,
@@ -124,8 +116,7 @@ func normalize(d Draft, allowWildcard bool) (Rule, error) {
 			ResponseMode: ModeRaw,
 			RawResponse:  d.RawResponse,
 			MockHeader:   d.MockHeader,
-			Headers:      headers,
-			Body:         body,
+			Headers:      map[string]string{},
 		}, nil
 	}
 	if d.StatusCode < 100 || d.StatusCode > 599 {
@@ -165,8 +156,11 @@ func normalizeUpstreamID(raw string) (string, error) {
 }
 
 func validatePattern(pattern string, allowWildcard bool) error {
+	if err := rejectQueryOrFragment(pattern); err != nil {
+		return err
+	}
 	if pattern == "" || !strings.HasPrefix(pattern, "/") {
-		return fmt.Errorf("path pattern must start with /")
+		return fmt.Errorf("path pattern must start with /, for example /v1/items")
 	}
 	if len(pattern) > maxPatternLength {
 		return fmt.Errorf("path pattern is too long")
@@ -202,6 +196,22 @@ func validatePattern(pattern string, allowWildcard bool) error {
 		}
 	}
 	return nil
+}
+
+func rejectQueryOrFragment(pattern string) error {
+	i := strings.IndexAny(pattern, "?#")
+	if i < 0 {
+		return nil
+	}
+	path := pattern[:i]
+	if path == "" {
+		path = "/"
+	}
+	kind := "a query string"
+	if pattern[i] == '#' {
+		kind = "a fragment"
+	}
+	return fmt.Errorf("path pattern can't include %s. Use %s. Rules match the path only, so any query matches.", kind, path)
 }
 
 func normalizeHeaders(in map[string]string) (map[string]string, error) {
