@@ -52,6 +52,7 @@ type historyRow struct {
 
 type historyDetail struct {
 	historyRow
+	Forwarded         string
 	RuleID            string
 	RequestHeaders    []headerLine
 	ResponseHeaders   []headerLine
@@ -132,6 +133,7 @@ func (s *Server) historyDetail(w http.ResponseWriter, r *http.Request, id string
 	row := historyRowFrom(entry)
 	detail := historyDetail{
 		historyRow:        row,
+		Forwarded:         forwardedTarget(entry),
 		RuleID:            entry.RuleID,
 		RequestHeaders:    headerLines(entry.RequestHeaders),
 		ResponseHeaders:   headerLines(entry.ResponseHeaders),
@@ -356,6 +358,17 @@ func historyRowFrom(entry history.Entry) historyRow {
 		Upstream: entry.UpstreamName,
 		When:     formatHistoryTime(entry.StartedAt),
 	}
+}
+
+func forwardedTarget(entry history.Entry) string {
+	path := entry.ForwardedPath
+	if path == "" {
+		path = entry.Path
+	}
+	if entry.RawQuery != "" {
+		path += "?" + entry.RawQuery
+	}
+	return path
 }
 
 func historySourceLabel(entry history.Entry) string {

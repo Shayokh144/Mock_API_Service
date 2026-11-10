@@ -7,7 +7,10 @@
   <p class="hint">A short name such as staging or develop.</p>
   <label for="base_url">Base URL</label>
   <input id="base_url" name="base_url" type="url" required value="{{.UpstreamForm.BaseURL}}">
-  <p class="hint">Absolute http or https URL. A path prefix is allowed. A query or fragment is not.</p>
+  <p class="hint">Absolute http or https URL. A path on this URL is joined in front of the forwarded path. A query or fragment is not allowed.</p>
+  <label for="prefix">Prefix</label>
+  <input id="prefix" name="prefix" type="text" value="{{.UpstreamForm.Prefix}}" placeholder="/okya">
+  <p class="hint">Optional. One path segment, such as /okya. Put it on the app base URL, not on the upstream URL. Leave it empty to use this upstream only as the fallback.</p>
   <p><button type="submit">{{.UpstreamForm.Submit}}</button></p>
 </form>
 <p><a href="/_admin/upstreams">Back to upstreams</a></p>

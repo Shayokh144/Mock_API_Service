@@ -1,7 +1,7 @@
 {{define "upstreams"}}
 {{template "head" .}}
 {{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{end}}
-{{if .ActiveUpstream}}<p>Active upstream: {{.ActiveUpstream}}. The next passthrough request uses it. No restart is required.</p>{{else}}<p>No upstream is active. Passthrough returns an error until you add one.</p>{{end}}
+{{if .ActiveUpstream}}<p>Active upstream: {{.ActiveUpstream}}. It is the fallback for requests that match no prefix. The next request uses the new choice. No restart is required.</p>{{else}}<p>No upstream is active. Requests that match no prefix return an error until you add one.</p>{{end}}
 <p><a class="button" href="/_admin/upstreams/new">New upstream</a></p>
 {{if .Upstreams}}
 <table>
@@ -9,6 +9,7 @@
   <thead>
     <tr>
       <th scope="col">Name</th>
+      <th scope="col">Prefix</th>
       <th scope="col">Base URL</th>
       <th scope="col">Active</th>
       <th scope="col">Actions</th>
@@ -18,6 +19,13 @@
     {{range .Upstreams}}
     <tr>
       <td>{{.Name}}</td>
+      <td>
+        {{if .Prefix}}
+        <code>{{.Prefix}}</code>
+        <div>App: <code>{{.LocalURL}}</code></div>
+        <div>Android emulator: <code>{{.AndroidURL}}</code></div>
+        {{else}}—{{end}}
+      </td>
       <td><code>{{.BaseURL}}</code></td>
       <td>{{if .Active}}active{{else}}inactive{{end}}</td>
       <td>
