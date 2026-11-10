@@ -122,7 +122,7 @@ func TestUpstreamDashboardCRUDSwitchAndHistory(t *testing.T) {
 	staging := list[0]
 	develop := list[1]
 	shown := get(t, client, proxySrv.URL+"/_admin/upstreams")
-	if !strings.Contains(shown, "Active upstream: staging") || !strings.Contains(shown, developSrv.URL) {
+	if !strings.Contains(shown, "Fallback upstream: staging") || !strings.Contains(shown, developSrv.URL) || !strings.Contains(shown, "Set as fallback") {
 		t.Fatalf("list page = %s", shown)
 	}
 
@@ -204,7 +204,7 @@ func TestUpstreamDashboardCRUDSwitchAndHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	blockedBody := readAll(t, blocked)
-	if blocked.StatusCode != http.StatusBadRequest || !strings.Contains(blockedBody, "switch to another first") {
+	if blocked.StatusCode != http.StatusBadRequest || !strings.Contains(blockedBody, "set another as fallback first") {
 		t.Fatalf("delete active status=%d body=%s", blocked.StatusCode, blockedBody)
 	}
 	deleted, err := client.PostForm(proxySrv.URL+"/_admin/upstreams/"+staging.ID+"/delete", nil)

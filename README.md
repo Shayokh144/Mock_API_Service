@@ -31,7 +31,7 @@ The process reads only environment variables. It does not take flags, and it doe
 
 | Variable | Required | Default | Meaning |
 | --- | --- | --- | --- |
-| `UPSTREAM_BASE_URL` | no | none | Absolute `http` or `https` URL. When `upstreams.json` has no upstreams, this seeds the first one and makes it active. A later start does not replace saved upstreams. A path prefix is allowed. A query or fragment is rejected. |
+| `UPSTREAM_BASE_URL` | no | none | Absolute `http` or `https` URL. When `upstreams.json` has no upstreams, this seeds the first one and makes it the fallback. A later start does not replace saved upstreams. A path prefix is allowed. A query or fragment is rejected. |
 | `LISTEN_ADDR` | no | `127.0.0.1:8080` | Loopback address. `localhost` becomes `127.0.0.1`. `[::1]` is allowed. Any other host fails startup. |
 | `RULES_PATH` | no | `data/rules.json` | Rule file. A missing file means there are no rules. |
 | `HISTORY_LIMIT` | no | `500` | Newest history entries kept in memory. |
@@ -74,15 +74,15 @@ Open [http://127.0.0.1:8080/_admin/upstreams](http://127.0.0.1:8080/_admin/upstr
 2. Name it, for example `staging`.
 3. Set the base URL to an absolute `http` or `https` URL. A path on that URL is kept and joined in front of the forwarded path. A query or fragment is rejected.
 4. Optionally set a prefix, one path segment such as `/okya`. It goes on the app base URL, not on the upstream URL.
-5. Save. The first upstream is the active one.
-6. Add another, then choose **Use**. That upstream is the fallback for requests that match no prefix. Do not restart the proxy.
+5. Save. The first upstream is the fallback.
+6. Add another, then choose **Set as fallback**. That upstream handles requests that match no prefix. Do not restart the proxy. Prefixed upstreams keep serving at the same time.
 7. On **New rule** or **Edit**, choose that upstream, or **Any upstream**.
 
 A named rule matches when the request resolves to that upstream, by its prefix or as the fallback. **Any upstream** matches for every resolved upstream, and also when none is resolved. Rules see the path after the prefix is removed. When both match the same path, the more specific pattern still wins. If the patterns tie, the named rule wins over Any.
 
 Passthrough uses the resolved upstream. Its base URL path is joined in front of the forwarded path.
 
-With no matching prefix and no active upstream, passthrough returns `503` and `{"error":"no upstream is configured; add one at /_admin"}`. A matching Any rule still returns the mock.
+With no matching prefix and no fallback upstream, passthrough returns `503` and `{"error":"no upstream is configured; add one at /_admin"}`. A matching Any rule still returns the mock.
 
 ## Two apps at once
 
@@ -97,11 +97,11 @@ A call to `http://127.0.0.1:8080/okya/api/v1/x?page=2` is forwarded to the OKYA 
 
 The Upstreams page shows those two app addresses for each prefixed upstream.
 
-A request with no prefix still goes to the active upstream, the one marked by **Use**. Leave the prefix empty when a single app should keep using `http://127.0.0.1:8080` with no extra segment.
+A request with no prefix still goes to the fallback upstream, the one marked by **Set as fallback**. Leave the prefix empty when a single app should keep using `http://127.0.0.1:8080` with no extra segment. An upstream with no prefix is not used until it is the fallback.
 
 Rules use the path after the prefix. A rule for `/api/v1/x` on OKYA matches `/okya/api/v1/x` and does not match `/easyhotel/api/v1/x`. An Any rule matches both.
 
-You cannot delete the active upstream. Choose **Use** on another one first. Deleting any other upstream sets rules that named it to Any upstream. If that would duplicate an Any rule for the same method and path, the delete is refused and those rules stay unchanged.
+You cannot delete the fallback upstream. Choose **Set as fallback** on another one first. Deleting any other upstream sets rules that named it to Any upstream. If that would duplicate an Any rule for the same method and path, the delete is refused and those rules stay unchanged.
 
 Upstreams are stored in `upstreams.json` next to the rules file. The default path is `data/upstreams.json`. Writes are atomic, same as the rules file.
 
@@ -144,7 +144,7 @@ An upstream prefix, such as `/okya`, is different. Put that prefix on the app ba
 
 Example: the app used `https://staging.example.com/v1`. The Android base URL is `http://10.0.2.2:8080/v1`. The iOS Simulator base URL is `http://127.0.0.1:8080/v1`. Start with `UPSTREAM_BASE_URL=https://staging.example.com`.
 
-The app keeps calling the proxy. To move between staging and develop, add both on the Upstreams page and choose **Use**. `UPSTREAM_BASE_URL` only seeds the first upstream when `upstreams.json` is empty. It does not switch the active one on a later start.
+The app keeps calling the proxy. To move between staging and develop when neither has a prefix, add both on the Upstreams page and choose **Set as fallback**. `UPSTREAM_BASE_URL` only seeds the first upstream when `upstreams.json` is empty. It does not change the fallback on a later start.
 
 ### Android Emulator
 
@@ -300,7 +300,7 @@ Open [http://localhost:8080/_admin/history](http://localhost:8080/_admin/history
 
 The list shows method, URL, status, source, upstream, and local time. The URL is the path plus the query string. Sources are `mock`, `upstream`, `upstream-error`, and `rejected`.
 
-The upstream column is the resolved upstream. A prefix match and the active fallback both store that upstream's id and name, including mocks. The detail page shows the app path and the forwarded path, with the query string on both. The live JSON feed uses the same upstream name. New rows keep the column.
+The upstream column is the resolved upstream. A prefix match and the fallback both store that upstream's id and name, including mocks. The detail page shows the app path and the forwarded path, with the query string on both. The live JSON feed uses the same upstream name. New rows keep the column.
 
 The top of the page filters that list:
 
@@ -360,8 +360,8 @@ Use this on a Mac after the automated tests pass. The implementation environment
 16. `go test ./...` passes.
 17. A rule with Fresh request checked returns a full upstream response with the cache validators removed. A rule without it still returns the saved mock.
 18. History can show All, Mocked, or Real server. A fresh-request row appears under Real server as `upstream (fresh rule)`. A bad source query shows All. Delete keeps the filter. Clear all still removes every entry.
-19. The Upstreams page can add two base URLs, and **Use** switches passthrough without a restart. A rule for one upstream does not match while the other is active. An Any rule still matches. History shows the upstream name. An old rules file still loads.
-20. Two prefixed upstreams can serve at once. `/okya/api/v1/x?page=2` is forwarded as `/api/v1/x?page=2`, and `/okyax` does not match `/okya`. A request with no prefix uses the active upstream. History keeps the original path and the forwarded path. An old upstreams file with no prefix field still loads.
+19. The Upstreams page can add two base URLs, and **Set as fallback** switches the no-prefix default without a restart. A rule for one upstream does not match requests that resolve to the other. An Any rule still matches. History shows the upstream name. An old rules file still loads.
+20. Two prefixed upstreams can serve at once. `/okya/api/v1/x?page=2` is forwarded as `/api/v1/x?page=2`, and `/okyax` does not match `/okya`. A request with no prefix uses the fallback upstream. History keeps the original path and the forwarded path. An old upstreams file with no prefix field still loads.
 
 ## Troubleshooting
 
@@ -379,7 +379,7 @@ Use this on a Mac after the automated tests pass. The implementation environment
 | History vanished after restart | That is the MVP. History is in memory. Rules stay in the JSON file. |
 | Sentry still shows a mock error | `beforeSend` is not dropping `X-Mock-Response: true`. |
 | Passthrough returns `no upstream is configured` | Add an upstream at `/_admin/upstreams`, or set `UPSTREAM_BASE_URL` before the first start. |
-| A mock stopped matching after a switch | The rule names an upstream that is not active. Choose **Use**, or set the rule to Any upstream. |
+| A mock stopped matching after a switch | The rule names an upstream that did not resolve this request. Set that upstream as the fallback, give it a prefix, or set the rule to Any upstream. |
 
 ## Limits
 

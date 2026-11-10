@@ -95,18 +95,41 @@ func TestPrefixFormTableAndHistoryDetail(t *testing.T) {
 	}
 	page := get(t, client, proxySrv.URL+"/_admin/upstreams")
 	for _, want := range []string{
-		"fallback for requests that match no prefix",
+		"Fallback upstream: OKYA. Requests with no matching prefix go here.",
+		"Upstreams with a prefix all work at the same time. The fallback only handles requests with no prefix.",
 		"<th scope=\"col\">Prefix</th>",
+		"<th scope=\"col\">Fallback</th>",
+		"Always on via /okya and fallback",
+		"Not used",
+		"Set as fallback",
 		"/okya",
 		"http://127.0.0.1:" + port + "/okya",
 		"http://10.0.2.2:" + port + "/okya",
-		"Use",
 	} {
 		if !strings.Contains(page, want) {
 			t.Fatalf("missing %q in %s", want, page)
 		}
 	}
 	item := ups.List()[0]
+	rulesPage := get(t, client, proxySrv.URL+"/_admin")
+	if !strings.Contains(rulesPage, "Fallback upstream: OKYA. Requests with no matching prefix go here.") {
+		t.Fatalf("rules page = %s", rulesPage)
+	}
+	ruleForm := get(t, client, proxySrv.URL+"/_admin/rules/new")
+	if !strings.Contains(ruleForm, "by its prefix or as the fallback") {
+		t.Fatalf("rule form = %s", ruleForm)
+	}
+	plainItem := ups.List()[1]
+	use, err := client.PostForm(proxySrv.URL+"/_admin/upstreams/"+plainItem.ID+"/activate", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	use.Body.Close()
+	switched := get(t, client, proxySrv.URL+"/_admin/upstreams")
+	if !strings.Contains(switched, "Always on via /okya") || strings.Contains(switched, "and fallback") || strings.Contains(switched, "Not used") || !strings.Contains(switched, "<td>Fallback</td>") {
+		t.Fatalf("switched page = %s", switched)
+	}
+
 	form := get(t, client, proxySrv.URL+"/_admin/upstreams/"+item.ID+"/edit")
 	if !strings.Contains(form, `value="/okya"`) {
 		t.Fatalf("edit form = %s", form)

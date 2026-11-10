@@ -1,9 +1,10 @@
 {{define "upstreams"}}
 {{template "head" .}}
 {{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{end}}
-{{if .ActiveUpstream}}<p>Active upstream: {{.ActiveUpstream}}. It is the fallback for requests that match no prefix. The next request uses the new choice. No restart is required.</p>{{else}}<p>No upstream is active. Requests that match no prefix return an error until you add one.</p>{{end}}
+{{if .ActiveUpstream}}<p>Fallback upstream: {{.ActiveUpstream}}. Requests with no matching prefix go here.</p>{{else}}<p>No fallback upstream. Requests with no prefix return an error until you add one.</p>{{end}}
 <p><a class="button" href="/_admin/upstreams/new">New upstream</a></p>
 {{if .Upstreams}}
+<p>Upstreams with a prefix all work at the same time. The fallback only handles requests with no prefix.</p>
 <table>
   <caption>Saved upstreams</caption>
   <thead>
@@ -11,7 +12,7 @@
       <th scope="col">Name</th>
       <th scope="col">Prefix</th>
       <th scope="col">Base URL</th>
-      <th scope="col">Active</th>
+      <th scope="col">Fallback</th>
       <th scope="col">Actions</th>
     </tr>
   </thead>
@@ -27,13 +28,13 @@
         {{else}}—{{end}}
       </td>
       <td><code>{{.BaseURL}}</code></td>
-      <td>{{if .Active}}active{{else}}inactive{{end}}</td>
+      <td>{{.Routing}}</td>
       <td>
         <div class="actions">
           <a href="/_admin/upstreams/{{.ID}}/edit">Edit</a>
           {{if not .Active}}
           <form class="inline" method="post" action="/_admin/upstreams/{{.ID}}/activate">
-            <button type="submit">Use</button>
+            <button type="submit">Set as fallback</button>
           </form>
           {{end}}
           <form class="inline" method="post" action="/_admin/upstreams/{{.ID}}/delete">
@@ -45,7 +46,7 @@
     {{end}}
   </tbody>
 </table>
-<p class="hint">Deleting an upstream sets rules that named it to Any upstream. The active upstream stays until you use another one.</p>
+<p class="hint">Deleting an upstream sets rules that named it to Any upstream. The fallback upstream stays until you set another one.</p>
 {{else}}
 <p>No upstreams yet.</p>
 {{end}}

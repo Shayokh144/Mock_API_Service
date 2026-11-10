@@ -13,7 +13,7 @@
     <option value="{{.ID}}" {{if .Selected}}selected{{end}}>{{.Name}}</option>
     {{end}}
   </select>
-  <p class="hint">Any upstream matches no matter which one is active. A named upstream matches only while that upstream is active.</p>
+  <p class="hint">Any upstream matches every request. A named upstream matches only when the request resolves to that upstream, by its prefix or as the fallback.</p>
   <label for="method">Method</label>
   <select id="method" name="method">
     {{range .Methods}}

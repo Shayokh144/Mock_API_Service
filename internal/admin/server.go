@@ -65,6 +65,7 @@ type upstreamRow struct {
 	Prefix     string
 	LocalURL   string
 	AndroidURL string
+	Routing    string
 	Active     bool
 }
 

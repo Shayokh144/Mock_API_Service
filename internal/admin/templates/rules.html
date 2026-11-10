@@ -1,6 +1,6 @@
 {{define "rules"}}
 {{template "head" .}}
-{{if .ActiveUpstream}}<p>Active upstream: {{.ActiveUpstream}}.</p>{{else}}<p>No upstream is active. Add one on the Upstreams page. Passthrough then returns an error that points here.</p>{{end}}
+{{if .ActiveUpstream}}<p>Fallback upstream: {{.ActiveUpstream}}. Requests with no matching prefix go here.</p>{{else}}<p>No fallback upstream. Add one on the Upstreams page. Requests with no prefix return an error until you add one.</p>{{end}}
 <p><a class="button" href="/_admin/rules/new">New rule</a></p>
 {{if .Rules}}
 <table>

@@ -52,6 +52,7 @@ func (s *Server) upstreamsPage(w http.ResponseWriter, r *http.Request, status in
 				localURL = "http://127.0.0.1:" + port + item.Prefix
 				androidURL = "http://10.0.2.2:" + port + item.Prefix
 			}
+			fallback := item.ID == activeID
 			rows = append(rows, upstreamRow{
 				ID:         item.ID,
 				Name:       item.Name,
@@ -59,7 +60,8 @@ func (s *Server) upstreamsPage(w http.ResponseWriter, r *http.Request, status in
 				Prefix:     item.Prefix,
 				LocalURL:   localURL,
 				AndroidURL: androidURL,
-				Active:     item.ID == activeID,
+				Routing:    routingStatus(item.Prefix, fallback),
+				Active:     fallback,
 			})
 		}
 	}
@@ -69,6 +71,20 @@ func (s *Server) upstreamsPage(w http.ResponseWriter, r *http.Request, status in
 		ActiveUpstream: s.activeUpstreamName(),
 		Error:          message,
 	}, status)
+}
+
+func routingStatus(prefix string, fallback bool) string {
+	if prefix != "" {
+		status := "Always on via " + prefix
+		if fallback {
+			status += " and fallback"
+		}
+		return status
+	}
+	if fallback {
+		return "Fallback"
+	}
+	return "Not used"
 }
 
 func requestPort(r *http.Request) string {

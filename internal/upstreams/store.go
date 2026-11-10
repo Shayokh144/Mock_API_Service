@@ -20,7 +20,7 @@ import (
 var ErrNotFound = errors.New("upstream not found")
 
 // ErrActive means the upstream is the active one and cannot be deleted yet.
-var ErrActive = errors.New("cannot delete the active upstream; switch to another first")
+var ErrActive = errors.New("cannot delete the fallback upstream; set another as fallback first")
 
 // Upstream is one saved base URL.
 type Upstream struct {
