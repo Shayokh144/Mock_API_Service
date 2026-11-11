@@ -215,6 +215,8 @@ In the Flutter debug build, drop an event in `beforeSend` when the HTTP response
 
 Open the dashboard. Choose **New rule**.
 
+The rules list has an **Upstream** menu, same idea as History, and it is a GET form. **All upstreams** is the default. **Any** (`?upstream=any`) shows only rules set to Any. A named upstream, such as `?upstream=OKYA_AUTH_DEV`, shows rules bound to that name and also rules set to Any, because Any matches every upstream. A name that is not saved is ignored. The page says how many rules are shown.
+
 Exact profile error:
 
 | Field | Value |
@@ -371,11 +373,13 @@ The top of the page filters that list:
 
 The page names the active filter and how many rows are shown. A bad `source` value, such as `?source=nope`, shows All. `upstream-error` and `rejected` have no button. They show under All. You can still open `?source=upstream-error` or `?source=rejected` directly.
 
+**URL contains** is a text box on the same GET form. `user/me` shows rows whose path and query contain that text, ignoring case. `?q=user/me` keeps it across a reload, and it combines with `source` and `upstream`. The All, Mocked, and Real server links keep `q` and `upstream`. The line reads `Filter: Mocked. Text: user/me. Showing 1 of 6.` A blank value is ignored. While the page is open, typing filters the rows on screen, and the live feed uses the text in the box so a new row has to match it too. Apply is what stores the text when JavaScript is off.
+
 The upstream menu is a GET form, so it works with JavaScript off. **All upstreams** is the default. **Any upstream (mock rule not linked)** shows older rows stored as `any`. New rows store the resolved upstream, so a mock from an Any rule appears under that upstream. Each saved upstream is listed by its current name. The query is `upstream=<id>`, and it combines with `source`. A value that is not `any` or a 16-digit hex id is ignored, same as a bad `source`. The live feed uses that same query.
 
 Each row stores the upstream id and the name from the moment of the request. Renaming an upstream does not change old rows, and the filter still matches them by id. Deleting an upstream leaves those rows in history. Open `?upstream=<id>` to see them. The menu labels that id with the stored name and `(deleted)` while you are on that filter. Rows with no upstream, such as a request made before any upstream existed, stay under **All upstreams**.
 
-While the list is open, it asks for new rows about once a second and adds them at the top. The active filter still applies. Rows already on the page stay put, and an open detail page is left alone. Reload the list if JavaScript is off.
+While the list is open, it asks for new rows about once a second and adds them at the top. The active source, upstream, and text filters still apply. Rows already on the page stay put, and an open detail page is left alone. Reload the list if JavaScript is off.
 
 A fresh-request rule is a real server response, not a mock. Its source stays `upstream`, so **Real server** includes it. The source column says `upstream (fresh rule)` when a rule selected that response. A failed fresh request stays `upstream-error` and shows under All.
 
@@ -383,7 +387,7 @@ Open a row to see headers and bodies. A preview longer than 64 KiB is marked tru
 
 History stores a decoded copy of the body when `Content-Encoding` is `gzip`, `deflate` (zlib or raw), `br`, or `identity`. Stacked encodings are undone from the outside in. The bytes and headers sent to the client stay unchanged. The decoded copy stops at 64 KiB. A corrupt or unknown encoding is a short note, not compressed bytes. A binary or non-UTF-8 body is a note with the size and content type. JSON is indented. Request bodies follow the same rules. Decoding happens when the row is recorded, so history keeps the preview text.
 
-Delete one row from the list or the detail page. The list returns to the same filter. **Clear all history** opens a confirm page first. Clear removes every entry, including rows the filter is hiding. Both actions keep the rules. The pages say that rules are kept.
+Delete one row from the list or the detail page. The list returns to the same filter. **Clear all history** opens a dialog on this page: “Delete all recorded requests? Rules are kept.” Cancel closes it, and so do Escape and a click on the dimmed page. **Clear all** posts to `/_admin/history/clear` and returns to the same source, upstream, and text filter. With JavaScript off, the link still opens the confirm page, and that page posts the same way. A GET never clears history. Clear removes every entry, including rows the filter is hiding. Both actions keep the rules.
 
 ## Tests
 
@@ -413,7 +417,7 @@ Use this on a Mac after the automated tests pass. The implementation environment
 10. A mocked response includes `X-Mock-Response: true`. A passthrough response does not add it.
 11. The history list shows method, URL, status, source, and timestamp.
 12. A history detail page shows headers and bodies.
-13. Delete-one and clear-all remove only history. Clear-all asks for confirmation.
+13. Delete-one and clear-all remove only history. Clear-all asks in a dialog on the History page. Without JavaScript it still uses the confirm page. A GET never clears history.
 14. After a restart, rules are still there and history is empty.
 15. A request under `/_admin` never reaches the upstream server.
 16. `go test ./...` passes.
@@ -424,6 +428,7 @@ Use this on a Mac after the automated tests pass. The implementation environment
 21. A rule can wait up to 60000 ms before the response is written. `0` does not wait. The rules list shows `1500 ms` and leaves `0` blank. History records the delay. An older rules file with no `delay_ms` field loads as `0`. Cancelling during the wait writes no response.
 22. A raw response rule sends the pasted status, headers, and body. `Connection: close` closes the connection. `X-Mock-Response` is omitted unless the checkbox is on. An older rules file stays in Fields mode. The delay still applies.
 23. A POST `/oauth/token` rule with body condition `grant_type=refresh_token` returns the raw 401. `grant_type=authorization_code` still passes through. The rules list shows the condition. An older rules file with no conditions still matches on method and path.
+24. History **URL contains** keeps `?q=user/me` and combines with the source tabs and the upstream menu. The rules **Upstream** menu keeps `?upstream=OKYA_AUTH_DEV`, includes Any rules for a named upstream, and shows only Any rules when Any is selected.
 
 ## Troubleshooting
 

@@ -1,6 +1,19 @@
 {{define "rules"}}
 {{template "head" .}}
 {{if .ActiveUpstream}}<p>Fallback upstream: {{.ActiveUpstream}}. Requests with no matching prefix go here.</p>{{else}}<p>No fallback upstream. Add one on the Upstreams page. Requests with no prefix return an error until you add one.</p>{{end}}
+<form method="get" action="{{.RulesAction}}">
+  <label for="rules-upstream-filter">Upstream</label>
+  <select id="rules-upstream-filter" name="upstream">
+    <option value="" {{if not .RuleUpstreamKey}}selected{{end}}>All upstreams</option>
+    <option value="any" {{if eq .RuleUpstreamKey "any"}}selected{{end}}>Any</option>
+    {{range .RuleUpstreamChoices}}
+    <option value="{{.Name}}" {{if .Selected}}selected{{end}}>{{.Name}}</option>
+    {{end}}
+  </select>
+  <button type="submit">Apply</button>
+</form>
+<p class="hint">A named upstream includes rules set to Any, because those rules match every upstream. Any shows only rules set to Any. The address keeps the choice, for example ?upstream=OKYA_AUTH_DEV.</p>
+<p id="rules-summary">Upstream: {{.RuleUpstreamLabel}}. Showing {{.RuleShown}} of {{.RuleTotal}}.</p>
 <p><a class="button" href="/_admin/rules/new">New rule</a></p>
 {{if .Rules}}
 <table>
@@ -50,6 +63,8 @@
     {{end}}
   </tbody>
 </table>
+{{else if .RuleTotal}}
+<p>No rules for this upstream.</p>
 {{else}}
 <p>No rules yet.</p>
 {{end}}

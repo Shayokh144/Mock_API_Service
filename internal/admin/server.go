@@ -35,15 +35,21 @@ func New(store *rules.Store, log *history.Log, ups *upstreams.Store) (*Server, e
 }
 
 type page struct {
-	Title           string
-	Rules           []ruleRow
-	Form            formView
-	Methods         []string
-	Error           string
-	ActiveUpstream  string
-	Upstreams       []upstreamRow
-	UpstreamForm    upstreamForm
-	UpstreamChoices []upstreamChoice
+	Title               string
+	Rules               []ruleRow
+	Form                formView
+	Methods             []string
+	Error               string
+	ActiveUpstream      string
+	Upstreams           []upstreamRow
+	UpstreamForm        upstreamForm
+	UpstreamChoices     []upstreamChoice
+	RulesAction         string
+	RuleUpstreamKey     string
+	RuleUpstreamLabel   string
+	RuleUpstreamChoices []upstreamChoice
+	RuleShown           int
+	RuleTotal           int
 }
 
 type ruleRow struct {
@@ -97,7 +103,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		s.rulesPage(w, http.StatusOK)
+		s.rulesPage(w, r, http.StatusOK)
 	case path == "/_admin/rules/new" && r.Method == http.MethodGet:
 		s.render(w, "rule_form", page{
 			Title:           "New rule",
@@ -168,9 +174,14 @@ func (s *Server) ruleRoute(w http.ResponseWriter, r *http.Request, rest string) 
 	}
 }
 
-func (s *Server) rulesPage(w http.ResponseWriter, status int) {
+func (s *Server) rulesPage(w http.ResponseWriter, r *http.Request, status int) {
+	all := s.rules.List()
+	key, label := s.parseRuleUpstream(r.URL.Query().Get("upstream"))
 	rows := make([]ruleRow, 0)
-	for _, rule := range s.rules.List() {
+	for _, rule := range all {
+		if !ruleMatchesUpstream(rule, key, s.upstreamIDByName(key)) {
+			continue
+		}
 		name := rule.Name
 		if name == "" {
 			name = "Untitled"
@@ -194,7 +205,73 @@ func (s *Server) rulesPage(w http.ResponseWriter, status int) {
 			Upstream:   s.upstreamLabel(rule.UpstreamID),
 		})
 	}
-	s.render(w, "rules", page{Title: "Rules", Rules: rows, ActiveUpstream: s.activeUpstreamName()}, status)
+	action := r.URL.Path
+	if action == "/_admin/" {
+		action = "/_admin"
+	}
+	s.render(w, "rules", page{
+		Title:               "Rules",
+		Rules:               rows,
+		ActiveUpstream:      s.activeUpstreamName(),
+		RulesAction:         action,
+		RuleUpstreamKey:     key,
+		RuleUpstreamLabel:   label,
+		RuleUpstreamChoices: s.ruleUpstreamChoices(key),
+		RuleShown:           len(rows),
+		RuleTotal:           len(all),
+	}, status)
+}
+
+func (s *Server) parseRuleUpstream(raw string) (string, string) {
+	name := strings.TrimSpace(raw)
+	if name == "" {
+		return "", "All upstreams"
+	}
+	if name == "any" {
+		return "any", "Any"
+	}
+	if s.upstreamIDByName(name) != "" {
+		return name, name
+	}
+	return "", "All upstreams"
+}
+
+func (s *Server) upstreamIDByName(name string) string {
+	if name == "" || name == "any" || s.upstreams == nil {
+		return ""
+	}
+	for _, item := range s.upstreams.List() {
+		if item.Name == name {
+			return item.ID
+		}
+	}
+	return ""
+}
+
+func (s *Server) ruleUpstreamChoices(selected string) []upstreamChoice {
+	if s.upstreams == nil {
+		return nil
+	}
+	choices := make([]upstreamChoice, 0)
+	for _, item := range s.upstreams.List() {
+		choices = append(choices, upstreamChoice{
+			ID:       item.ID,
+			Name:     item.Name,
+			Selected: item.Name == selected,
+		})
+	}
+	return choices
+}
+
+func ruleMatchesUpstream(rule rules.Rule, key, namedID string) bool {
+	switch key {
+	case "":
+		return true
+	case "any":
+		return rule.UpstreamID == ""
+	default:
+		return rule.UpstreamID == namedID || rule.UpstreamID == ""
+	}
 }
 
 func (s *Server) createRule(w http.ResponseWriter, r *http.Request) {

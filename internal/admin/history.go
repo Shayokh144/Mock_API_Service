@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Shayokh144/Mock_API_Service/internal/history"
 )
@@ -30,6 +31,7 @@ type historyPageData struct {
 	UpstreamKey     string
 	UpstreamLabel   string
 	UpstreamChoices []historyUpstreamChoice
+	Text            string
 	Shown           int
 	Total           int
 }
@@ -155,6 +157,7 @@ func (s *Server) historyFeed(w http.ResponseWriter, r *http.Request) {
 		Label:         data.FilterLabel,
 		Upstream:      data.UpstreamKey,
 		UpstreamLabel: data.UpstreamLabel,
+		Text:          data.Text,
 		Shown:         data.Shown,
 		Total:         data.Total,
 		Entries:       make([]historyFeedRow, 0, len(shown)),
@@ -218,6 +221,8 @@ func (s *Server) historyView(r *http.Request) ([]history.Entry, historyPageData)
 		data.UpstreamKey = upstreamKey
 		data.UpstreamLabel = s.upstreamFilterLabel(entries, upstreamKey)
 	}
+	text := normalizeHistoryText(r.URL.Query().Get("q"))
+	data.Text = text
 	shown := entries
 	if sourceKey != "" {
 		shown = history.Filter(shown, history.Source(sourceKey))
@@ -225,11 +230,14 @@ func (s *Server) historyView(r *http.Request) ([]history.Entry, historyPageData)
 	if upstreamKey != "" {
 		shown = history.FilterUpstream(shown, upstreamKey)
 	}
+	if text != "" {
+		shown = filterHistoryText(shown, text)
+	}
 	data.Shown = len(shown)
-	data.SourceAll = template.URL(historyQueryString("", upstreamKey))
-	data.SourceMock = template.URL(historyQueryString(string(history.SourceMock), upstreamKey))
-	data.SourceReal = template.URL(historyQueryString(string(history.SourceUpstream), upstreamKey))
-	data.FilterQuery = template.URL(historyQueryString(sourceKey, upstreamKey))
+	data.SourceAll = template.URL(historyQueryString("", upstreamKey, text))
+	data.SourceMock = template.URL(historyQueryString(string(history.SourceMock), upstreamKey, text))
+	data.SourceReal = template.URL(historyQueryString(string(history.SourceUpstream), upstreamKey, text))
+	data.FilterQuery = template.URL(historyQueryString(sourceKey, upstreamKey, text))
 	data.UpstreamChoices = s.upstreamFilterChoices(entries, upstreamKey)
 	return shown, data
 }
@@ -243,15 +251,18 @@ func historyReturnPath(r *http.Request) string {
 	if upstream, ok := history.ParseUpstream(r.URL.Query().Get("upstream")); ok {
 		upstreamKey = upstream
 	}
-	query := historyQueryString(sourceKey, upstreamKey)
+	query := historyQueryString(sourceKey, upstreamKey, normalizeHistoryText(r.URL.Query().Get("q")))
 	if query == "" {
 		return "/_admin/history"
 	}
 	return "/_admin/history" + query
 }
 
-func historyQueryString(source, upstream string) string {
+func historyQueryString(source, upstream, text string) string {
 	values := url.Values{}
+	if text != "" {
+		values.Set("q", text)
+	}
 	if source != "" {
 		values.Set("source", source)
 	}
@@ -263,6 +274,34 @@ func historyQueryString(source, upstream string) string {
 		return ""
 	}
 	return "?" + encoded
+}
+
+func normalizeHistoryText(raw string) string {
+	q := strings.TrimSpace(raw)
+	if utf8.RuneCountInString(q) <= 200 {
+		return q
+	}
+	runes := []rune(q)
+	return string(runes[:200])
+}
+
+func filterHistoryText(entries []history.Entry, q string) []history.Entry {
+	needle := strings.ToLower(q)
+	out := make([]history.Entry, 0, len(entries))
+	for _, entry := range entries {
+		if strings.Contains(strings.ToLower(historyTarget(entry)), needle) {
+			out = append(out, entry)
+		}
+	}
+	return out
+}
+
+func historyTarget(entry history.Entry) string {
+	target := entry.Path
+	if entry.RawQuery != "" {
+		target += "?" + entry.RawQuery
+	}
+	return target
 }
 
 func (s *Server) upstreamFilterLabel(entries []history.Entry, id string) string {
@@ -347,14 +386,10 @@ func formatHistoryTime(t time.Time) string {
 }
 
 func historyRowFrom(entry history.Entry) historyRow {
-	target := entry.Path
-	if entry.RawQuery != "" {
-		target += "?" + entry.RawQuery
-	}
 	return historyRow{
 		ID:       entry.ID,
 		Method:   entry.Method,
-		URL:      target,
+		URL:      historyTarget(entry),
 		Status:   entry.Status,
 		Source:   historySourceLabel(entry),
 		Upstream: entry.UpstreamName,
@@ -386,6 +421,7 @@ type historyFeed struct {
 	Label         string           `json:"label"`
 	Upstream      string           `json:"upstream"`
 	UpstreamLabel string           `json:"upstream_label"`
+	Text          string           `json:"text"`
 	Shown         int              `json:"shown"`
 	Total         int              `json:"total"`
 	Entries       []historyFeedRow `json:"entries"`
