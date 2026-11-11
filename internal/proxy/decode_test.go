@@ -60,6 +60,15 @@ func TestDisplayBodyDecodesEncodings(t *testing.T) {
 	}
 }
 
+func TestHistoryCopyKeepsDecodedText(t *testing.T) {
+	raw := []byte(`{"ok":true}`)
+	headers := http.Header{"Content-Encoding": {"gzip"}, "Content-Type": {"application/json"}}
+	shown, plain, truncated, decoded := historyCopy(headers, gzipBytes(t, raw))
+	if truncated || !decoded || plain != `{"ok":true}` || !strings.Contains(shown, "\n") || strings.Contains(plain, "\n") {
+		t.Fatalf("shown=%q plain=%q truncated=%v decoded=%v", shown, plain, truncated, decoded)
+	}
+}
+
 func TestDisplayBodyCapsDecompressedSize(t *testing.T) {
 	raw := bytes.Repeat([]byte("x"), config.HistoryBodyPreview+2048)
 	headers := http.Header{"Content-Encoding": {"gzip"}, "Content-Type": {"text/plain"}}

@@ -338,13 +338,13 @@ func (h *Handler) record(started time.Time, r *http.Request, reqHeaders http.Hea
 		return
 	}
 	status, respHeaders, respRaw, respCut := capw.snapshot()
-	var respBody string
-	var respTrunc bool
+	var respBody, respPlain string
+	var respTrunc, respDecoded bool
 	if respCut {
 		respBody = fmt.Sprintf("body exceeds %d bytes and was not decoded", config.MaxBufferedBody)
 		respTrunc = true
 	} else {
-		respBody, respTrunc = displayBody(respHeaders, respRaw)
+		respBody, respPlain, respTrunc, respDecoded = historyCopy(respHeaders, respRaw)
 	}
 	reqBody, reqTrunc := displayBody(reqHeaders, payload)
 	h.history.Add(history.Entry{
@@ -358,6 +358,8 @@ func (h *Handler) record(started time.Time, r *http.Request, reqHeaders http.Hea
 		Status:                status,
 		ResponseHeaders:       respHeaders,
 		ResponseBody:          respBody,
+		ResponsePlain:         respPlain,
+		ResponseDecoded:       respDecoded,
 		Source:                source,
 		RuleID:                ruleID,
 		DelayMS:               delayMS,

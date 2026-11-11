@@ -387,6 +387,8 @@ Open a row to see headers and bodies. A preview longer than 64 KiB is marked tru
 
 History stores a decoded copy of the body when `Content-Encoding` is `gzip`, `deflate` (zlib or raw), `br`, or `identity`. Stacked encodings are undone from the outside in. The bytes and headers sent to the client stay unchanged. The decoded copy stops at 64 KiB. A corrupt or unknown encoding is a short note, not compressed bytes. A binary or non-UTF-8 body is a note with the size and content type. JSON is indented. Request bodies follow the same rules. Decoding happens when the row is recorded, so history keeps the preview text.
 
+Each row, and the detail page, has **Create rule**. It opens the new-rule form with nothing saved yet. The name is the method and path, the upstream is the one that served the call, and the path is the forwarded path with no query. Query parameters become query conditions. Status, headers, and body come from the recorded response, without pretty-printed JSON. Raw response is filled in as well, without `Content-Length`, `Transfer-Encoding`, or `Content-Encoding` when the stored body was decoded. Delay is 0 and the rule is enabled. An upstream error or a rejected row fills only the request side. A missing history id leaves the form empty and says the entry is gone.
+
 Delete one row from the list or the detail page. The list returns to the same filter. **Clear all history** opens a dialog on this page: “Delete all recorded requests? Rules are kept.” Cancel closes it, and so do Escape and a click on the dimmed page. **Clear all** posts to `/_admin/history/clear` and returns to the same source, upstream, and text filter. With JavaScript off, the link still opens the confirm page, and that page posts the same way. A GET never clears history. Clear removes every entry, including rows the filter is hiding. Both actions keep the rules.
 
 ## Tests
@@ -429,6 +431,7 @@ Use this on a Mac after the automated tests pass. The implementation environment
 22. A raw response rule sends the pasted status, headers, and body. `Connection: close` closes the connection. `X-Mock-Response` is omitted unless the checkbox is on. An older rules file stays in Fields mode. The delay still applies.
 23. A POST `/oauth/token` rule with body condition `grant_type=refresh_token` returns the raw 401. `grant_type=authorization_code` still passes through. The rules list shows the condition. An older rules file with no conditions still matches on method and path.
 24. History **URL contains** keeps `?q=user/me` and combines with the source tabs and the upstream menu. The rules **Upstream** menu keeps `?upstream=OKYA_AUTH_DEV`, includes Any rules for a named upstream, and shows only Any rules when Any is selected.
+25. **Create rule** on a history row or its detail page opens the new-rule form filled from that call. Nothing is saved until Create rule is pressed. A missing history id leaves the form empty.
 
 ## Troubleshooting
 

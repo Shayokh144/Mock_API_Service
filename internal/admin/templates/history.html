@@ -57,9 +57,12 @@
       <td>{{.Delay}}</td>
       <td>{{.When}}</td>
       <td>
-        <form method="post" action="/_admin/history/{{.ID}}/delete{{$.FilterQuery}}">
-          <button class="danger" type="submit">Delete</button>
-        </form>
+        <div class="actions">
+          <a href="/_admin/rules/new?from={{.ID}}">Create rule</a>
+          <form class="inline" method="post" action="/_admin/history/{{.ID}}/delete{{$.FilterQuery}}">
+            <button class="danger" type="submit">Delete</button>
+          </form>
+        </div>
       </td>
     </tr>
     {{end}}

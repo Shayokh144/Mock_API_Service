@@ -37,6 +37,8 @@ type Entry struct {
 	Status                int
 	ResponseHeaders       http.Header
 	ResponseBody          string
+	ResponsePlain         string
+	ResponseDecoded       bool
 	Source                Source
 	RuleID                string
 	DelayMS               int

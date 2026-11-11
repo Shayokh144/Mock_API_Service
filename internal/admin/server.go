@@ -105,12 +105,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		s.rulesPage(w, r, http.StatusOK)
 	case path == "/_admin/rules/new" && r.Method == http.MethodGet:
-		s.render(w, "rule_form", page{
-			Title:           "New rule",
-			Methods:         methods,
-			Form:            formView{Action: "/_admin/rules", Submit: "Create rule", Method: http.MethodGet, StatusCode: "200", DelayMS: "0", Enabled: true},
-			UpstreamChoices: s.upstreamChoices(""),
-		}, http.StatusOK)
+		s.newRule(w, r)
 	case strings.HasPrefix(path, "/_admin/rules/"):
 		s.ruleRoute(w, r, strings.TrimPrefix(path, "/_admin/rules/"))
 	case path == "/_admin/upstreams" && r.Method == http.MethodPost:
