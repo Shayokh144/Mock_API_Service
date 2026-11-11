@@ -1,10 +1,18 @@
 (function () {
   var summary = document.getElementById("history-summary");
   var upstreamSummary = document.getElementById("history-upstream");
+  var search = document.getElementById("history-text-filter");
   var rows = document.getElementById("history-rows");
   var empty = document.getElementById("history-empty");
   if (!summary) {
     return;
+  }
+
+  function currentText() {
+    if (!search) {
+      return "";
+    }
+    return search.value.replace(/^\s+|\s+$/g, "");
   }
 
   function filterQuery() {
@@ -12,20 +20,62 @@
     var kept = new URLSearchParams();
     var source = params.get("source");
     var upstream = params.get("upstream");
+    var text = currentText();
+    if (text) {
+      kept.set("q", text);
+    }
     if (source) {
       kept.set("source", source);
     }
     if (upstream) {
       kept.set("upstream", upstream);
     }
-    var text = kept.toString();
-    if (!text) {
+    var encoded = kept.toString();
+    if (!encoded) {
       return "";
     }
-    return "?" + text;
+    return "?" + encoded;
   }
 
-  var query = filterQuery();
+  function summaryLine(label, text, shown, total) {
+    var line = "Filter: " + label + ".";
+    if (text) {
+      line += " Text: " + text + ".";
+    }
+    return line + " Showing " + shown + " of " + total + ".";
+  }
+
+  function syncAddress() {
+    var params = new URLSearchParams(window.location.search);
+    var text = currentText();
+    if (text) {
+      params.set("q", text);
+    } else {
+      params.delete("q");
+    }
+    var encoded = params.toString();
+    var next = window.location.pathname + (encoded ? "?" + encoded : "");
+    if (window.history && window.history.replaceState) {
+      window.history.replaceState(null, "", next);
+    }
+    var links = document.querySelectorAll('nav[aria-label="History source"] a');
+    var upstream = params.get("upstream") || "";
+    for (var i = 0; i < links.length; i++) {
+      var source = links[i].getAttribute("data-source") || "";
+      var kept = new URLSearchParams();
+      if (text) {
+        kept.set("q", text);
+      }
+      if (source) {
+        kept.set("source", source);
+      }
+      if (upstream) {
+        kept.set("upstream", upstream);
+      }
+      var href = kept.toString();
+      links[i].setAttribute("href", "/_admin/history" + (href ? "?" + href : ""));
+    }
+  }
 
   function cell(text) {
     var td = document.createElement("td");
@@ -64,7 +114,7 @@
     return rows;
   }
 
-  function buildRow(entry) {
+  function buildRow(entry, query) {
     var tr = document.createElement("tr");
     tr.setAttribute("data-id", entry.id);
     tr.appendChild(cell(entry.method));
@@ -102,7 +152,7 @@
     return seen;
   }
 
-  function addNew(entries) {
+  function addNew(entries, query) {
     var body = ensureRows();
     var seen = knownIds(body);
     var fresh = [];
@@ -113,13 +163,33 @@
     }
     for (var n = 0; n < fresh.length; n++) {
       var before = body.children[n] || null;
-      body.insertBefore(buildRow(fresh[n]), before);
+      body.insertBefore(buildRow(fresh[n], query), before);
     }
   }
 
+  function applyLocal(text) {
+    if (!rows) {
+      return 0;
+    }
+    var needle = text.toLowerCase();
+    var list = rows.querySelectorAll("tr[data-id]");
+    var visible = 0;
+    for (var i = 0; i < list.length; i++) {
+      var link = list[i].querySelector("a");
+      var url = link ? link.textContent : "";
+      var show = !needle || url.toLowerCase().indexOf(needle) !== -1;
+      list[i].hidden = !show;
+      if (show) {
+        visible++;
+      }
+    }
+    return visible;
+  }
+
   function tick() {
+    var query = filterQuery();
     var request = new XMLHttpRequest();
-    request.open("GET", "/_admin/history/feed" + filterQuery(), true);
+    request.open("GET", "/_admin/history/feed" + query, true);
     request.setRequestHeader("Accept", "application/json");
     request.onreadystatechange = function () {
       if (request.readyState !== 4 || request.status !== 200) {
@@ -134,13 +204,26 @@
       if (!data || !data.entries) {
         return;
       }
-      summary.textContent = "Filter: " + data.label + ". Showing " + data.shown + " of " + data.total + ".";
+      summary.textContent = summaryLine(data.label, data.text || "", data.shown, data.total);
+      summary.setAttribute("data-label", data.label || "");
+      summary.setAttribute("data-total", String(data.total));
       if (upstreamSummary) {
         upstreamSummary.textContent = "Upstream: " + (data.upstream_label || "All upstreams") + ".";
       }
-      addNew(data.entries);
+      addNew(data.entries, query);
+      applyLocal(currentText());
     };
     request.send();
+  }
+
+  if (search) {
+    search.addEventListener("input", function () {
+      var text = currentText();
+      var visible = applyLocal(text);
+      summary.textContent = summaryLine(summary.getAttribute("data-label") || "All", text, visible, summary.getAttribute("data-total") || "0");
+      syncAddress();
+      tick();
+    });
   }
 
   window.setInterval(tick, 1000);

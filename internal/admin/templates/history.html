@@ -2,12 +2,14 @@
 {{template "head" .}}
 <p>Rules are kept. Deleting history does not delete rules.</p>
 <nav aria-label="History source">
-  <a href="/_admin/history{{.SourceAll}}"{{if eq .FilterKey "all"}} aria-current="page"{{end}}>All</a>
-  <a href="/_admin/history{{.SourceMock}}"{{if eq .FilterKey "mock"}} aria-current="page"{{end}}>Mocked</a>
-  <a href="/_admin/history{{.SourceReal}}"{{if eq .FilterKey "upstream"}} aria-current="page"{{end}}>Real server</a>
+  <a data-source="" href="/_admin/history{{.SourceAll}}"{{if eq .FilterKey "all"}} aria-current="page"{{end}}>All</a>
+  <a data-source="mock" href="/_admin/history{{.SourceMock}}"{{if eq .FilterKey "mock"}} aria-current="page"{{end}}>Mocked</a>
+  <a data-source="upstream" href="/_admin/history{{.SourceReal}}"{{if eq .FilterKey "upstream"}} aria-current="page"{{end}}>Real server</a>
 </nav>
 <form method="get" action="/_admin/history">
   {{if ne .FilterKey "all"}}<input type="hidden" name="source" value="{{.FilterKey}}">{{end}}
+  <label for="history-text-filter">URL contains</label>
+  <input id="history-text-filter" name="q" type="search" value="{{.Text}}" maxlength="200">
   <label for="history-upstream-filter">Upstream</label>
   <select id="history-upstream-filter" name="upstream">
     <option value="" {{if not .UpstreamKey}}selected{{end}}>All upstreams</option>
@@ -17,9 +19,9 @@
   </select>
   <button type="submit">Apply</button>
 </form>
-<p id="history-summary">Filter: {{.FilterLabel}}. Showing {{.Shown}} of {{.Total}}.</p>
+<p id="history-summary" data-label="{{.FilterLabel}}" data-total="{{.Total}}">Filter: {{.FilterLabel}}.{{if .Text}} Text: {{.Text}}.{{end}} Showing {{.Shown}} of {{.Total}}.</p>
 <p id="history-upstream">Upstream: {{.UpstreamLabel}}.</p>
-<p class="hint">New rows are added at the top while this page is open. A row already on screen stays put. Reload the page if JavaScript is off.</p>
+<p class="hint">URL contains matches the path and query, ignoring case. Apply stores it in the address, so a reload keeps it. Typing filters the rows on screen, and new rows follow the text in the box. Reload the page if JavaScript is off.</p>
 <p class="hint">A fresh-request rule is a real server response. Its source stays <code>upstream</code>, so Real server includes it. The source column says <code>upstream (fresh rule)</code> when a rule selected that response. It is not a mock. <code>upstream-error</code> and <code>rejected</code> stay under All.</p>
 <p><a href="/_admin/history/clear{{.FilterQuery}}">Clear all history</a></p>
 {{if .Entries}}
