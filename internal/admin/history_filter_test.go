@@ -72,6 +72,12 @@ func TestHistorySourceFilter(t *testing.T) {
 		t.Fatalf("mocked filter showed a real response:\n%s", mocked)
 	}
 	assertContains(t, mocked, "/delete?source=mock")
+	assertContains(t, mocked, `<dialog id="history-clear-dialog">`)
+	assertContains(t, mocked, "Delete all recorded requests? Rules are kept.")
+	assertContains(t, mocked, `href="/_admin/history/clear?source=mock"`)
+	assertContains(t, mocked, `id="history-clear-form" method="post" action="/_admin/history/clear?source=mock"`)
+	assertContains(t, mocked, `id="history-clear-cancel">Cancel`)
+	assertContains(t, mocked, `class="danger" type="submit">Clear all`)
 
 	real := get(t, client, srv.URL+"/_admin/history?source=upstream")
 	assertContains(t, real, "Filter: Real server. Showing 2 of 6.")
@@ -117,6 +123,9 @@ func TestHistorySourceFilter(t *testing.T) {
 	confirm := get(t, client, srv.URL+"/_admin/history/clear?source=mock")
 	assertContains(t, confirm, "including entries hidden")
 	assertContains(t, confirm, `action="/_admin/history/clear?source=mock"`)
+	if len(log.List()) == 0 {
+		t.Fatal("opening the confirm page cleared history")
+	}
 	cleared, err := client.PostForm(srv.URL+"/_admin/history/clear?source=mock", nil)
 	if err != nil {
 		t.Fatal(err)

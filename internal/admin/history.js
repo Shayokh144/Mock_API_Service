@@ -75,6 +75,15 @@
       var href = kept.toString();
       links[i].setAttribute("href", "/_admin/history" + (href ? "?" + href : ""));
     }
+    var clearHref = "/_admin/history/clear" + filterQuery();
+    var clearLink = document.getElementById("history-clear");
+    if (clearLink) {
+      clearLink.setAttribute("href", clearHref);
+    }
+    var clearForm = document.getElementById("history-clear-form");
+    if (clearForm) {
+      clearForm.setAttribute("action", clearHref);
+    }
   }
 
   function cell(text) {
@@ -214,6 +223,28 @@
       applyLocal(currentText());
     };
     request.send();
+  }
+
+  var clearLink = document.getElementById("history-clear");
+  var clearDialog = document.getElementById("history-clear-dialog");
+  var clearCancel = document.getElementById("history-clear-cancel");
+  if (clearLink && clearDialog && typeof clearDialog.showModal === "function") {
+    clearLink.addEventListener("click", function (event) {
+      event.preventDefault();
+      if (!clearDialog.open) {
+        clearDialog.showModal();
+      }
+    });
+    if (clearCancel) {
+      clearCancel.addEventListener("click", function () {
+        clearDialog.close();
+      });
+    }
+    clearDialog.addEventListener("click", function (event) {
+      if (event.target === clearDialog) {
+        clearDialog.close();
+      }
+    });
   }
 
   if (search) {

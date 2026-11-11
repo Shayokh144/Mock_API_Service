@@ -387,7 +387,7 @@ Open a row to see headers and bodies. A preview longer than 64 KiB is marked tru
 
 History stores a decoded copy of the body when `Content-Encoding` is `gzip`, `deflate` (zlib or raw), `br`, or `identity`. Stacked encodings are undone from the outside in. The bytes and headers sent to the client stay unchanged. The decoded copy stops at 64 KiB. A corrupt or unknown encoding is a short note, not compressed bytes. A binary or non-UTF-8 body is a note with the size and content type. JSON is indented. Request bodies follow the same rules. Decoding happens when the row is recorded, so history keeps the preview text.
 
-Delete one row from the list or the detail page. The list returns to the same filter. **Clear all history** opens a confirm page first. Clear removes every entry, including rows the filter is hiding. Both actions keep the rules. The pages say that rules are kept.
+Delete one row from the list or the detail page. The list returns to the same filter. **Clear all history** opens a dialog on this page: “Delete all recorded requests? Rules are kept.” Cancel closes it, and so do Escape and a click on the dimmed page. **Clear all** posts to `/_admin/history/clear` and returns to the same source, upstream, and text filter. With JavaScript off, the link still opens the confirm page, and that page posts the same way. A GET never clears history. Clear removes every entry, including rows the filter is hiding. Both actions keep the rules.
 
 ## Tests
 
@@ -417,7 +417,7 @@ Use this on a Mac after the automated tests pass. The implementation environment
 10. A mocked response includes `X-Mock-Response: true`. A passthrough response does not add it.
 11. The history list shows method, URL, status, source, and timestamp.
 12. A history detail page shows headers and bodies.
-13. Delete-one and clear-all remove only history. Clear-all asks for confirmation.
+13. Delete-one and clear-all remove only history. Clear-all asks in a dialog on the History page. Without JavaScript it still uses the confirm page. A GET never clears history.
 14. After a restart, rules are still there and history is empty.
 15. A request under `/_admin` never reaches the upstream server.
 16. `go test ./...` passes.

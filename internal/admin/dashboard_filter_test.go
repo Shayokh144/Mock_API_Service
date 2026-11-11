@@ -71,6 +71,8 @@ func TestHistoryTextFilter(t *testing.T) {
 	assertContains(t, combined, "q=USER%2FME")
 	assertContains(t, combined, "source=mock")
 	assertContains(t, combined, "upstream="+other.ID)
+	assertContains(t, combined, `href="/_admin/history/clear?q=USER%2FME&amp;source=mock&amp;upstream=`+other.ID+`"`)
+	assertContains(t, combined, `action="/_admin/history/clear?q=USER%2FME&amp;source=mock&amp;upstream=`+other.ID+`"`)
 
 	blank := get(t, client, srv.URL+"/_admin/history?q=%20%20")
 	assertContains(t, blank, "Filter: All. Showing 4 of 4.")
@@ -91,7 +93,7 @@ func TestHistoryTextFilter(t *testing.T) {
 		t.Fatal(err)
 	}
 	script := readAll(t, scriptResp)
-	for _, want := range []string{`kept.set("q"`, `addEventListener("input"`, "history-text-filter", "Text: "} {
+	for _, want := range []string{`kept.set("q"`, `addEventListener("input"`, "history-text-filter", "Text: ", "showModal", "history-clear-dialog"} {
 		if !strings.Contains(script, want) {
 			t.Fatalf("history.js missing %q", want)
 		}
