@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"html/template"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -50,6 +51,14 @@ type page struct {
 	RuleUpstreamChoices []upstreamChoice
 	RuleShown           int
 	RuleTotal           int
+	RuleGroups          []ruleGroup
+	RuleFilterQuery     string
+}
+
+type ruleGroup struct {
+	Heading string
+	Count   string
+	Rules   []ruleRow
 }
 
 type ruleRow struct {
@@ -65,6 +74,7 @@ type ruleRow struct {
 	Delay      string
 	Mode       string
 	Upstream   string
+	UpstreamID string
 }
 
 type upstreamRow struct {
@@ -198,6 +208,7 @@ func (s *Server) rulesPage(w http.ResponseWriter, r *http.Request, status int) {
 			Delay:      delayLabel(rule.DelayMS),
 			Mode:       modeLabel(rule.ResponseMode),
 			Upstream:   s.upstreamLabel(rule.UpstreamID),
+			UpstreamID: rule.UpstreamID,
 		})
 	}
 	action := r.URL.Path
@@ -214,6 +225,8 @@ func (s *Server) rulesPage(w http.ResponseWriter, r *http.Request, status int) {
 		RuleUpstreamChoices: s.ruleUpstreamChoices(key),
 		RuleShown:           len(rows),
 		RuleTotal:           len(all),
+		RuleGroups:          s.ruleGroups(rows),
+		RuleFilterQuery:     s.upstreamQuery(r),
 	}, status)
 }
 
@@ -258,6 +271,101 @@ func (s *Server) ruleUpstreamChoices(selected string) []upstreamChoice {
 	return choices
 }
 
+func (s *Server) ruleGroups(rows []ruleRow) []ruleGroup {
+	anyRows := []ruleRow{}
+	byID := map[string][]ruleRow{}
+	unknown := map[string][]ruleRow{}
+	var unknownIDs []string
+	known := map[string]upstreams.Upstream{}
+	activeID := ""
+	if s.upstreams != nil {
+		if active, ok := s.upstreams.Active(); ok {
+			activeID = active.ID
+		}
+		for _, item := range s.upstreams.List() {
+			known[item.ID] = item
+		}
+	}
+	for _, row := range rows {
+		if row.UpstreamID == "" {
+			anyRows = append(anyRows, row)
+			continue
+		}
+		if _, ok := known[row.UpstreamID]; ok {
+			byID[row.UpstreamID] = append(byID[row.UpstreamID], row)
+			continue
+		}
+		if _, seen := unknown[row.UpstreamID]; !seen {
+			unknownIDs = append(unknownIDs, row.UpstreamID)
+		}
+		unknown[row.UpstreamID] = append(unknown[row.UpstreamID], row)
+	}
+	groups := []ruleGroup{}
+	if s.upstreams != nil {
+		for _, item := range s.upstreams.List() {
+			block := byID[item.ID]
+			if len(block) == 0 {
+				continue
+			}
+			groups = append(groups, ruleGroup{
+				Heading: upstreamBlockHeading(item, item.ID == activeID),
+				Count:   ruleCountLabel(len(block)),
+				Rules:   block,
+			})
+		}
+	}
+	for _, id := range unknownIDs {
+		block := unknown[id]
+		groups = append(groups, ruleGroup{
+			Heading: "Unknown upstream: " + id,
+			Count:   ruleCountLabel(len(block)),
+			Rules:   block,
+		})
+	}
+	if len(anyRows) > 0 {
+		groups = append(groups, ruleGroup{
+			Heading: "Any upstream",
+			Count:   ruleCountLabel(len(anyRows)),
+			Rules:   anyRows,
+		})
+	}
+	return groups
+}
+
+func upstreamBlockHeading(item upstreams.Upstream, fallback bool) string {
+	heading := item.Name
+	if item.Prefix != "" {
+		heading += " · " + item.Prefix
+	}
+	if fallback {
+		heading += " · fallback"
+	}
+	return heading
+}
+
+func ruleCountLabel(n int) string {
+	if n == 1 {
+		return "1 rule"
+	}
+	return strconv.Itoa(n) + " rules"
+}
+
+func (s *Server) upstreamQuery(r *http.Request) string {
+	key, _ := s.parseRuleUpstream(r.URL.Query().Get("upstream"))
+	if key == "" {
+		return ""
+	}
+	return "?" + url.Values{"upstream": {key}}.Encode()
+}
+
+func (s *Server) rulesHome(r *http.Request) string {
+	query := s.upstreamQuery(r)
+	if query == "" {
+		return "/_admin"
+	}
+	return "/_admin" + query
+}
+
 func ruleMatchesUpstream(rule rules.Rule, key, namedID string) bool {
 	switch key {
 	case "":
@@ -298,10 +406,11 @@ func (s *Server) editForm(w http.ResponseWriter, r *http.Request, id string, pos
 		http.NotFound(w, r)
 		return
 	}
-	view := viewFromRule(rule, "/_admin/rules/"+id, "Save rule")
+	action := "/_admin/rules/" + id + s.upstreamQuery(r)
+	view := viewFromRule(rule, action, "Save rule")
 	if message != "" {
 		view = posted
-		view.Action = "/_admin/rules/" + id
+		view.Action = action
 		view.Submit = "Save rule"
 	}
 	s.render(w, "rule_form", page{
@@ -335,7 +444,7 @@ func (s *Server) updateRule(w http.ResponseWriter, r *http.Request, id string) {
 		s.editForm(w, r, id, view, err.Error())
 		return
 	}
-	http.Redirect(w, r, "/_admin", http.StatusSeeOther)
+	http.Redirect(w, r, s.rulesHome(r), http.StatusSeeOther)
 }
 
 func (s *Server) toggleRule(w http.ResponseWriter, r *http.Request, id string) {
@@ -368,7 +477,7 @@ func (s *Server) toggleRule(w http.ResponseWriter, r *http.Request, id string) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	http.Redirect(w, r, "/_admin", http.StatusSeeOther)
+	http.Redirect(w, r, s.rulesHome(r), http.StatusSeeOther)
 }
 
 func (s *Server) deleteRule(w http.ResponseWriter, r *http.Request, id string) {
@@ -380,7 +489,7 @@ func (s *Server) deleteRule(w http.ResponseWriter, r *http.Request, id string) {
 		http.NotFound(w, r)
 		return
 	}
-	http.Redirect(w, r, "/_admin", http.StatusSeeOther)
+	http.Redirect(w, r, s.rulesHome(r), http.StatusSeeOther)
 }
 
 func (s *Server) formError(w http.ResponseWriter, title string, view formView, err error) {

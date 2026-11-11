@@ -163,4 +163,136 @@ func TestRulesUpstreamFilter(t *testing.T) {
 	if strings.Contains(unknown, "upstream=missing") || strings.Contains(unknown, `value="missing"`) {
 		t.Fatal("unknown upstream filter was kept")
 	}
+	okyaAt := strings.Index(unknown, "<h2>OKYA_AUTH_DEV · fallback</h2>")
+	developAt := strings.Index(unknown, "<h2>develop</h2>")
+	anyAt := strings.Index(unknown, "<h2>Any upstream</h2>")
+	if okyaAt < 0 || developAt < okyaAt || anyAt < developAt {
+		t.Fatalf("blocks are not in upstream order:\n%s", unknown)
+	}
+	if strings.Contains(unknown, `scope="col">Upstream<`) {
+		t.Fatal("grouped tables still have an Upstream column")
+	}
+
+	assertContains(t, named, "<h2>OKYA_AUTH_DEV · fallback</h2>")
+	assertContains(t, named, "<h2>Any upstream</h2>")
+	assertContains(t, named, "1 rule")
+	if strings.Contains(named, "<h2>develop</h2>") {
+		t.Fatal("empty develop block was shown")
+	}
+}
+
+func TestRuleGroupsKeepOrderAndFilter(t *testing.T) {
+	dir := t.TempDir()
+	store, err := rules.Load(filepath.Join(dir, "rules.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ups, err := upstreams.Load(filepath.Join(dir, "upstreams.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	okya, err := ups.Create("OKYA_AUTH_DEV", "http://127.0.0.1:9", "/okya-auth")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ups.Create("unused", "http://127.0.0.1:9", ""); err != nil {
+		t.Fatal(err)
+	}
+	gone := "0123456789abcdef"
+	var first, second rules.Rule
+	for _, draft := range []rules.Draft{
+		{Name: "First", Enabled: true, Method: "GET", PathPattern: "/first", StatusCode: 200, UpstreamID: okya.ID},
+		{Name: "Second", Enabled: true, Method: "GET", PathPattern: "/second", StatusCode: 200, UpstreamID: okya.ID},
+		{Name: "Shared", Enabled: true, Method: "GET", PathPattern: "/shared", StatusCode: 200},
+		{Name: "Orphan", Enabled: true, Method: "GET", PathPattern: "/orphan", StatusCode: 200, UpstreamID: gone},
+	} {
+		saved, err := store.Create(draft)
+		if err != nil {
+			t.Fatal(err)
+		}
+		switch saved.Name {
+		case "First":
+			first = saved
+		case "Second":
+			second = saved
+		}
+	}
+	dashboard, err := New(store, history.New(10), ups)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(dashboard)
+	defer srv.Close()
+	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}}
+
+	page := get(t, client, srv.URL+"/_admin")
+	okyaAt := strings.Index(page, "<h2>OKYA_AUTH_DEV · /okya-auth · fallback</h2>")
+	unknownAt := strings.Index(page, "<h2>Unknown upstream: "+gone+"</h2>")
+	anyAt := strings.Index(page, "<h2>Any upstream</h2>")
+	if okyaAt < 0 || unknownAt < okyaAt || anyAt < unknownAt {
+		t.Fatalf("block order:\n%s", page)
+	}
+	if strings.Index(page, "First") > strings.Index(page, "Second") {
+		t.Fatalf("rule order inside the block changed:\n%s", page)
+	}
+	assertContains(t, page, "2 rules")
+	if strings.Contains(page, "<h2>unused") {
+		t.Fatal("empty upstream block was shown")
+	}
+
+	filter := "?upstream=" + url.QueryEscape("OKYA_AUTH_DEV")
+	filtered := get(t, client, srv.URL+"/_admin"+filter)
+	assertContains(t, filtered, "Showing 3 of 4.")
+	assertContains(t, filtered, "First")
+	assertContains(t, filtered, "Second")
+	assertContains(t, filtered, "Shared")
+	if strings.Contains(filtered, "Orphan") {
+		t.Fatal("named filter included an unknown upstream")
+	}
+	assertContains(t, filtered, `/_admin/rules/`+first.ID+`/edit`+filter)
+	assertContains(t, filtered, `/_admin/rules/`+first.ID+`/toggle`+filter)
+	assertContains(t, filtered, `/_admin/rules/`+second.ID+`/delete`+filter)
+
+	toggled, err := client.PostForm(srv.URL+"/_admin/rules/"+first.ID+"/toggle"+filter, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	toggled.Body.Close()
+	if toggled.StatusCode != http.StatusSeeOther || toggled.Header.Get("Location") != "/_admin"+filter {
+		t.Fatalf("toggle location = %d %q", toggled.StatusCode, toggled.Header.Get("Location"))
+	}
+
+	edit := get(t, client, srv.URL+"/_admin/rules/"+second.ID+"/edit"+filter)
+	assertContains(t, edit, `action="/_admin/rules/`+second.ID+filter+`"`)
+	saved, err := client.PostForm(srv.URL+"/_admin/rules/"+second.ID+filter, url.Values{
+		"name":         {"Second"},
+		"enabled":      {"on"},
+		"method":       {"GET"},
+		"path_pattern": {"/second"},
+		"status_code":  {"201"},
+		"upstream_id":  {okya.ID},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved.Body.Close()
+	if saved.StatusCode != http.StatusSeeOther || saved.Header.Get("Location") != "/_admin"+filter {
+		t.Fatalf("save location = %d %q", saved.StatusCode, saved.Header.Get("Location"))
+	}
+
+	deleted, err := client.PostForm(srv.URL+"/_admin/rules/"+second.ID+"/delete"+filter, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	deleted.Body.Close()
+	if deleted.Header.Get("Location") != "/_admin"+filter {
+		t.Fatalf("delete location = %q", deleted.Header.Get("Location"))
+	}
+	after := get(t, client, srv.URL+"/_admin"+filter)
+	assertContains(t, after, "Upstream: OKYA_AUTH_DEV. Showing 2 of 3.")
+	if strings.Contains(after, "Second") {
+		t.Fatal("deleted rule stayed on the filtered page")
+	}
 }

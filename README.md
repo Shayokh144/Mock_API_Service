@@ -217,6 +217,8 @@ Open the dashboard. Choose **New rule**.
 
 The rules list has an **Upstream** menu, same idea as History, and it is a GET form. **All upstreams** is the default. **Any** (`?upstream=any`) shows only rules set to Any. A named upstream, such as `?upstream=OKYA_AUTH_DEV`, shows rules bound to that name and also rules set to Any, because Any matches every upstream. A name that is not saved is ignored. The page says how many rules are shown.
 
+Rules are grouped by upstream. Each block has the upstream name, its prefix and the word fallback when those apply, a rule count, and its own table. Named upstreams follow the Upstreams page. **Any upstream** comes after them. A rule whose upstream was deleted is in a block labelled `Unknown upstream:` plus the id. Blocks with no rules are left out. Edit, enable, disable, and delete return to the same filter.
+
 Exact profile error:
 
 | Field | Value |
@@ -432,6 +434,7 @@ Use this on a Mac after the automated tests pass. The implementation environment
 23. A POST `/oauth/token` rule with body condition `grant_type=refresh_token` returns the raw 401. `grant_type=authorization_code` still passes through. The rules list shows the condition. An older rules file with no conditions still matches on method and path.
 24. History **URL contains** keeps `?q=user/me` and combines with the source tabs and the upstream menu. The rules **Upstream** menu keeps `?upstream=OKYA_AUTH_DEV`, includes Any rules for a named upstream, and shows only Any rules when Any is selected.
 25. **Create rule** on a history row or its detail page opens the new-rule form filled from that call. Nothing is saved until Create rule is pressed. A missing history id leaves the form empty.
+26. The rules list groups rules by upstream, in Upstreams-page order, then Any, then unknown ids. A named filter shows that block and the Any block. Edit, enable, disable, and delete return to the same filter.
 
 ## Troubleshooting
 
