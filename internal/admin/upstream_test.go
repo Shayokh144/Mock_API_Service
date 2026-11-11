@@ -223,7 +223,7 @@ func TestUpstreamDashboardCRUDSwitchAndHistory(t *testing.T) {
 		t.Fatalf("rules after delete = %+v", saved)
 	}
 	after := get(t, client, proxySrv.URL+"/_admin")
-	if !strings.Contains(after, ">any<") {
+	if !strings.Contains(after, "<h2>Any upstream</h2>") {
 		t.Fatalf("rules after delete page = %s", after)
 	}
 }

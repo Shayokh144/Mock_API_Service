@@ -139,7 +139,14 @@
     tr.appendChild(cell(entry.delay || ""));
     tr.appendChild(cell(entry.when));
     var action = document.createElement("td");
+    var actions = document.createElement("div");
+    actions.className = "actions";
+    var create = document.createElement("a");
+    create.href = "/_admin/rules/new?from=" + encodeURIComponent(entry.id);
+    create.textContent = "Create rule";
+    actions.appendChild(create);
     var form = document.createElement("form");
+    form.className = "inline";
     form.method = "post";
     form.action = "/_admin/history/" + encodeURIComponent(entry.id) + "/delete" + query;
     var button = document.createElement("button");
@@ -147,7 +154,8 @@
     button.type = "submit";
     button.textContent = "Delete";
     form.appendChild(button);
-    action.appendChild(form);
+    actions.appendChild(form);
+    action.appendChild(actions);
     tr.appendChild(action);
     return tr;
   }

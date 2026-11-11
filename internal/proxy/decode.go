@@ -21,17 +21,51 @@ import (
 // displayBody is the history copy of a body. It decodes Content-Encoding and
 // keeps at most the history preview. The caller still forwards the original bytes.
 func displayBody(headers http.Header, body []byte) (string, bool) {
+	shown, _, truncated, _ := historyCopy(headers, body)
+	return shown, truncated
+}
+
+// historyCopy is the history text for one body.
+// shown is the preview, including pretty JSON.
+// plain is the same decoded text without pretty printing. It is empty for a binary body or a decode note.
+// decoded is true when a Content-Encoding other than identity was removed.
+func historyCopy(headers http.Header, body []byte) (shown, plain string, truncated, decoded bool) {
 	if len(body) == 0 {
-		return "", false
+		return "", "", false, false
 	}
 	if headers == nil {
 		headers = http.Header{}
 	}
-	decoded, truncated, note := decodeEncodings(headers.Values("Content-Encoding"), body)
+	decodedBytes, truncated, note := decodeEncodings(headers.Values("Content-Encoding"), body)
 	if note != "" {
-		return note, truncated
+		return note, "", truncated, false
 	}
-	return presentBody(headers.Get("Content-Type"), decoded, truncated)
+	shown, shownTrunc := presentBody(headers.Get("Content-Type"), decodedBytes, truncated)
+	plain, plainTrunc := undecorated(headers.Get("Content-Type"), decodedBytes, truncated)
+	return shown, plain, shownTrunc || plainTrunc, hasContentEncoding(headers)
+}
+
+func hasContentEncoding(headers http.Header) bool {
+	for _, enc := range splitEncodings(headers.Values("Content-Encoding")) {
+		if enc != "" && enc != "identity" {
+			return true
+		}
+	}
+	return false
+}
+
+func undecorated(contentType string, data []byte, truncated bool) (string, bool) {
+	if len(data) > config.HistoryBodyPreview {
+		data = data[:config.HistoryBodyPreview]
+		truncated = true
+	}
+	if truncated {
+		data = cutUTF8(data, len(data))
+	}
+	if isBinary(contentType, data) {
+		return "", truncated
+	}
+	return string(cutUTF8(data, len(data))), truncated
 }
 
 func decodeEncodings(values []string, body []byte) ([]byte, bool, string) {
