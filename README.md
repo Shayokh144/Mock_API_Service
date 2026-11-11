@@ -101,7 +101,7 @@ A request with no prefix still goes to the fallback upstream, the one marked by 
 
 Rules use the path after the prefix. A rule for `/api/v1/x` on OKYA matches `/okya/api/v1/x` and does not match `/easyhotel/api/v1/x`. An Any rule matches both.
 
-You cannot delete the fallback upstream. Choose **Set as fallback** on another one first. Deleting any other upstream sets rules that named it to Any upstream. If that would duplicate an Any rule for the same method and path, the delete is refused and those rules stay unchanged.
+You cannot delete the fallback upstream. Choose **Set as fallback** on another one first. Deleting any other upstream sets rules that named it to Any upstream. If that would duplicate an Any rule for the same method, path, and conditions, the delete is refused and those rules stay unchanged.
 
 Upstreams are stored in `upstreams.json` next to the rules file. The default path is `data/upstreams.json`. Writes are atomic, same as the rules file.
 
@@ -273,9 +273,37 @@ curl -i 'http://127.0.0.1:8080/api/users/42'
 
 `/api/users/42/posts` does not match that pattern.
 
-When several enabled rules match, an exact path wins. After that, the wildcard with more literal segments wins, then the longer pattern, then the earlier rule, then the smaller id. The worked example is in [docs/MVP_REQUIREMENTS.md](docs/MVP_REQUIREMENTS.md).
+When several enabled rules match, an exact path wins. After that, the wildcard with more literal segments wins, then the longer pattern, then a named upstream over Any, then the rule with more query and body conditions, then the earlier rule, then the smaller id. The worked example is in [docs/MVP_REQUIREMENTS.md](docs/MVP_REQUIREMENTS.md).
 
 An empty body is the right shape for `204`. Invalid JSON is rejected and the rules file is left unchanged.
+
+## Query and body conditions
+
+A path pattern still ignores the query string. Add **Query conditions** or **Body conditions** when calls that share one path should do different things. Each box takes one condition per line. `key=value` is an exact match. A bare `key` means that key is present, with any value. Every line must match. Keys are case-sensitive. The order of the lines does not matter.
+
+Query conditions read the URL query. Body conditions read a form body (`application/x-www-form-urlencoded`) or a JSON body. JSON can use a top-level key or a dot path such as `user.role=admin`. Numbers and booleans match their text, so `active=true` matches `true` and `count=1` matches `1`. The proxy reads the body once, up to 1 MiB, and puts the original bytes back. Passthrough and Fresh request forward those original bytes, including a gzip body. A body over 1 MiB, or one that cannot be decoded, does not satisfy body conditions. The request can still be forwarded when it is under the 8 MiB proxy limit.
+
+A rule with more conditions wins over an otherwise equal rule with fewer. Two rules may share a method and path when their conditions differ. An older rules file has no `match` field and keeps matching only on method and path.
+
+On the `OKYA_AUTH_DEV` upstream, token refresh and login both `POST /oauth/token`. Mock only the refresh:
+
+| Field | Value |
+| --- | --- |
+| Upstream | `OKYA_AUTH_DEV` |
+| Method | POST |
+| Path pattern | `/oauth/token` |
+| Body conditions | `grant_type=refresh_token` |
+| Response mode | Raw response |
+| Raw response | the 401 below |
+
+```
+HTTP/1.1 401 Unauthorized
+Content-Type: application/json
+
+{"error":"unauthorized"}
+```
+
+`grant_type=refresh_token` returns that 401. The login exchange `grant_type=authorization_code` does not match the rule, so it still passes through to `OKYA_AUTH_DEV`. The rules list shows `body grant_type=refresh_token`.
 
 ## Delay
 
@@ -395,6 +423,7 @@ Use this on a Mac after the automated tests pass. The implementation environment
 20. Two prefixed upstreams can serve at once. `/okya/api/v1/x?page=2` is forwarded as `/api/v1/x?page=2`, and `/okyax` does not match `/okya`. A request with no prefix uses the fallback upstream. History keeps the original path and the forwarded path. An old upstreams file with no prefix field still loads.
 21. A rule can wait up to 60000 ms before the response is written. `0` does not wait. The rules list shows `1500 ms` and leaves `0` blank. History records the delay. An older rules file with no `delay_ms` field loads as `0`. Cancelling during the wait writes no response.
 22. A raw response rule sends the pasted status, headers, and body. `Connection: close` closes the connection. `X-Mock-Response` is omitted unless the checkbox is on. An older rules file stays in Fields mode. The delay still applies.
+23. A POST `/oauth/token` rule with body condition `grant_type=refresh_token` returns the raw 401. `grant_type=authorization_code` still passes through. The rules list shows the condition. An older rules file with no conditions still matches on method and path.
 
 ## Troubleshooting
 
@@ -413,6 +442,7 @@ Use this on a Mac after the automated tests pass. The implementation environment
 | Sentry still shows a mock error | `beforeSend` is not dropping `X-Mock-Response: true`. |
 | Passthrough returns `no upstream is configured` | Add an upstream at `/_admin/upstreams`, or set `UPSTREAM_BASE_URL` before the first start. |
 | A mock stopped matching after a switch | The rule names an upstream that did not resolve this request. Set that upstream as the fallback, give it a prefix, or set the rule to Any upstream. |
+| A refresh mock also hits login | Add a body condition such as `grant_type=refresh_token`. The path alone matches every call to that path. |
 
 ## Limits
 
@@ -420,6 +450,7 @@ Use this on a Mac after the automated tests pass. The implementation environment
 | --- | --- |
 | Mock JSON body over 1 MiB | The dashboard refuses the rule. |
 | Request body over 8 MiB | `413`. The request is not forwarded. |
+| Request body over 1 MiB | Body conditions do not match. The request is still forwarded when it is under 8 MiB. |
 | Upstream response over 8 MiB | `502` with `{"error":"upstream response too large"}`. |
 | Upstream timeout or connection failure | `502` with `{"error":"upstream unavailable"}`. |
 | History preview | First 64 KiB, with a truncated flag. |
@@ -429,4 +460,4 @@ These limits protect one local process.
 
 ## Outside this MVP
 
-Remote deployment, login, record and replay, added latency, OpenAPI alerts, regular expressions, query-string rules, durable history, and a LAN bind for a physical phone are future work. They are listed in [docs/TASKS.md](docs/TASKS.md).
+Remote deployment, login, record and replay, added latency, OpenAPI alerts, regular expressions, durable history, and a LAN bind for a physical phone are future work. They are listed in [docs/TASKS.md](docs/TASKS.md).

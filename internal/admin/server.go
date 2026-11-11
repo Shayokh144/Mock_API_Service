@@ -47,17 +47,18 @@ type page struct {
 }
 
 type ruleRow struct {
-	ID       string
-	Name     string
-	Method   string
-	Pattern  string
-	Kind     string
-	Enabled  bool
-	Fresh    bool
-	Status   string
-	Delay    string
-	Mode     string
-	Upstream string
+	ID         string
+	Name       string
+	Method     string
+	Pattern    string
+	Conditions string
+	Kind       string
+	Enabled    bool
+	Fresh      bool
+	Status     string
+	Delay      string
+	Mode       string
+	Upstream   string
 }
 
 type upstreamRow struct {
@@ -179,17 +180,18 @@ func (s *Server) rulesPage(w http.ResponseWriter, status int) {
 			kind = "wildcard"
 		}
 		rows = append(rows, ruleRow{
-			ID:       rule.ID,
-			Name:     name,
-			Method:   rule.Method,
-			Pattern:  rule.PathPattern,
-			Kind:     kind,
-			Enabled:  rule.Enabled,
-			Fresh:    rule.FreshRequest,
-			Status:   strconv.Itoa(rule.StatusCode),
-			Delay:    delayLabel(rule.DelayMS),
-			Mode:     modeLabel(rule.ResponseMode),
-			Upstream: s.upstreamLabel(rule.UpstreamID),
+			ID:         rule.ID,
+			Name:       name,
+			Method:     rule.Method,
+			Pattern:    rule.PathPattern,
+			Conditions: rules.MatchSummary(rule.Match),
+			Kind:       kind,
+			Enabled:    rule.Enabled,
+			Fresh:      rule.FreshRequest,
+			Status:     strconv.Itoa(rule.StatusCode),
+			Delay:      delayLabel(rule.DelayMS),
+			Mode:       modeLabel(rule.ResponseMode),
+			Upstream:   s.upstreamLabel(rule.UpstreamID),
 		})
 	}
 	s.render(w, "rules", page{Title: "Rules", Rules: rows, ActiveUpstream: s.activeUpstreamName()}, status)
@@ -281,6 +283,7 @@ func (s *Server) toggleRule(w http.ResponseWriter, r *http.Request, id string) {
 		UpstreamID:   rule.UpstreamID,
 		Method:       rule.Method,
 		PathPattern:  rule.PathPattern,
+		Match:        rule.Match,
 		StatusCode:   rule.StatusCode,
 		DelayMS:      rule.DelayMS,
 		ResponseMode: rule.ResponseMode,
