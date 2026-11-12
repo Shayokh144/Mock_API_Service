@@ -74,7 +74,8 @@ The process listens on `127.0.0.1:8080` by default. Startup accepts only a loopb
 | Variable | Required | Default | Meaning |
 | --- | --- | --- | --- |
 | `UPSTREAM_BASE_URL` | yes | none | Absolute `http` or `https` URL of your upstream server (develop/staging) |
-| `LISTEN_ADDR` | no | `127.0.0.1:8080` | Loopback address and port |
+| `LISTEN_ADDR` | no | `127.0.0.1:8080` | Proxy loopback address and port |
+| `ADMIN_LISTEN_ADDR` | no | `127.0.0.1:8081` | Dashboard loopback address and port |
 | `RULES_PATH` | no | `data/rules.json` | Rule file, relative to the working directory |
 | `HISTORY_LIMIT` | no | `500` | Newest history entries kept in memory |
 | `UPSTREAM_TIMEOUT` | no | `30s` | Time allowed for one upstream call |
@@ -88,7 +89,7 @@ export UPSTREAM_BASE_URL='https://upstream.example.com'
 go run ./cmd/mockproxy
 ```
 
-Open the dashboard at `http://localhost:8080/_admin`.
+Open the dashboard at `http://localhost:8081/_admin`. The proxy port does not serve `/_admin`.
 
 ### Path joining
 

@@ -9,7 +9,7 @@ Behavior, matching, and deletion rules live in [docs/MVP_REQUIREMENTS.md](docs/M
 ## Prerequisites
 
 - macOS
-- Go 1.22 or newer. This module was tested with Go 1.22.2.
+- Go 1.27.4 or newer. The `go` line in `go.mod` requires that toolchain, which includes the `net/http` fix for GO-2026-6859.
 - Any HTTP or HTTPS backend your Mac can reach
 - A Flutter app whose debug base URL you can change
 
@@ -32,7 +32,8 @@ The process reads only environment variables. It does not take flags, and it doe
 | Variable | Required | Default | Meaning |
 | --- | --- | --- | --- |
 | `UPSTREAM_BASE_URL` | no | none | Absolute `http` or `https` URL. When `upstreams.json` has no upstreams, this seeds the first one and makes it the fallback. A later start does not replace saved upstreams. A path prefix is allowed. A query or fragment is rejected. |
-| `LISTEN_ADDR` | no | `127.0.0.1:8080` | Loopback address. `localhost` becomes `127.0.0.1`. `[::1]` is allowed. Any other host fails startup. |
+| `LISTEN_ADDR` | no | `127.0.0.1:8080` | Proxy loopback address. `localhost` becomes `127.0.0.1`. `[::1]` is allowed. Any other host fails startup. The Android emulator still calls this port as `10.0.2.2`. |
+| `ADMIN_LISTEN_ADDR` | no | `127.0.0.1:8081` | Dashboard loopback address. Same host rules as `LISTEN_ADDR`. It must differ from the proxy address. |
 | `RULES_PATH` | no | `data/rules.json` | Rule file. A missing file means there are no rules. |
 | `HISTORY_LIMIT` | no | `500` | Newest history entries kept in memory. |
 | `UPSTREAM_TIMEOUT` | no | `30s` | Time allowed for one upstream call. |
@@ -55,10 +56,13 @@ The log prints:
 
 ```text
 listening on 127.0.0.1:8080
-dashboard at http://localhost:8080/_admin
+admin listening on 127.0.0.1:8081
+dashboard at http://localhost:8081/_admin
 ```
 
-Open [http://localhost:8080/_admin](http://localhost:8080/_admin). Stop the process with Ctrl+C.
+Open [http://localhost:8081/_admin](http://localhost:8081/_admin). Stop the process with Ctrl+C.
+
+The dashboard is a separate listener so a mocked HTML response cannot share the dashboard origin. `http://localhost:8080/_admin` returns 404 and says the dashboard is not served on the proxy port. A dashboard request whose Host is not `localhost`, `127.0.0.1`, or `[::1]` on the admin port is rejected with 403. Both listeners set a 10 second read-header timeout.
 
 Rules are saved when you create, edit, enable, disable, or delete them. They are still there after a restart. History is memory only. A restart clears history and keeps rules.
 
@@ -68,7 +72,7 @@ If `UPSTREAM_BASE_URL` is unset and no upstream is saved, the process still list
 
 ## Upstreams
 
-Open [http://127.0.0.1:8080/_admin/upstreams](http://127.0.0.1:8080/_admin/upstreams).
+Open [http://127.0.0.1:8081/_admin/upstreams](http://127.0.0.1:8081/_admin/upstreams).
 
 1. Choose **New upstream**.
 2. Name it, for example `staging`.
@@ -95,7 +99,7 @@ Give each upstream its own prefix when two apps should use the proxy at the same
 
 A call to `http://127.0.0.1:8080/okya/api/v1/x?page=2` is forwarded to the OKYA upstream as `/api/v1/x?page=2`. The proxy removes only the prefix. `/okyax` does not match `/okya`. A request to exactly `/okya` is forwarded as `/`.
 
-The Upstreams page shows those two app addresses for each prefixed upstream.
+The Upstreams page shows those two app addresses for each prefixed upstream. The port is the proxy port, `8080` by default, not the dashboard port.
 
 A request with no prefix still goes to the fallback upstream, the one marked by **Set as fallback**. Leave the prefix empty when a single app should keep using `http://127.0.0.1:8080` with no extra segment. An upstream with no prefix is not used until it is the fallback.
 
@@ -132,9 +136,9 @@ Use these steps for a Flutter debug build on the Android Emulator or the iOS Sim
 UPSTREAM_BASE_URL=https://staging.example.com go run ./cmd/mockproxy
 ```
 
-The default `LISTEN_ADDR` is `127.0.0.1:8080`. The log prints `dashboard at http://localhost:8080/_admin`.
+The default `LISTEN_ADDR` is `127.0.0.1:8080`. The dashboard listens on `127.0.0.1:8081`. The log prints `dashboard at http://localhost:8081/_admin`.
 
-2. Open [http://127.0.0.1:8080/_admin](http://127.0.0.1:8080/_admin). `localhost` and `127.0.0.1` are the same loopback address here.
+2. Open [http://127.0.0.1:8081/_admin](http://127.0.0.1:8081/_admin). `localhost` and `127.0.0.1` are the same loopback address here.
 3. Choose **New rule** and save a rule.
 4. Call that path. A mocked response includes `X-Mock-Response: true`. A passthrough response does not.
 
@@ -203,7 +207,7 @@ A physical device is out of scope for this loopback-only MVP.
 - Cleartext or ATS errors: the debug network security config must allow `10.0.2.2`, or `NSAllowsLocalNetworking` must be true.
 - The app still calls the old base URL: the debug define or flavor did not win. This run must be a debug build.
 - Connection refused or a timeout: the proxy is not running, or the app port is not the proxy port. The default port is `8080`.
-- The call works and history stays empty: the app is not reaching this proxy. Open [http://127.0.0.1:8080/_admin/history](http://127.0.0.1:8080/_admin/history) and check the base URL host.
+- The call works and history stays empty: the app is not reaching this proxy. Open [http://127.0.0.1:8081/_admin/history](http://127.0.0.1:8081/_admin/history) and check the base URL host.
 
 ## Sentry
 
@@ -355,11 +359,11 @@ With no matching rule, the proxy returns the upstream response.
 curl -i 'http://127.0.0.1:8080/v1/health?ping=1'
 ```
 
-`/_admin` is never forwarded. A request to an unknown `/_admin/...` path returns `404` from this process.
+`/_admin` is never forwarded. On the proxy port it returns `404` and `the dashboard is not served on the proxy port`.
 
 ## History
 
-Open [http://localhost:8080/_admin/history](http://localhost:8080/_admin/history).
+Open [http://localhost:8081/_admin/history](http://localhost:8081/_admin/history).
 
 The list shows method, URL, status, source, upstream, and local time. The URL is the path plus the query string. Sources are `mock`, `upstream`, `upstream-error`, and `rejected`.
 
@@ -385,11 +389,11 @@ While the list is open, it asks for new rows about once a second and adds them a
 
 A fresh-request rule is a real server response, not a mock. Its source stays `upstream`, so **Real server** includes it. The source column says `upstream (fresh rule)` when a rule selected that response. A failed fresh request stays `upstream-error` and shows under All.
 
-Open a row to see headers and bodies. A preview longer than 64 KiB is marked truncated. The full body is still what the client and the upstream server exchanged, up to the 8 MiB buffer limit.
+Open a row to see headers and bodies. `Authorization` and `Cookie` values are hidden until you choose **Show value**. That control is a disclosure element, so the detail page still has no script. A preview longer than 64 KiB is marked truncated. The full body is still what the client and the upstream server exchanged, up to the 8 MiB buffer limit.
 
 History stores a decoded copy of the body when `Content-Encoding` is `gzip`, `deflate` (zlib or raw), `br`, or `identity`. Stacked encodings are undone from the outside in. The bytes and headers sent to the client stay unchanged. The decoded copy stops at 64 KiB. A corrupt or unknown encoding is a short note, not compressed bytes. A binary or non-UTF-8 body is a note with the size and content type. JSON is indented. Request bodies follow the same rules. Decoding happens when the row is recorded, so history keeps the preview text.
 
-Each row, and the detail page, has **Create rule**. It opens the new-rule form with nothing saved yet. The name is the method and path, the upstream is the one that served the call, and the path is the forwarded path with no query. Query parameters become query conditions. Status, headers, and body come from the recorded response, without pretty-printed JSON. Raw response is filled in as well, without `Content-Length`, `Transfer-Encoding`, or `Content-Encoding` when the stored body was decoded. Delay is 0 and the rule is enabled. An upstream error or a rejected row fills only the request side. A missing history id leaves the form empty and says the entry is gone.
+Each row, and the detail page, has **Create rule**. It opens the new-rule form with nothing saved yet. The name is the method and path, the upstream is the one that served the call, and the path is the forwarded path with no query. Query parameters become query conditions. Status, headers, and body come from the recorded response, without pretty-printed JSON. Raw response is filled in as well, without `Content-Length`, `Transfer-Encoding`, or `Content-Encoding` when the stored body was decoded. `Set-Cookie` is left out of both the headers and the raw response. The form tells you to replace real tokens, cookies, and passwords with dummy values before saving. Delay is 0 and the rule is enabled. An upstream error or a rejected row fills only the request side. A missing history id leaves the form empty and says the entry is gone.
 
 Delete one row from the list or the detail page. The list returns to the same filter. **Clear all history** opens a dialog on this page: “Delete all recorded requests? Rules are kept.” Cancel closes it, and so do Escape and a click on the dimmed page. **Clear all** posts to `/_admin/history/clear` and returns to the same source, upstream, and text filter. With JavaScript off, the link still opens the confirm page, and that page posts the same way. A GET never clears history. Clear removes every entry, including rows the filter is hiding. Both actions keep the rules.
 

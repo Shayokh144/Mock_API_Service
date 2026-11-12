@@ -37,6 +37,8 @@ func TestSameOriginLoopbackNames(t *testing.T) {
 		{name: "foreign referer without origin", host: "localhost:8080", referer: "http://evil.example/phish", ok: false},
 		{name: "different loopback port", host: "localhost:8080", origin: "http://127.0.0.1:9090", ok: false},
 		{name: "neither header", host: "127.0.0.1:8080", ok: true},
+		{name: "matching non-loopback origin", host: "rebind.evil.example:8081", origin: "http://rebind.evil.example:8081", ok: false},
+		{name: "emulator host is not an admin origin", host: "10.0.2.2:8081", origin: "http://10.0.2.2:8081", ok: false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -35,19 +35,21 @@ func TestPrefixFormTableAndHistoryDetail(t *testing.T) {
 		_, _ = io.WriteString(w, "real")
 	}))
 	defer upstreamSrv.Close()
+	adminSrv := httptest.NewServer(dashboard)
+	defer adminSrv.Close()
 	proxySrv := httptest.NewServer(proxy.New(proxy.Options{
 		Upstreams: ups,
 		Timeout:   time.Second,
 		Rules:     ruleStore,
 		History:   log,
-		Admin:     dashboard,
 	}))
 	defer proxySrv.Close()
+	dashboard.UseProxyAddr(proxySrv.Listener.Addr().String())
 	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
 		return http.ErrUseLastResponse
 	}}
 
-	bad, err := client.PostForm(proxySrv.URL+"/_admin/upstreams", url.Values{
+	bad, err := client.PostForm(adminSrv.URL+"/_admin/upstreams", url.Values{
 		"name": {"okya"}, "base_url": {upstreamSrv.URL}, "prefix": {"/okya/"},
 	})
 	if err != nil {
@@ -58,7 +60,7 @@ func TestPrefixFormTableAndHistoryDetail(t *testing.T) {
 		t.Fatalf("bad prefix status=%d body=%s", bad.StatusCode, badBody)
 	}
 
-	created, err := client.PostForm(proxySrv.URL+"/_admin/upstreams", url.Values{
+	created, err := client.PostForm(adminSrv.URL+"/_admin/upstreams", url.Values{
 		"name": {"OKYA"}, "base_url": {upstreamSrv.URL}, "prefix": {"/okya"},
 	})
 	if err != nil {
@@ -68,7 +70,7 @@ func TestPrefixFormTableAndHistoryDetail(t *testing.T) {
 	if created.StatusCode != http.StatusSeeOther {
 		t.Fatalf("create status = %d", created.StatusCode)
 	}
-	dup, err := client.PostForm(proxySrv.URL+"/_admin/upstreams", url.Values{
+	dup, err := client.PostForm(adminSrv.URL+"/_admin/upstreams", url.Values{
 		"name": {"other"}, "base_url": {upstreamSrv.URL}, "prefix": {"/okya"},
 	})
 	if err != nil {
@@ -78,7 +80,7 @@ func TestPrefixFormTableAndHistoryDetail(t *testing.T) {
 	if dup.StatusCode != http.StatusBadRequest || !strings.Contains(dupBody, "/okya") {
 		t.Fatalf("duplicate status=%d body=%s", dup.StatusCode, dupBody)
 	}
-	plain, err := client.PostForm(proxySrv.URL+"/_admin/upstreams", url.Values{
+	plain, err := client.PostForm(adminSrv.URL+"/_admin/upstreams", url.Values{
 		"name": {"plain"}, "base_url": {upstreamSrv.URL},
 	})
 	if err != nil {
@@ -93,7 +95,7 @@ func TestPrefixFormTableAndHistoryDetail(t *testing.T) {
 	if i := strings.LastIndex(port, ":"); i >= 0 {
 		port = port[i+1:]
 	}
-	page := get(t, client, proxySrv.URL+"/_admin/upstreams")
+	page := get(t, client, adminSrv.URL+"/_admin/upstreams")
 	for _, want := range []string{
 		"Fallback upstream: OKYA. Requests with no matching prefix go here.",
 		"Upstreams with a prefix all work at the same time. The fallback only handles requests with no prefix.",
@@ -111,26 +113,26 @@ func TestPrefixFormTableAndHistoryDetail(t *testing.T) {
 		}
 	}
 	item := ups.List()[0]
-	rulesPage := get(t, client, proxySrv.URL+"/_admin")
+	rulesPage := get(t, client, adminSrv.URL+"/_admin")
 	if !strings.Contains(rulesPage, "Fallback upstream: OKYA. Requests with no matching prefix go here.") {
 		t.Fatalf("rules page = %s", rulesPage)
 	}
-	ruleForm := get(t, client, proxySrv.URL+"/_admin/rules/new")
+	ruleForm := get(t, client, adminSrv.URL+"/_admin/rules/new")
 	if !strings.Contains(ruleForm, "by its prefix or as the fallback") {
 		t.Fatalf("rule form = %s", ruleForm)
 	}
 	plainItem := ups.List()[1]
-	use, err := client.PostForm(proxySrv.URL+"/_admin/upstreams/"+plainItem.ID+"/activate", nil)
+	use, err := client.PostForm(adminSrv.URL+"/_admin/upstreams/"+plainItem.ID+"/activate", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	use.Body.Close()
-	switched := get(t, client, proxySrv.URL+"/_admin/upstreams")
+	switched := get(t, client, adminSrv.URL+"/_admin/upstreams")
 	if !strings.Contains(switched, "Always on via /okya") || strings.Contains(switched, "and fallback") || strings.Contains(switched, "Not used") || !strings.Contains(switched, "<td>Fallback</td>") {
 		t.Fatalf("switched page = %s", switched)
 	}
 
-	form := get(t, client, proxySrv.URL+"/_admin/upstreams/"+item.ID+"/edit")
+	form := get(t, client, adminSrv.URL+"/_admin/upstreams/"+item.ID+"/edit")
 	if !strings.Contains(form, `value="/okya"`) {
 		t.Fatalf("edit form = %s", form)
 	}
@@ -144,11 +146,11 @@ func TestPrefixFormTableAndHistoryDetail(t *testing.T) {
 	if len(entries) == 0 {
 		t.Fatal("no history")
 	}
-	detail := get(t, client, proxySrv.URL+"/_admin/history/"+entries[0].ID)
+	detail := get(t, client, adminSrv.URL+"/_admin/history/"+entries[0].ID)
 	if !strings.Contains(detail, "/okya/api/v1/x?page=2") || !strings.Contains(detail, "/api/v1/x?page=2") || !strings.Contains(detail, "Forwarded path") || !strings.Contains(detail, "OKYA") {
 		t.Fatalf("detail = %s", detail)
 	}
-	filtered := get(t, client, proxySrv.URL+"/_admin/history?upstream="+item.ID)
+	filtered := get(t, client, adminSrv.URL+"/_admin/history?upstream="+item.ID)
 	if !strings.Contains(filtered, "/okya/api/v1/x") {
 		t.Fatalf("filtered history = %s", filtered)
 	}

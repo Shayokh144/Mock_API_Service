@@ -42,23 +42,24 @@ func TestUpstreamDashboardCRUDSwitchAndHistory(t *testing.T) {
 	}))
 	defer developSrv.Close()
 
+	adminSrv := httptest.NewServer(dashboard)
+	defer adminSrv.Close()
 	proxySrv := httptest.NewServer(proxy.New(proxy.Options{
 		Upstreams: ups,
 		Timeout:   time.Second,
 		Rules:     ruleStore,
 		History:   log,
-		Admin:     dashboard,
 	}))
 	defer proxySrv.Close()
 	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
 		return http.ErrUseLastResponse
 	}}
 
-	page := get(t, client, proxySrv.URL+"/_admin/upstreams")
+	page := get(t, client, adminSrv.URL+"/_admin/upstreams")
 	if !strings.Contains(page, "No upstreams yet") {
 		t.Fatalf("empty page = %s", page)
 	}
-	resp, err := client.Get(proxySrv.URL + "/_admin/upstreams")
+	resp, err := client.Get(adminSrv.URL + "/_admin/upstreams")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +71,7 @@ func TestUpstreamDashboardCRUDSwitchAndHistory(t *testing.T) {
 		t.Fatalf("csp = %q", resp.Header.Get("Content-Security-Policy"))
 	}
 
-	evil, err := http.NewRequest(http.MethodPost, proxySrv.URL+"/_admin/upstreams", strings.NewReader(url.Values{
+	evil, err := http.NewRequest(http.MethodPost, adminSrv.URL+"/_admin/upstreams", strings.NewReader(url.Values{
 		"name": {"evil"}, "base_url": {"https://evil.example"},
 	}.Encode()))
 	if err != nil {
@@ -88,7 +89,7 @@ func TestUpstreamDashboardCRUDSwitchAndHistory(t *testing.T) {
 	}
 
 	bad := url.Values{"name": {"staging"}, "base_url": {"ftp://staging.example"}}
-	badResp, err := client.PostForm(proxySrv.URL+"/_admin/upstreams", bad)
+	badResp, err := client.PostForm(adminSrv.URL+"/_admin/upstreams", bad)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +98,7 @@ func TestUpstreamDashboardCRUDSwitchAndHistory(t *testing.T) {
 		t.Fatalf("bad url status=%d body=%s", badResp.StatusCode, badBody)
 	}
 
-	created, err := client.PostForm(proxySrv.URL+"/_admin/upstreams", url.Values{
+	created, err := client.PostForm(adminSrv.URL+"/_admin/upstreams", url.Values{
 		"name": {"staging"}, "base_url": {stagingSrv.URL + "/api"},
 	})
 	if err != nil {
@@ -107,7 +108,7 @@ func TestUpstreamDashboardCRUDSwitchAndHistory(t *testing.T) {
 		t.Fatalf("create status = %d", created.StatusCode)
 	}
 	created.Body.Close()
-	developResp, err := client.PostForm(proxySrv.URL+"/_admin/upstreams", url.Values{
+	developResp, err := client.PostForm(adminSrv.URL+"/_admin/upstreams", url.Values{
 		"name": {"develop"}, "base_url": {developSrv.URL},
 	})
 	if err != nil {
@@ -121,16 +122,16 @@ func TestUpstreamDashboardCRUDSwitchAndHistory(t *testing.T) {
 	}
 	staging := list[0]
 	develop := list[1]
-	shown := get(t, client, proxySrv.URL+"/_admin/upstreams")
+	shown := get(t, client, adminSrv.URL+"/_admin/upstreams")
 	if !strings.Contains(shown, "Fallback upstream: staging") || !strings.Contains(shown, developSrv.URL) || !strings.Contains(shown, "Set as fallback") {
 		t.Fatalf("list page = %s", shown)
 	}
 
-	form := get(t, client, proxySrv.URL+"/_admin/rules/new")
+	form := get(t, client, adminSrv.URL+"/_admin/rules/new")
 	if !strings.Contains(form, "Any upstream") || !strings.Contains(form, "staging") || !strings.Contains(form, staging.ID) {
 		t.Fatalf("rule form = %s", form)
 	}
-	ruleResp, err := client.PostForm(proxySrv.URL+"/_admin/rules", url.Values{
+	ruleResp, err := client.PostForm(adminSrv.URL+"/_admin/rules", url.Values{
 		"name": {"Profile"}, "enabled": {"on"}, "method": {"GET"}, "path_pattern": {"/v1/profile"},
 		"status_code": {"500"}, "body": {`{"mocked":true}`}, "upstream_id": {staging.ID},
 	})
@@ -141,7 +142,7 @@ func TestUpstreamDashboardCRUDSwitchAndHistory(t *testing.T) {
 	if ruleResp.StatusCode != http.StatusSeeOther {
 		t.Fatalf("rule status = %d", ruleResp.StatusCode)
 	}
-	rulesPage := get(t, client, proxySrv.URL+"/_admin")
+	rulesPage := get(t, client, adminSrv.URL+"/_admin")
 	if !strings.Contains(rulesPage, ">staging<") {
 		t.Fatalf("rules page = %s", rulesPage)
 	}
@@ -163,7 +164,7 @@ func TestUpstreamDashboardCRUDSwitchAndHistory(t *testing.T) {
 		t.Fatalf("mock status=%d body=%s", mock.StatusCode, mockBody)
 	}
 
-	use, err := client.PostForm(proxySrv.URL+"/_admin/upstreams/"+develop.ID+"/activate", nil)
+	use, err := client.PostForm(adminSrv.URL+"/_admin/upstreams/"+develop.ID+"/activate", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -180,11 +181,11 @@ func TestUpstreamDashboardCRUDSwitchAndHistory(t *testing.T) {
 		t.Fatalf("staging rule matched while develop was active: %d %s", miss.StatusCode, missBody)
 	}
 
-	historyPage := get(t, client, proxySrv.URL+"/_admin/history")
+	historyPage := get(t, client, adminSrv.URL+"/_admin/history")
 	if !strings.Contains(historyPage, ">staging<") {
 		t.Fatalf("history = %s", historyPage)
 	}
-	feed := get(t, client, proxySrv.URL+"/_admin/history/feed")
+	feed := get(t, client, adminSrv.URL+"/_admin/history/feed")
 	if !strings.Contains(feed, `"upstream":"staging"`) {
 		t.Fatalf("feed = %s", feed)
 	}
@@ -194,12 +195,12 @@ func TestUpstreamDashboardCRUDSwitchAndHistory(t *testing.T) {
 			detailID = entry.ID
 		}
 	}
-	detail := get(t, client, proxySrv.URL+"/_admin/history/"+detailID)
+	detail := get(t, client, adminSrv.URL+"/_admin/history/"+detailID)
 	if !strings.Contains(detail, "staging") {
 		t.Fatalf("detail = %s", detail)
 	}
 
-	blocked, err := client.PostForm(proxySrv.URL+"/_admin/upstreams/"+develop.ID+"/delete", nil)
+	blocked, err := client.PostForm(adminSrv.URL+"/_admin/upstreams/"+develop.ID+"/delete", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -207,7 +208,7 @@ func TestUpstreamDashboardCRUDSwitchAndHistory(t *testing.T) {
 	if blocked.StatusCode != http.StatusBadRequest || !strings.Contains(blockedBody, "set another as fallback first") {
 		t.Fatalf("delete active status=%d body=%s", blocked.StatusCode, blockedBody)
 	}
-	deleted, err := client.PostForm(proxySrv.URL+"/_admin/upstreams/"+staging.ID+"/delete", nil)
+	deleted, err := client.PostForm(adminSrv.URL+"/_admin/upstreams/"+staging.ID+"/delete", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -222,7 +223,7 @@ func TestUpstreamDashboardCRUDSwitchAndHistory(t *testing.T) {
 	if len(saved) != 1 || saved[0].UpstreamID != "" {
 		t.Fatalf("rules after delete = %+v", saved)
 	}
-	after := get(t, client, proxySrv.URL+"/_admin")
+	after := get(t, client, adminSrv.URL+"/_admin")
 	if !strings.Contains(after, "<h2>Any upstream</h2>") {
 		t.Fatalf("rules after delete page = %s", after)
 	}

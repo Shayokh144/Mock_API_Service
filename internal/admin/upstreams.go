@@ -41,7 +41,7 @@ func (s *Server) upstreamRoute(w http.ResponseWriter, r *http.Request, rest stri
 func (s *Server) upstreamsPage(w http.ResponseWriter, r *http.Request, status int, message string) {
 	rows := []upstreamRow{}
 	activeID := ""
-	port := requestPort(r)
+	port := s.appPort(r)
 	if s.upstreams != nil {
 		if active, ok := s.upstreams.Active(); ok {
 			activeID = active.ID
@@ -85,6 +85,13 @@ func routingStatus(prefix string, fallback bool) string {
 		return "Fallback"
 	}
 	return "Not used"
+}
+
+func (s *Server) appPort(r *http.Request) string {
+	if s.proxyPort != "" {
+		return s.proxyPort
+	}
+	return requestPort(r)
 }
 
 func requestPort(r *http.Request) string {

@@ -12,8 +12,9 @@ import (
 // Fetch says a request whose referrer policy is no-referrer serializes Origin
 // as the string "null", even for a same-origin form POST. Browsers still send
 // Sec-Fetch-Site: same-origin on that navigation. Trust same-origin and none.
-// A concrete Origin must still name this loopback port. localhost, 127.0.0.1,
-// and [::1] are the same local server. A foreign origin is rejected.
+// A concrete Origin and the Host must both be loopback, on the same port.
+// localhost, 127.0.0.1, and [::1] are the same local server. A matching
+// non-loopback name is rejected, so a DNS rebinding page cannot post here.
 // A missing Origin falls back to Referer. Neither header means a non-browser client.
 func sameOrigin(r *http.Request) bool {
 	switch fetchSite(r) {
@@ -55,10 +56,20 @@ func loopbackSamePort(raw, requestHost string) bool {
 	if originPort == "" || reqPort == "" || originPort != reqPort {
 		return false
 	}
-	if strings.EqualFold(originHost, reqHost) {
-		return true
-	}
 	return isLoopbackHost(originHost) && isLoopbackHost(reqHost)
+}
+
+// allowedAdminHost is true when Host is localhost, 127.0.0.1, or [::1].
+// A non-empty listenPort must be that port. Proxied API traffic does not use this check.
+func allowedAdminHost(host, listenPort string) bool {
+	name, port, err := net.SplitHostPort(strings.TrimSpace(host))
+	if err != nil || port == "" || !isLoopbackHost(name) {
+		return false
+	}
+	if listenPort != "" && port != listenPort {
+		return false
+	}
+	return true
 }
 
 func hostAndPort(hostport, scheme string) (string, string) {
