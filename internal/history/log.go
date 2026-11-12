@@ -28,6 +28,7 @@ const UpstreamAny = "any"
 type Entry struct {
 	ID                    string
 	StartedAt             time.Time
+	DurationMS            int
 	Method                string
 	Path                  string
 	RawQuery              string
