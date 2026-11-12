@@ -13,6 +13,7 @@ import (
 
 	"github.com/Shayokh144/Mock_API_Service/internal/history"
 	"github.com/Shayokh144/Mock_API_Service/internal/rules"
+	"github.com/Shayokh144/Mock_API_Service/internal/sessions"
 	"github.com/Shayokh144/Mock_API_Service/internal/upstreams"
 )
 
@@ -27,6 +28,7 @@ type Server struct {
 	tmpl       *template.Template
 	listenPort string
 	proxyPort  string
+	sessions   *sessions.Manager
 }
 
 // UseListenAddr pins the dashboard Host check to this loopback address's port.
@@ -46,6 +48,11 @@ func (s *Server) UseProxyAddr(addr string) {
 		return
 	}
 	s.proxyPort = port
+}
+
+// UseSessions lets the dashboard show test sessions. They are read-only here.
+func (s *Server) UseSessions(m *sessions.Manager) {
+	s.sessions = m
 }
 
 // New parses the embedded templates. A parse error should stop startup.
@@ -75,6 +82,16 @@ type page struct {
 	RuleTotal           int
 	RuleGroups          []ruleGroup
 	RuleFilterQuery     string
+	Sessions            []sessionChoice
+	SessionAction       string
+	SessionID           string
+	ReadOnly            bool
+}
+
+type sessionChoice struct {
+	ID       string
+	Name     string
+	Selected bool
 }
 
 type ruleGroup struct {
@@ -149,7 +166,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case path == "/_admin/upstreams" && r.Method == http.MethodGet:
 		s.upstreamsPage(w, r, http.StatusOK, "")
 	case path == "/_admin/upstreams/new" && r.Method == http.MethodGet:
-		s.render(w, "upstream_form", page{
+		s.render(w, r, "upstream_form", page{
 			Title:        "New upstream",
 			UpstreamForm: upstreamForm{Action: "/_admin/upstreams", Submit: "Create upstream"},
 		}, http.StatusOK)
@@ -206,7 +223,15 @@ func (s *Server) ruleRoute(w http.ResponseWriter, r *http.Request, rest string) 
 }
 
 func (s *Server) rulesPage(w http.ResponseWriter, r *http.Request, status int) {
-	all := s.rules.List()
+	store, _, _, readOnly, found := s.scope(r)
+	if !found {
+		s.render(w, r, "rules", page{Title: "Rules", Error: "That session is not open."}, http.StatusNotFound)
+		return
+	}
+	all := []rules.Rule{}
+	if store != nil {
+		all = store.List()
+	}
 	key, label := s.parseRuleUpstream(r.URL.Query().Get("upstream"))
 	rows := make([]ruleRow, 0)
 	for _, rule := range all {
@@ -241,7 +266,7 @@ func (s *Server) rulesPage(w http.ResponseWriter, r *http.Request, status int) {
 	if action == "/_admin/" {
 		action = "/_admin"
 	}
-	s.render(w, "rules", page{
+	s.render(w, r, "rules", page{
 		Title:               "Rules",
 		Rules:               rows,
 		ActiveUpstream:      s.activeUpstreamName(),
@@ -253,6 +278,7 @@ func (s *Server) rulesPage(w http.ResponseWriter, r *http.Request, status int) {
 		RuleTotal:           len(all),
 		RuleGroups:          s.ruleGroups(rows),
 		RuleFilterQuery:     s.upstreamQuery(r),
+		ReadOnly:            readOnly,
 	}, status)
 }
 
@@ -404,6 +430,9 @@ func ruleMatchesUpstream(rule rules.Rule, key, namedID string) bool {
 }
 
 func (s *Server) createRule(w http.ResponseWriter, r *http.Request) {
+	if s.readOnlyPost(w, r) {
+		return
+	}
 	if !sameOrigin(r) {
 		http.Error(w, "cross-origin form posts are not allowed", http.StatusForbidden)
 		return
@@ -412,15 +441,15 @@ func (s *Server) createRule(w http.ResponseWriter, r *http.Request) {
 	view.Action = "/_admin/rules"
 	view.Submit = "Create rule"
 	if err != nil {
-		s.formError(w, "New rule", view, err)
+		s.formError(w, r, "New rule", view, err)
 		return
 	}
 	if err := s.knownUpstream(draft.UpstreamID); err != nil {
-		s.formError(w, "New rule", view, err)
+		s.formError(w, r, "New rule", view, err)
 		return
 	}
 	if _, err := s.rules.Create(draft); err != nil {
-		s.formError(w, "New rule", view, err)
+		s.formError(w, r, "New rule", view, err)
 		return
 	}
 	http.Redirect(w, r, "/_admin", http.StatusSeeOther)
@@ -439,7 +468,7 @@ func (s *Server) editForm(w http.ResponseWriter, r *http.Request, id string, pos
 		view.Action = action
 		view.Submit = "Save rule"
 	}
-	s.render(w, "rule_form", page{
+	s.render(w, r, "rule_form", page{
 		Title:           "Edit rule",
 		Form:            view,
 		Methods:         methods,
@@ -449,6 +478,9 @@ func (s *Server) editForm(w http.ResponseWriter, r *http.Request, id string, pos
 }
 
 func (s *Server) updateRule(w http.ResponseWriter, r *http.Request, id string) {
+	if s.readOnlyPost(w, r) {
+		return
+	}
 	if !sameOrigin(r) {
 		http.Error(w, "cross-origin form posts are not allowed", http.StatusForbidden)
 		return
@@ -474,6 +506,9 @@ func (s *Server) updateRule(w http.ResponseWriter, r *http.Request, id string) {
 }
 
 func (s *Server) toggleRule(w http.ResponseWriter, r *http.Request, id string) {
+	if s.readOnlyPost(w, r) {
+		return
+	}
 	if !sameOrigin(r) {
 		http.Error(w, "cross-origin form posts are not allowed", http.StatusForbidden)
 		return
@@ -507,6 +542,9 @@ func (s *Server) toggleRule(w http.ResponseWriter, r *http.Request, id string) {
 }
 
 func (s *Server) deleteRule(w http.ResponseWriter, r *http.Request, id string) {
+	if s.readOnlyPost(w, r) {
+		return
+	}
 	if !sameOrigin(r) {
 		http.Error(w, "cross-origin form posts are not allowed", http.StatusForbidden)
 		return
@@ -518,8 +556,8 @@ func (s *Server) deleteRule(w http.ResponseWriter, r *http.Request, id string) {
 	http.Redirect(w, r, s.rulesHome(r), http.StatusSeeOther)
 }
 
-func (s *Server) formError(w http.ResponseWriter, title string, view formView, err error) {
-	s.render(w, "rule_form", page{
+func (s *Server) formError(w http.ResponseWriter, r *http.Request, title string, view formView, err error) {
+	s.render(w, r, "rule_form", page{
 		Title:           title,
 		Form:            view,
 		Methods:         methods,
@@ -528,7 +566,64 @@ func (s *Server) formError(w http.ResponseWriter, title string, view formView, e
 	}, http.StatusBadRequest)
 }
 
-func (s *Server) render(w http.ResponseWriter, name string, data page, status int) {
+func (s *Server) scope(r *http.Request) (*rules.Store, *history.Log, string, bool, bool) {
+	id := ""
+	if r != nil {
+		id = strings.TrimSpace(r.URL.Query().Get("session"))
+	}
+	if s.sessions == nil || id == "" || id == sessions.DefaultID {
+		return s.rules, s.history, sessions.DefaultID, false, true
+	}
+	info, ok := s.sessions.Get(id)
+	if !ok {
+		return nil, nil, id, true, false
+	}
+	s.sessions.Touch(id)
+	return info.Rules, info.History, info.ID, info.ReadOnly, true
+}
+
+func (s *Server) sessionChrome(r *http.Request) ([]sessionChoice, string, bool) {
+	_, _, id, readOnly, found := s.scope(r)
+	if s.sessions == nil {
+		return nil, id, false
+	}
+	if !found {
+		id = ""
+	}
+	var choices []sessionChoice
+	for _, item := range s.sessions.List() {
+		choices = append(choices, sessionChoice{
+			ID:       item.ID,
+			Name:     item.Name,
+			Selected: item.ID == id || (id == "" && item.ID == sessions.DefaultID),
+		})
+	}
+	return choices, id, readOnly
+}
+
+func (s *Server) decorate(r *http.Request, data page) page {
+	data.Sessions, data.SessionID, data.ReadOnly = s.sessionChrome(r)
+	if r != nil {
+		data.SessionAction = r.URL.Path
+	}
+	return data
+}
+
+func (s *Server) readOnlyPost(w http.ResponseWriter, r *http.Request) bool {
+	_, _, _, readOnly, found := s.scope(r)
+	if !found {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return true
+	}
+	if readOnly {
+		http.Error(w, "test sessions are read-only in the dashboard", http.StatusForbidden)
+		return true
+	}
+	return false
+}
+
+func (s *Server) render(w http.ResponseWriter, r *http.Request, name string, data page, status int) {
+	data = s.decorate(r, data)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")

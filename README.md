@@ -415,6 +415,27 @@ The health response is `{"status":"ok","version":"dev"}`.
 
 A missing or wrong token is 401. The Host must be `localhost`, `127.0.0.1`, or `[::1]` on the admin port, or the response is 403. Any `Origin` header is 403, including a loopback origin, and OPTIONS is 403. The API sends no CORS headers. A body must be `Content-Type: application/json` or the response is 415. A body over 1 MiB is 413. Unknown JSON fields are 400.
 
+## Test sessions
+
+`POST /_api/sessions` opens another proxy on `127.0.0.1` with its own rules and history. Those stay in memory and are never written under `data/`. Upstreams are shared and read-only. The developer session is `default` on port 8080. It cannot be deleted.
+
+```sh
+curl -s -H "Authorization: Bearer $(cat data/admin.token)" \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"login-tests","port":0}' \
+  http://127.0.0.1:8081/_api/sessions
+```
+
+The response includes `proxy_url` (`http://127.0.0.1:PORT`) and `emulator_url` (`http://10.0.2.2:PORT`). Point a debug build at that base URL, for example:
+
+```sh
+flutter run --dart-define=API_BASE_URL=http://10.0.2.2:PORT
+```
+
+`GET /_api/sessions` lists them. `DELETE /_api/sessions/{id}` closes one. A busy port is 409. Ten test sessions is the limit. A session with no proxy traffic and no API call for `idle_timeout_seconds` (default 30 minutes) closes itself. The dashboard header can show a test session. That view is read-only.
+
+`/_admin` and `/_api` are not served on a session port.
+
 Errors use one shape and do not include the token:
 
 ```json

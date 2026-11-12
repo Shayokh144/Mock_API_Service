@@ -49,9 +49,21 @@
       <a href="/_admin/upstreams">Upstreams</a>
       <a href="/_admin/history">History</a>
     </nav>
+    {{if .Sessions}}
+    <form method="get" action="{{.SessionAction}}">
+      <label for="dashboard-session">Session</label>
+      <select id="dashboard-session" name="session">
+        {{range .Sessions}}
+        <option value="{{.ID}}" {{if .Selected}}selected{{end}}>{{.Name}}</option>
+        {{end}}
+      </select>
+      <button type="submit">View</button>
+    </form>
+    {{end}}
   </header>
   <main id="main">
     <h1>{{.Title}}</h1>
+    {{if .ReadOnly}}<p class="hint">This test session is read-only in the dashboard.</p>{{end}}
 {{end}}
 
 {{define "foot"}}

@@ -29,7 +29,7 @@ func (s *Server) newRule(w http.ResponseWriter, r *http.Request) {
 			view = s.prefillFromHistory(entry)
 		}
 	}
-	s.render(w, "rule_form", page{
+	s.render(w, r, "rule_form", page{
 		Title:           "New rule",
 		Methods:         methods,
 		Form:            view,

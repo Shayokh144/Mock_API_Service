@@ -65,7 +65,7 @@ func (s *Server) upstreamsPage(w http.ResponseWriter, r *http.Request, status in
 			})
 		}
 	}
-	s.render(w, "upstreams", page{
+	s.render(w, r, "upstreams", page{
 		Title:          "Upstreams",
 		Upstreams:      rows,
 		ActiveUpstream: s.activeUpstreamName(),
@@ -116,7 +116,7 @@ func (s *Server) createUpstream(w http.ResponseWriter, r *http.Request) {
 	}
 	name, baseURL, prefix, view := upstreamFromForm(r, "/_admin/upstreams", "Create upstream")
 	if _, err := s.upstreams.Create(name, baseURL, prefix); err != nil {
-		s.upstreamError(w, "New upstream", view, err)
+		s.upstreamError(w, r, "New upstream", view, err)
 		return
 	}
 	http.Redirect(w, r, "/_admin/upstreams", http.StatusSeeOther)
@@ -144,7 +144,7 @@ func (s *Server) editUpstream(w http.ResponseWriter, r *http.Request, id string,
 		view.Action = "/_admin/upstreams/" + id
 		view.Submit = "Save upstream"
 	}
-	s.render(w, "upstream_form", page{
+	s.render(w, r, "upstream_form", page{
 		Title:        "Edit upstream",
 		UpstreamForm: view,
 		Error:        message,
@@ -216,8 +216,8 @@ func (s *Server) deleteUpstream(w http.ResponseWriter, r *http.Request, id strin
 	http.Redirect(w, r, "/_admin/upstreams", http.StatusSeeOther)
 }
 
-func (s *Server) upstreamError(w http.ResponseWriter, title string, view upstreamForm, err error) {
-	s.render(w, "upstream_form", page{
+func (s *Server) upstreamError(w http.ResponseWriter, r *http.Request, title string, view upstreamForm, err error) {
+	s.render(w, r, "upstream_form", page{
 		Title:        title,
 		UpstreamForm: view,
 		Error:        err.Error(),
