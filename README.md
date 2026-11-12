@@ -436,6 +436,10 @@ flutter run --dart-define=API_BASE_URL=http://10.0.2.2:PORT
 
 `/_admin` and `/_api` are not served on a session port.
 
+## Rules API
+
+Rules live under `/_api/sessions/{id}/rules`. `id` can be `default`. The JSON uses the same checks as the dashboard form. `description` is the label shown as Name in the dashboard. `upstream` is an upstream name or `Any`. `query_conditions` and `body_conditions` are `key=value` strings. `headers` is an object or a list of `Name: value` strings. `body` is JSON. A `raw_response` string switches the rule to raw mode. `GET` accepts `?upstream=` with the same meaning as the dashboard filter. A session holds at most 500 rules. Edits to `default` are written to `data/rules.json`. Test-session rules stay in memory.
+
 Errors use one shape and do not include the token:
 
 ```json

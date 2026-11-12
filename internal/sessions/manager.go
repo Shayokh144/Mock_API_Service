@@ -122,6 +122,11 @@ func (m *Manager) Close() {
 	}
 }
 
+// Upstreams is the shared upstream store.
+func (m *Manager) Upstreams() *upstreams.Store {
+	return m.opts.Upstreams
+}
+
 // List returns the developer session first, then test sessions.
 func (m *Manager) List() []Info {
 	m.mu.Lock()

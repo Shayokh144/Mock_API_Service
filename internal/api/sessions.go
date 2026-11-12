@@ -44,6 +44,10 @@ func (s *Server) sessionsRoute(w http.ResponseWriter, r *http.Request) {
 	}
 	id, extra, _ := strings.Cut(rest, "/")
 	if extra != "" {
+		if extra == "rules" || strings.HasPrefix(extra, "rules/") {
+			s.rulesRoute(w, r, id, strings.TrimPrefix(extra, "rules"))
+			return
+		}
 		writeError(w, http.StatusNotFound, "not_found", "unknown API path")
 		return
 	}
