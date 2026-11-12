@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/Shayokh144/Mock_API_Service/internal/admin"
+	"github.com/Shayokh144/Mock_API_Service/internal/sessions"
 )
 
 const (
@@ -22,9 +23,10 @@ const (
 
 // Server is the /_api handler. It is mounted only on the admin listener.
 type Server struct {
-	tokens  *TokenFile
-	port    string
-	version string
+	tokens   *TokenFile
+	port     string
+	version  string
+	sessions *sessions.Manager
 }
 
 // New returns an API server. port is the admin listen port, used by the Host check.
@@ -37,6 +39,11 @@ func New(tokens *TokenFile, listenAddr, version string) *Server {
 		version = Version
 	}
 	return &Server{tokens: tokens, port: port, version: version}
+}
+
+// UseSessions attaches the test-session manager.
+func (s *Server) UseSessions(m *sessions.Manager) {
+	s.sessions = m
 }
 
 // Mount sends /_api to the API server and every other path to the dashboard.
@@ -71,6 +78,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.health(w, r)
 	case path == "/_api/token/rotate" && r.Method == http.MethodPost:
 		s.rotate(w, r)
+	case path == "/_api/sessions" || strings.HasPrefix(path, "/_api/sessions/"):
+		s.sessionsRoute(w, r)
 	default:
 		writeError(w, http.StatusNotFound, "not_found", "unknown API path")
 	}

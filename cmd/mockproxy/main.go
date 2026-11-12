@@ -15,6 +15,7 @@ import (
 	"github.com/Shayokh144/Mock_API_Service/internal/history"
 	"github.com/Shayokh144/Mock_API_Service/internal/proxy"
 	"github.com/Shayokh144/Mock_API_Service/internal/rules"
+	"github.com/Shayokh144/Mock_API_Service/internal/sessions"
 	"github.com/Shayokh144/Mock_API_Service/internal/upstreams"
 )
 
@@ -70,12 +71,24 @@ func run(getenv func(string) string, stderr io.Writer, listen func(string, http.
 	}
 	dashboard.UseListenAddr(cfg.AdminListenAddr)
 	dashboard.UseProxyAddr(cfg.ListenAddr)
+	manager := sessions.New(sessions.Options{
+		Rules:        store,
+		History:      log,
+		Upstreams:    ups,
+		ProxyAddr:    cfg.ListenAddr,
+		AdminAddr:    cfg.AdminListenAddr,
+		Timeout:      cfg.UpstreamTimeout,
+		HistoryLimit: cfg.HistoryLimit,
+	})
+	defer manager.Close()
+	dashboard.UseSessions(manager)
 	tokens, err := api.LoadToken(cfg.TokenPath)
 	if err != nil {
 		fmt.Fprintln(stderr, err.Error())
 		return err
 	}
 	apiServer := api.New(tokens, cfg.AdminListenAddr, api.Version)
+	apiServer.UseSessions(manager)
 	adminHandler := api.Mount(dashboard, apiServer)
 	handler := proxy.New(proxy.Options{
 		Upstreams: ups,

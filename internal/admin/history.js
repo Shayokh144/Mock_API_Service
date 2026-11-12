@@ -20,9 +20,13 @@
     var kept = new URLSearchParams();
     var source = params.get("source");
     var upstream = params.get("upstream");
+    var session = params.get("session");
     var text = currentText();
     if (text) {
       kept.set("q", text);
+    }
+    if (session && session !== "default") {
+      kept.set("session", session);
     }
     if (source) {
       kept.set("source", source);
@@ -60,11 +64,15 @@
     }
     var links = document.querySelectorAll('nav[aria-label="History source"] a');
     var upstream = params.get("upstream") || "";
+    var session = params.get("session") || "";
     for (var i = 0; i < links.length; i++) {
       var source = links[i].getAttribute("data-source") || "";
       var kept = new URLSearchParams();
       if (text) {
         kept.set("q", text);
+      }
+      if (session && session !== "default") {
+        kept.set("session", session);
       }
       if (source) {
         kept.set("source", source);

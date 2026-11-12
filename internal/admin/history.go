@@ -12,6 +12,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/Shayokh144/Mock_API_Service/internal/history"
+	"github.com/Shayokh144/Mock_API_Service/internal/sessions"
 )
 
 //go:embed history.js
@@ -34,6 +35,10 @@ type historyPageData struct {
 	Text            string
 	Shown           int
 	Total           int
+	Sessions        []sessionChoice
+	SessionAction   string
+	SessionID       string
+	ReadOnly        bool
 }
 
 type historyUpstreamChoice struct {
@@ -88,6 +93,9 @@ func (s *Server) clearConfirm(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) clearHistory(w http.ResponseWriter, r *http.Request) {
+	if s.readOnlyPost(w, r) {
+		return
+	}
 	if !sameOrigin(r) {
 		http.Error(w, "cross-origin form posts are not allowed", http.StatusForbidden)
 		return
@@ -192,6 +200,9 @@ func (s *Server) historyScript(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) deleteHistory(w http.ResponseWriter, r *http.Request, id string) {
+	if s.readOnlyPost(w, r) {
+		return
+	}
 	if !sameOrigin(r) {
 		http.Error(w, "cross-origin form posts are not allowed", http.StatusForbidden)
 		return
@@ -205,9 +216,20 @@ func (s *Server) deleteHistory(w http.ResponseWriter, r *http.Request, id string
 
 func (s *Server) historyView(r *http.Request) ([]history.Entry, historyPageData) {
 	data := historyPageData{FilterKey: "all", FilterLabel: "All", UpstreamLabel: "All upstreams"}
+	_, log, sessionID, readOnly, found := s.scope(r)
+	data.Sessions, data.SessionID, data.ReadOnly = s.sessionChrome(r)
+	if r != nil {
+		data.SessionAction = r.URL.Path
+	}
+	data.ReadOnly = readOnly
+	data.SessionID = sessionID
+	if !found {
+		data.Error = "That session is not open."
+		return nil, data
+	}
 	var entries []history.Entry
-	if s.history != nil {
-		entries = s.history.List()
+	if log != nil {
+		entries = log.List()
 	}
 	data.Total = len(entries)
 	sourceKey := ""
@@ -235,10 +257,10 @@ func (s *Server) historyView(r *http.Request) ([]history.Entry, historyPageData)
 		shown = filterHistoryText(shown, text)
 	}
 	data.Shown = len(shown)
-	data.SourceAll = template.URL(historyQueryString("", upstreamKey, text))
-	data.SourceMock = template.URL(historyQueryString(string(history.SourceMock), upstreamKey, text))
-	data.SourceReal = template.URL(historyQueryString(string(history.SourceUpstream), upstreamKey, text))
-	data.FilterQuery = template.URL(historyQueryString(sourceKey, upstreamKey, text))
+	data.SourceAll = template.URL(historyQueryString("", upstreamKey, text, sessionID))
+	data.SourceMock = template.URL(historyQueryString(string(history.SourceMock), upstreamKey, text, sessionID))
+	data.SourceReal = template.URL(historyQueryString(string(history.SourceUpstream), upstreamKey, text, sessionID))
+	data.FilterQuery = template.URL(historyQueryString(sourceKey, upstreamKey, text, sessionID))
 	data.UpstreamChoices = s.upstreamFilterChoices(entries, upstreamKey)
 	return shown, data
 }
@@ -252,17 +274,24 @@ func historyReturnPath(r *http.Request) string {
 	if upstream, ok := history.ParseUpstream(r.URL.Query().Get("upstream")); ok {
 		upstreamKey = upstream
 	}
-	query := historyQueryString(sourceKey, upstreamKey, normalizeHistoryText(r.URL.Query().Get("q")))
+	sessionID := ""
+	if raw := strings.TrimSpace(r.URL.Query().Get("session")); raw != "" && raw != sessions.DefaultID {
+		sessionID = raw
+	}
+	query := historyQueryString(sourceKey, upstreamKey, normalizeHistoryText(r.URL.Query().Get("q")), sessionID)
 	if query == "" {
 		return "/_admin/history"
 	}
 	return "/_admin/history" + query
 }
 
-func historyQueryString(source, upstream, text string) string {
+func historyQueryString(source, upstream, text, sessionID string) string {
 	values := url.Values{}
 	if text != "" {
 		values.Set("q", text)
+	}
+	if sessionID != "" && sessionID != sessions.DefaultID {
+		values.Set("session", sessionID)
 	}
 	if source != "" {
 		values.Set("source", source)

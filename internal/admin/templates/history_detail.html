@@ -32,12 +32,12 @@
 <h2>Response body</h2>
 {{if .ResponseTruncated}}<p>Response body preview was truncated.</p>{{end}}
 <pre>{{.ResponseBody}}</pre>
-<div class="actions">
+{{if not $.ReadOnly}}<div class="actions">
   <a href="/_admin/rules/new?from={{.ID}}">Create rule</a>
   <form class="inline" method="post" action="/_admin/history/{{.ID}}/delete{{$.FilterQuery}}">
     <button class="danger" type="submit">Delete this entry</button>
   </form>
-</div>
+</div>{{end}}
 {{end}}
 {{template "foot" .}}
 {{end}}

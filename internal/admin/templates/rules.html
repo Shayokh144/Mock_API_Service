@@ -14,7 +14,8 @@
 </form>
 <p class="hint">A named upstream includes rules set to Any, because those rules match every upstream. Any shows only rules set to Any. The address keeps the choice, for example ?upstream=OKYA_AUTH_DEV. Rules are grouped by upstream. Empty groups are left out.</p>
 <p id="rules-summary">Upstream: {{.RuleUpstreamLabel}}. Showing {{.RuleShown}} of {{.RuleTotal}}.</p>
-<p><a class="button" href="/_admin/rules/new">New rule</a></p>
+{{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{end}}
+{{if not .ReadOnly}}<p><a class="button" href="/_admin/rules/new">New rule</a></p>{{end}}
 {{if .RuleGroups}}
 {{range .RuleGroups}}
 <section>
@@ -51,6 +52,7 @@
         <td>{{.Delay}}</td>
         <td>{{.Mode}}</td>
         <td>
+          {{if not $.ReadOnly}}
           <div class="actions">
             <a href="/_admin/rules/{{.ID}}/edit{{$.RuleFilterQuery}}">Edit</a>
             <form class="inline" method="post" action="/_admin/rules/{{.ID}}/toggle{{$.RuleFilterQuery}}">
@@ -60,6 +62,7 @@
               <button class="danger" type="submit">Delete</button>
             </form>
           </div>
+          {{end}}
         </td>
       </tr>
       {{end}}
