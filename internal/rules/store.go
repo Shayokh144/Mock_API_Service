@@ -159,6 +159,17 @@ func (s *Store) Update(id string, d Draft) (Rule, error) {
 	return cloneRule(rule), nil
 }
 
+// Clear removes every rule. A memory store writes nothing.
+func (s *Store) Clear() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.persist(nil); err != nil {
+		return err
+	}
+	s.rules = nil
+	return nil
+}
+
 // Delete removes one rule.
 func (s *Store) Delete(id string) error {
 	s.mu.Lock()

@@ -48,6 +48,14 @@ func (s *Server) sessionsRoute(w http.ResponseWriter, r *http.Request) {
 			s.rulesRoute(w, r, id, strings.TrimPrefix(extra, "rules"))
 			return
 		}
+		if extra == "reset" {
+			s.resetSession(w, r, id)
+			return
+		}
+		if extra == "history" {
+			s.historyRoute(w, r, id)
+			return
+		}
 		writeError(w, http.StatusNotFound, "not_found", "unknown API path")
 		return
 	}

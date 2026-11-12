@@ -350,6 +350,7 @@ func (h *Handler) record(started time.Time, r *http.Request, reqHeaders http.Hea
 	reqBody, reqTrunc := displayBody(reqHeaders, payload)
 	h.history.Add(history.Entry{
 		StartedAt:             started,
+		DurationMS:            int(time.Since(started).Milliseconds()),
 		Method:                r.Method,
 		Path:                  r.URL.Path,
 		RawQuery:              r.URL.RawQuery,
