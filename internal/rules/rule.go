@@ -173,8 +173,8 @@ func validatePattern(pattern string, allowWildcard bool) error {
 	if len(pattern) > maxPatternLength {
 		return fmt.Errorf("path pattern is too long")
 	}
-	if pattern == "/_admin" || strings.HasPrefix(pattern, "/_admin/") {
-		return fmt.Errorf("path pattern must not use the reserved /_admin prefix")
+	if pattern == "/_admin" || strings.HasPrefix(pattern, "/_admin/") || pattern == "/_api" || strings.HasPrefix(pattern, "/_api/") {
+		return fmt.Errorf("path pattern must not use the reserved /_admin or /_api prefix")
 	}
 	for _, r := range pattern {
 		if r < 0x20 || r == 0x7f {
