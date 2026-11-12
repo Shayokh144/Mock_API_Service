@@ -33,7 +33,6 @@ type Options struct {
 	Transport http.RoundTripper
 	Rules     *rules.Store
 	History   *history.Log
-	Admin     http.Handler
 }
 
 // Handler is the local proxy. /_admin is never forwarded.
@@ -44,7 +43,6 @@ type Handler struct {
 	transport http.RoundTripper
 	rules     *rules.Store
 	history   *history.Log
-	admin     http.Handler
 	wait      func(context.Context, time.Duration) error
 }
 
@@ -61,18 +59,13 @@ func New(opts Options) *Handler {
 		transport: opts.Transport,
 		rules:     opts.Rules,
 		history:   opts.History,
-		admin:     opts.Admin,
 	}
 }
 
 // ServeHTTP reserves /_admin, serves an enabled rule, and forwards the rest.
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if isAdmin(r.URL.Path) {
-		if h.admin != nil {
-			h.admin.ServeHTTP(w, r)
-			return
-		}
-		http.Error(w, "admin is not ready", http.StatusNotFound)
+		http.Error(w, "the dashboard is not served on the proxy port", http.StatusNotFound)
 		return
 	}
 	h.serveAPI(w, r)

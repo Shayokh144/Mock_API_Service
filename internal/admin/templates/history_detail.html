@@ -17,7 +17,7 @@
 <h2>Request headers</h2>
 {{if .RequestHeaders}}
 <ul>
-  {{range .RequestHeaders}}<li><code>{{.Name}}: {{.Value}}</code></li>{{end}}
+  {{range .RequestHeaders}}<li>{{template "header_line" .}}</li>{{end}}
 </ul>
 {{else}}<p>No request headers.</p>{{end}}
 <h2>Request body</h2>
@@ -26,7 +26,7 @@
 <h2>Response headers</h2>
 {{if .ResponseHeaders}}
 <ul>
-  {{range .ResponseHeaders}}<li><code>{{.Name}}: {{.Value}}</code></li>{{end}}
+  {{range .ResponseHeaders}}<li>{{template "header_line" .}}</li>{{end}}
 </ul>
 {{else}}<p>No response headers.</p>{{end}}
 <h2>Response body</h2>
@@ -40,4 +40,8 @@
 </div>
 {{end}}
 {{template "foot" .}}
+{{end}}
+
+{{define "header_line"}}
+{{if .Secret}}<code>{{.Name}}: ••••••••</code> <details><summary>Show value</summary><code>{{.Name}}: {{.Value}}</code></details>{{else}}<code>{{.Name}}: {{.Value}}</code>{{end}}
 {{end}}

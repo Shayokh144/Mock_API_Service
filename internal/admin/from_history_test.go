@@ -49,6 +49,7 @@ func TestCreateRuleFromHistory(t *testing.T) {
 			"Transfer-Encoding": {"chunked"},
 			"Content-Encoding":  {"gzip"},
 			"Connection":        {"close"},
+			"Set-Cookie":        {"session=real-token; HttpOnly"},
 		},
 	})
 	failed := log.Add(history.Entry{
@@ -104,6 +105,7 @@ func TestCreateRuleFromHistory(t *testing.T) {
 		"Content-Type: application/json",
 		`HTTP/1.1 200 OK`,
 		`&#34;ok&#34;:true`,
+		"Replace real tokens, cookies, and passwords with dummy values before saving.",
 	} {
 		if !strings.Contains(form, want) {
 			t.Fatalf("form missing %q\n%s", want, form)
@@ -116,6 +118,8 @@ func TestCreateRuleFromHistory(t *testing.T) {
 		"Transfer-Encoding: chunked",
 		"Content-Encoding: gzip",
 		"Connection: close",
+		"Set-Cookie",
+		"session=real-token",
 	} {
 		if strings.Contains(form, absent) {
 			t.Fatalf("form kept %q\n%s", absent, form)
@@ -138,7 +142,7 @@ func TestCreateRuleFromHistory(t *testing.T) {
 	missing := get(t, client, srv.URL+"/_admin/rules/new?from=0123456789abcdef")
 	assertContains(t, missing, "That history entry is no longer available. The form is empty.")
 	assertContains(t, missing, `value=""`)
-	if strings.Contains(missing, "/api/user/me") {
+	if strings.Contains(missing, "/api/user/me") || strings.Contains(missing, "Replace real tokens") {
 		t.Fatalf("missing id kept another entry:\n%s", missing)
 	}
 

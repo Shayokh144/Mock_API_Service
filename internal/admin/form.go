@@ -38,6 +38,7 @@ type formView struct {
 	MockHeader   bool
 	Headers      string
 	Body         string
+	SecretHint   string
 }
 
 func draftFromForm(r *http.Request) (rules.Draft, formView, error) {

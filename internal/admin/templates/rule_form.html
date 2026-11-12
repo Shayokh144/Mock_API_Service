@@ -1,6 +1,7 @@
 {{define "rule_form"}}
 {{template "head" .}}
 {{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{end}}
+{{if .Form.SecretHint}}<p class="hint" role="status">{{.Form.SecretHint}}</p>{{end}}
 <form id="rule-form" class="{{if eq .Form.ResponseMode "raw"}}mode-raw{{else}}mode-fields{{end}}" method="post" action="{{.Form.Action}}">
   <label for="name">Name</label>
   <input id="name" name="name" type="text" maxlength="80" value="{{.Form.Name}}">

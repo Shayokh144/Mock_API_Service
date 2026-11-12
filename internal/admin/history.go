@@ -66,8 +66,9 @@ type historyDetail struct {
 }
 
 type headerLine struct {
-	Name  string
-	Value string
+	Name   string
+	Value  string
+	Secret bool
 }
 
 func (s *Server) historyPage(w http.ResponseWriter, r *http.Request) {
@@ -446,9 +447,19 @@ func headerLines(header map[string][]string) []headerLine {
 	sort.Strings(keys)
 	var lines []headerLine
 	for _, key := range keys {
+		secret := secretHeader(key)
 		for _, value := range header[key] {
-			lines = append(lines, headerLine{Name: key, Value: value})
+			lines = append(lines, headerLine{Name: key, Value: value, Secret: secret})
 		}
 	}
 	return lines
+}
+
+func secretHeader(name string) bool {
+	switch http.CanonicalHeaderKey(name) {
+	case "Authorization", "Cookie":
+		return true
+	default:
+		return false
+	}
 }

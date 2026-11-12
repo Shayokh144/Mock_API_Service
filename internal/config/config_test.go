@@ -26,6 +26,9 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.ListenAddr != "127.0.0.1:8080" {
 		t.Fatalf("listen = %s", cfg.ListenAddr)
 	}
+	if cfg.AdminListenAddr != "127.0.0.1:8081" {
+		t.Fatalf("admin listen = %s", cfg.AdminListenAddr)
+	}
 	if cfg.RulesPath != DefaultRulesPath {
 		t.Fatalf("rules path = %s", cfg.RulesPath)
 	}
@@ -40,14 +43,17 @@ func TestLoadDefaults(t *testing.T) {
 	}
 
 	lines := StartupLines(cfg)
-	if len(lines) != 2 {
+	if len(lines) != 3 {
 		t.Fatalf("lines = %#v", lines)
 	}
 	if lines[0] != "listening on 127.0.0.1:8080" {
 		t.Fatalf("line 0 = %q", lines[0])
 	}
-	if lines[1] != "dashboard at http://localhost:8080/_admin" {
+	if lines[1] != "admin listening on 127.0.0.1:8081" {
 		t.Fatalf("line 1 = %q", lines[1])
+	}
+	if lines[2] != "dashboard at http://localhost:8081/_admin" {
+		t.Fatalf("line 2 = %q", lines[2])
 	}
 }
 
@@ -68,8 +74,11 @@ func TestLoadOverrides(t *testing.T) {
 	if cfg.ListenAddr != "127.0.0.1:9090" {
 		t.Fatalf("listen = %s", cfg.ListenAddr)
 	}
-	if DashboardURL(cfg.ListenAddr) != "http://localhost:9090/_admin" {
-		t.Fatalf("dashboard = %s", DashboardURL(cfg.ListenAddr))
+	if cfg.AdminListenAddr != DefaultAdminListenAddr {
+		t.Fatalf("admin listen = %s", cfg.AdminListenAddr)
+	}
+	if DashboardURL(cfg.AdminListenAddr) != "http://localhost:8081/_admin" {
+		t.Fatalf("dashboard = %s", DashboardURL(cfg.AdminListenAddr))
 	}
 	if cfg.RulesPath != "tmp/rules.json" || cfg.HistoryLimit != 12 || cfg.UpstreamTimeout != 2*time.Second {
 		t.Fatalf("cfg = %+v", cfg)
@@ -93,6 +102,9 @@ func TestLoadIPv6Loopback(t *testing.T) {
 	if DashboardURL(cfg.ListenAddr) != "http://[::1]:8080/_admin" {
 		t.Fatalf("dashboard = %s", DashboardURL(cfg.ListenAddr))
 	}
+	if cfg.AdminListenAddr != DefaultAdminListenAddr {
+		t.Fatalf("admin listen = %s", cfg.AdminListenAddr)
+	}
 }
 
 func TestLoadAllowsMissingUpstream(t *testing.T) {
@@ -104,7 +116,7 @@ func TestLoadAllowsMissingUpstream(t *testing.T) {
 		t.Fatalf("upstream = %s", cfg.Upstream)
 	}
 	lines := StartupLines(cfg)
-	if len(lines) != 3 || !strings.Contains(lines[2], "no upstream configured") {
+	if len(lines) != 4 || !strings.Contains(lines[3], "no upstream configured") {
 		t.Fatalf("lines = %#v", lines)
 	}
 }
@@ -122,6 +134,8 @@ func TestLoadRejectsBadSettings(t *testing.T) {
 		{"public bind", map[string]string{"UPSTREAM_BASE_URL": "http://127.0.0.1:9", "LISTEN_ADDR": "0.0.0.0:8080"}, "LISTEN_ADDR"},
 		{"lan bind", map[string]string{"UPSTREAM_BASE_URL": "http://127.0.0.1:9", "LISTEN_ADDR": "192.168.1.10:8080"}, "LISTEN_ADDR"},
 		{"bad addr", map[string]string{"UPSTREAM_BASE_URL": "http://127.0.0.1:9", "LISTEN_ADDR": "8080"}, "LISTEN_ADDR"},
+		{"public admin", map[string]string{"ADMIN_LISTEN_ADDR": "0.0.0.0:8081"}, "ADMIN_LISTEN_ADDR"},
+		{"same port", map[string]string{"LISTEN_ADDR": "127.0.0.1:8080", "ADMIN_LISTEN_ADDR": "127.0.0.1:8080"}, "ADMIN_LISTEN_ADDR"},
 		{"bad limit", map[string]string{"UPSTREAM_BASE_URL": "http://127.0.0.1:9", "HISTORY_LIMIT": "0"}, "HISTORY_LIMIT"},
 		{"bad timeout", map[string]string{"UPSTREAM_BASE_URL": "http://127.0.0.1:9", "UPSTREAM_TIMEOUT": "soon"}, "UPSTREAM_TIMEOUT"},
 		{"zero timeout", map[string]string{"UPSTREAM_BASE_URL": "http://127.0.0.1:9", "UPSTREAM_TIMEOUT": "0s"}, "UPSTREAM_TIMEOUT"},

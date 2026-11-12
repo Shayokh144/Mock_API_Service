@@ -63,6 +63,7 @@ func (s *Server) prefillFromHistory(entry history.Entry) formView {
 	view.UpstreamID = s.knownUpstreamID(entry.UpstreamID)
 	view.Enabled = true
 	view.DelayMS = "0"
+	view.SecretHint = "This form was filled from a recorded call. Replace real tokens, cookies, and passwords with dummy values before saving."
 	if !historyHasResponse(entry) {
 		return view
 	}
@@ -229,7 +230,7 @@ func ruleHeaderLines(header http.Header, dropEncoding bool) string {
 func skipRuleHeader(name string, dropEncoding bool) bool {
 	canon := http.CanonicalHeaderKey(name)
 	switch canon {
-	case "Content-Length", "Transfer-Encoding", "Connection", "Keep-Alive", "Proxy-Authenticate", "Proxy-Authorization", "Te", "Trailer", "Upgrade", "X-Mock-Response":
+	case "Content-Length", "Transfer-Encoding", "Connection", "Keep-Alive", "Proxy-Authenticate", "Proxy-Authorization", "Te", "Trailer", "Upgrade", "X-Mock-Response", "Set-Cookie":
 		return true
 	case "Content-Encoding":
 		return dropEncoding
@@ -272,7 +273,7 @@ func rawResponse(status int, header http.Header, body string, dropEncoding bool)
 func skipRawHeader(name string, dropEncoding bool) bool {
 	canon := http.CanonicalHeaderKey(name)
 	switch canon {
-	case "Content-Length", "Transfer-Encoding", "Connection", "Keep-Alive", "Proxy-Authenticate", "Proxy-Authorization", "Te", "Trailer", "Upgrade":
+	case "Content-Length", "Transfer-Encoding", "Connection", "Keep-Alive", "Proxy-Authenticate", "Proxy-Authorization", "Te", "Trailer", "Upgrade", "Set-Cookie":
 		return true
 	case "Content-Encoding":
 		return dropEncoding

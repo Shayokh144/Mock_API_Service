@@ -5,6 +5,7 @@ import (
 	"embed"
 	"encoding/hex"
 	"html/template"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -20,10 +21,31 @@ var templateFiles embed.FS
 
 // Server renders the dashboard.
 type Server struct {
-	rules     *rules.Store
-	history   *history.Log
-	upstreams *upstreams.Store
-	tmpl      *template.Template
+	rules      *rules.Store
+	history    *history.Log
+	upstreams  *upstreams.Store
+	tmpl       *template.Template
+	listenPort string
+	proxyPort  string
+}
+
+// UseListenAddr pins the dashboard Host check to this loopback address's port.
+func (s *Server) UseListenAddr(addr string) {
+	_, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		s.listenPort = ""
+		return
+	}
+	s.listenPort = port
+}
+
+// UseProxyAddr is the proxy listener. The Upstreams page copies this port into app URLs.
+func (s *Server) UseProxyAddr(addr string) {
+	_, port, err := net.SplitHostPort(addr)
+	if err != nil || port == "" {
+		return
+	}
+	s.proxyPort = port
 }
 
 // New parses the embedded templates. A parse error should stop startup.
@@ -104,6 +126,10 @@ type upstreamChoice struct {
 
 // ServeHTTP routes the dashboard. API traffic never reaches this handler.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if !allowedAdminHost(r.Host, s.listenPort) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
 	path := r.URL.Path
 	switch {
 	case path == "/_admin/rules" && r.Method == http.MethodPost:
