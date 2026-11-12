@@ -13,6 +13,7 @@ import (
 
 	"github.com/Shayokh144/Mock_API_Service/internal/history"
 	"github.com/Shayokh144/Mock_API_Service/internal/rules"
+	"github.com/Shayokh144/Mock_API_Service/internal/scenario"
 	"github.com/Shayokh144/Mock_API_Service/internal/sessions"
 	"github.com/Shayokh144/Mock_API_Service/internal/upstreams"
 )
@@ -158,6 +159,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.rulesPage(w, r, http.StatusOK)
+	case path == "/_admin/scenario" && r.Method == http.MethodGet:
+		s.exportScenario(w, r)
 	case path == "/_admin/rules/new" && r.Method == http.MethodGet:
 		s.newRule(w, r)
 	case strings.HasPrefix(path, "/_admin/rules/"):
@@ -429,6 +432,44 @@ func ruleMatchesUpstream(rule rules.Rule, key, namedID string) bool {
 	default:
 		return rule.UpstreamID == namedID || rule.UpstreamID == ""
 	}
+}
+
+func (s *Server) exportScenario(w http.ResponseWriter, r *http.Request) {
+	store, _, _, _, found := s.scope(r)
+	if !found || store == nil {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return
+	}
+	format := "yaml"
+	if strings.EqualFold(r.URL.Query().Get("format"), "json") {
+		format = "json"
+	}
+	doc := scenario.FromRules("exported", "", store.List(), func(id string) string {
+		if id == "" {
+			return "Any"
+		}
+		if s.upstreams == nil {
+			return id
+		}
+		if item, ok := s.upstreams.Get(id); ok {
+			return item.Name
+		}
+		return id
+	})
+	payload, err := scenario.Marshal(doc, format)
+	if err != nil {
+		http.Error(w, "could not export the scenario", http.StatusInternalServerError)
+		return
+	}
+	if format == "json" {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	} else {
+		w.Header().Set("Content-Type", "application/yaml; charset=utf-8")
+	}
+	w.Header().Set("Content-Disposition", "attachment; filename=scenario."+format)
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(payload)
 }
 
 func (s *Server) createRule(w http.ResponseWriter, r *http.Request) {

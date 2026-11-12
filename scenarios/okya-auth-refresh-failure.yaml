@@ -1,0 +1,16 @@
+version: 1
+name: okya-auth-refresh-failure
+description: The refresh call fails with a dummy error. No real tokens.
+rules:
+  - name: refresh-fail
+    description: Refresh token is rejected
+    method: POST
+    path: /v1/oauth/token
+    body_conditions:
+      - grant_type=refresh_token
+    status: 401
+    headers:
+      Content-Type: application/json
+    body:
+      error: invalid_grant
+      error_description: dummy refresh failure

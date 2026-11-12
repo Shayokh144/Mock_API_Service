@@ -15,6 +15,7 @@
 <p class="hint">A named upstream includes rules set to Any, because those rules match every upstream. Any shows only rules set to Any. The address keeps the choice, for example ?upstream=OKYA_AUTH_DEV. Rules are grouped by upstream. Empty groups are left out.</p>
 <p id="rules-summary">Upstream: {{.RuleUpstreamLabel}}. Showing {{.RuleShown}} of {{.RuleTotal}}.</p>
 {{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{end}}
+<p><a href="/_admin/scenario?format=yaml{{if and .SessionID (ne .SessionID "default")}}&amp;session={{.SessionID}}{{end}}">Export as scenario</a></p>
 {{if not .ReadOnly}}<p><a class="button" href="/_admin/rules/new">New rule</a></p>{{end}}
 {{if .RuleGroups}}
 {{range .RuleGroups}}

@@ -7,13 +7,15 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/Shayokh144/Mock_API_Service/internal/scenario"
 	"github.com/Shayokh144/Mock_API_Service/internal/sessions"
 )
 
 type sessionBody struct {
-	Name    string `json:"name"`
-	Port    int    `json:"port"`
-	IdleSec int    `json:"idle_timeout_seconds"`
+	Name     string             `json:"name"`
+	Port     int                `json:"port"`
+	IdleSec  int                `json:"idle_timeout_seconds"`
+	Scenario *scenario.Document `json:"scenario,omitempty"`
 }
 
 type sessionResponse struct {
@@ -54,6 +56,14 @@ func (s *Server) sessionsRoute(w http.ResponseWriter, r *http.Request) {
 		}
 		if extra == "history" {
 			s.historyRoute(w, r, id)
+			return
+		}
+		if extra == "scenario" {
+			s.scenarioRoute(w, r, id)
+			return
+		}
+		if extra == "scenarios/load" {
+			s.loadScenario(w, r, id)
 			return
 		}
 		writeError(w, http.StatusNotFound, "not_found", "unknown API path")
@@ -99,6 +109,13 @@ func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeSessionError(w, err)
 		return
+	}
+	if body.Scenario != nil {
+		if _, err := s.applyDocument(info, *body.Scenario, true); err != nil {
+			_ = s.sessions.Delete(info.ID)
+			writeError(w, http.StatusBadRequest, "bad_request", err.Error())
+			return
+		}
 	}
 	writeJSON(w, http.StatusCreated, toSessionResponse(info))
 }

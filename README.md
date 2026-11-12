@@ -444,7 +444,21 @@ Rules live under `/_api/sessions/{id}/rules`. `id` can be `default`. The JSON us
 
 `POST /_api/sessions/{id}/reset` clears that session's rules and history. The body `{"rules":true,"history":true}` can leave one of them out; a missing field means true. Resetting `default` needs `?confirm=default`, or the response is 409.
 
-`GET /_api/sessions/{id}/history` returns the newest entries. Filters are `method`, `path` (contains), `path_exact`, `upstream`, `status`, `mocked`, `rule_name`, `rule_id`, `since` (an RFC3339 time or an entry id), and `limit` (default 100, maximum 500). `Authorization` and `Cookie` are masked unless `reveal=1`. A body over the capture cap sets `truncated`. `DELETE /_api/sessions/{id}/history` clears history only. `upstream` is an upstream name or `Any`. `query_conditions` and `body_conditions` are `key=value` strings. `headers` is an object or a list of `Name: value` strings. `body` is JSON. A `raw_response` string switches the rule to raw mode. `GET` accepts `?upstream=` with the same meaning as the dashboard filter. A session holds at most 500 rules. Edits to `default` are written to `data/rules.json`. Test-session rules stay in memory.
+`GET /_api/sessions/{id}/history` returns the newest entries. Filters are `method`, `path` (contains), `path_exact`, `upstream`, `status`, `mocked`, `rule_name`, `rule_id`, `since` (an RFC3339 time or an entry id), and `limit` (default 100, maximum 500). `Authorization` and `Cookie` are masked unless `reveal=1`. A body over the capture cap sets `truncated`. `DELETE /_api/sessions/{id}/history` clears history only.
+
+## Scenarios
+
+A scenario is a YAML or JSON file with `version: 1`, a name, a description, and rules. Each rule needs a stable `name` and uses the same fields as the rules API.
+
+`POST /_api/sessions/{id}/scenarios/load` reads the scenario from the body. `Content-Type` is `application/json` or `application/yaml`. `?mode=replace` is the default and replaces the session's rules. `?mode=merge` updates rules by name and leaves the others. A bad file changes nothing. The response lists `created`, `updated`, and `unchanged` names. The API does not accept a file path.
+
+`POST /_api/sessions` can include a `scenario` object so the new session starts with those rules. `GET /_api/sessions/{id}/scenario?format=yaml` exports the current rules. The rules page also has an Export as scenario link.
+
+```sh
+go run ./cmd/mockproxy --scenario scenarios/okya-auth-refresh-failure.yaml
+```
+
+That merges the file into the default session and does not write `data/rules.json`. Add `--scenario-persist` to save it. Examples live in `scenarios/`. They use dummy data only. `upstream` is an upstream name or `Any`. `query_conditions` and `body_conditions` are `key=value` strings. `headers` is an object or a list of `Name: value` strings. `body` is JSON. A `raw_response` string switches the rule to raw mode. `GET` accepts `?upstream=` with the same meaning as the dashboard filter. A session holds at most 500 rules. Edits to `default` are written to `data/rules.json`. Test-session rules stay in memory.
 
 Errors use one shape and do not include the token:
 
