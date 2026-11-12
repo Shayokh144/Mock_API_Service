@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -190,5 +191,51 @@ func TestRunSeedsUpstreamOnce(t *testing.T) {
 	}
 	if string(again) != string(raw) {
 		t.Fatalf("seed replaced the file:\n%s", again)
+	}
+}
+
+func TestScenarioFlagMergesWithoutWritingRules(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "demo.yaml")
+	raw := []byte("version: 1\nname: demo\ndescription: sample\nrules:\n  - name: ping\n    method: GET\n    path: /v1/ping\n    status: 200\n    body:\n      ok: true\n")
+	if err := os.WriteFile(file, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	scenarioFile = file
+	scenarioPersist = false
+	t.Cleanup(func() {
+		scenarioFile = ""
+		scenarioPersist = false
+	})
+	rulesPath := filepath.Join(dir, "rules.json")
+	var proxy http.Handler
+	err := run(func(key string) string {
+		switch key {
+		case "RULES_PATH":
+			return rulesPath
+		case "UPSTREAMS_PATH":
+			return filepath.Join(dir, "upstreams.json")
+		default:
+			return ""
+		}
+	}, io.Discard, func(addr string, handler http.Handler) error {
+		if strings.HasSuffix(addr, ":8080") {
+			proxy = handler
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if proxy == nil {
+		t.Fatal("proxy did not start")
+	}
+	rr := httptest.NewRecorder()
+	proxy.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/v1/ping", nil))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d", rr.Code)
+	}
+	if _, err := os.Stat(rulesPath); !os.IsNotExist(err) {
+		t.Fatal("scenario wrote rules.json")
 	}
 }

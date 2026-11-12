@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "name": "easyhotel-offline",
+  "description": "A dummy offline hotel search. No real bookings.",
+  "rules": [
+    {
+      "name": "search-offline",
+      "description": "Hotel search is offline",
+      "method": "GET",
+      "path": "/v1/hotels/search",
+      "query_conditions": ["city=bangkok"],
+      "status": 503,
+      "headers": {"Content-Type": "application/json"},
+      "body": {"error": "offline", "hotel": "easyHotel dummy"}
+    }
+  ]
+}
