@@ -420,6 +420,19 @@ func TestAdminPrefixIsNotForwarded(t *testing.T) {
 		t.Fatalf("upstream hits = %d", hits.Load())
 	}
 
+	apiResp, err := http.Get(proxySrv.URL + "/_api/health")
+	if err != nil {
+		t.Fatal(err)
+	}
+	apiBody, _ := io.ReadAll(apiResp.Body)
+	apiResp.Body.Close()
+	if apiResp.StatusCode != http.StatusNotFound || !strings.Contains(string(apiBody), "the API is not served on the proxy port") {
+		t.Fatalf("/_api status=%d body=%s", apiResp.StatusCode, apiBody)
+	}
+	if hits.Load() != 0 {
+		t.Fatalf("api was forwarded, hits = %d", hits.Load())
+	}
+
 	resp, err := http.Get(proxySrv.URL + "/_adminfoo")
 	if err != nil {
 		t.Fatal(err)

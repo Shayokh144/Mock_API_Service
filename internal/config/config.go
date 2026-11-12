@@ -34,6 +34,7 @@ type Config struct {
 	AdminListenAddr string
 	RulesPath       string
 	UpstreamsPath   string
+	TokenPath       string
 	HistoryLimit    int
 	UpstreamTimeout time.Duration
 }
@@ -80,6 +81,7 @@ func Load(getenv func(string) string) (Config, error) {
 		AdminListenAddr: adminAddr,
 		RulesPath:       rulesPath,
 		UpstreamsPath:   UpstreamsPath(rulesPath),
+		TokenPath:       TokenPath(rulesPath),
 		HistoryLimit:    historyLimit,
 		UpstreamTimeout: timeout,
 	}, nil
@@ -93,12 +95,21 @@ func UpstreamsPath(rulesPath string) string {
 	return filepath.Join(filepath.Dir(rulesPath), "upstreams.json")
 }
 
+// TokenPath is the admin API token stored next to the rules file.
+func TokenPath(rulesPath string) string {
+	if strings.TrimSpace(rulesPath) == "" {
+		rulesPath = DefaultRulesPath
+	}
+	return filepath.Join(filepath.Dir(rulesPath), "admin.token")
+}
+
 // StartupLines are the human-readable lines printed before the process listens.
 func StartupLines(cfg Config) []string {
 	lines := []string{
 		"listening on " + cfg.ListenAddr,
 		"admin listening on " + cfg.AdminListenAddr,
 		"dashboard at " + DashboardURL(cfg.AdminListenAddr),
+		"admin token file " + cfg.TokenPath,
 	}
 	if cfg.Upstream == nil {
 		lines = append(lines, "no upstream configured; add one at the dashboard")
