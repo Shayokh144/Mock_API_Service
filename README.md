@@ -397,6 +397,30 @@ Each row, and the detail page, has **Create rule**. It opens the new-rule form w
 
 Delete one row from the list or the detail page. The list returns to the same filter. **Clear all history** opens a dialog on this page: “Delete all recorded requests? Rules are kept.” Cancel closes it, and so do Escape and a click on the dimmed page. **Clear all** posts to `/_admin/history/clear` and returns to the same source, upstream, and text filter. With JavaScript off, the link still opens the confirm page, and that page posts the same way. A GET never clears history. Clear removes every entry, including rows the filter is hiding. Both actions keep the rules.
 
+## Automation API
+
+The API listens only on the admin address, `http://127.0.0.1:8081` by default. The proxy port returns 404 for `/_api`.
+
+On the first start the process writes a 32-byte token to `data/admin.token` (or next to `RULES_PATH`). The directory is mode `0700` and the file is mode `0600`. Later starts reuse that file. The log prints the file path and never the token.
+
+Send it on every API call:
+
+```sh
+curl -s -H "Authorization: Bearer $(cat data/admin.token)" http://127.0.0.1:8081/_api/health
+```
+
+The health response is `{"status":"ok","version":"dev"}`.
+
+`POST /_api/token/rotate` writes a new token and returns 204. The old token stops working immediately.
+
+A missing or wrong token is 401. The Host must be `localhost`, `127.0.0.1`, or `[::1]` on the admin port, or the response is 403. Any `Origin` header is 403, including a loopback origin, and OPTIONS is 403. The API sends no CORS headers. A body must be `Content-Type: application/json` or the response is 415. A body over 1 MiB is 413. Unknown JSON fields are 400.
+
+Errors use one shape and do not include the token:
+
+```json
+{"error":{"code":"unauthorized","message":"a bearer token is required"}}
+```
+
 ## Tests
 
 ```sh

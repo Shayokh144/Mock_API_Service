@@ -59,6 +59,11 @@ func loopbackSamePort(raw, requestHost string) bool {
 	return isLoopbackHost(originHost) && isLoopbackHost(reqHost)
 }
 
+// AllowedHost reports whether Host is localhost, 127.0.0.1, or [::1] on the admin port.
+func AllowedHost(host, listenPort string) bool {
+	return allowedAdminHost(host, listenPort)
+}
+
 // allowedAdminHost is true when Host is localhost, 127.0.0.1, or [::1].
 // A non-empty listenPort must be that port. Proxied API traffic does not use this check.
 func allowedAdminHost(host, listenPort string) bool {

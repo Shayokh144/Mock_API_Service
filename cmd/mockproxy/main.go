@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"github.com/Shayokh144/Mock_API_Service/internal/admin"
+	"github.com/Shayokh144/Mock_API_Service/internal/api"
 	"github.com/Shayokh144/Mock_API_Service/internal/config"
 	"github.com/Shayokh144/Mock_API_Service/internal/history"
 	"github.com/Shayokh144/Mock_API_Service/internal/proxy"
@@ -69,13 +70,20 @@ func run(getenv func(string) string, stderr io.Writer, listen func(string, http.
 	}
 	dashboard.UseListenAddr(cfg.AdminListenAddr)
 	dashboard.UseProxyAddr(cfg.ListenAddr)
+	tokens, err := api.LoadToken(cfg.TokenPath)
+	if err != nil {
+		fmt.Fprintln(stderr, err.Error())
+		return err
+	}
+	apiServer := api.New(tokens, cfg.AdminListenAddr, api.Version)
+	adminHandler := api.Mount(dashboard, apiServer)
 	handler := proxy.New(proxy.Options{
 		Upstreams: ups,
 		Timeout:   cfg.UpstreamTimeout,
 		Rules:     store,
 		History:   log,
 	})
-	return listenBoth(listen, cfg.AdminListenAddr, dashboard, cfg.ListenAddr, handler)
+	return listenBoth(listen, cfg.AdminListenAddr, adminHandler, cfg.ListenAddr, handler)
 }
 
 func listenBoth(listen func(string, http.Handler) error, adminAddr string, admin http.Handler, proxyAddr string, proxyHandler http.Handler) error {

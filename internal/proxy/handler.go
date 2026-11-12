@@ -68,6 +68,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "the dashboard is not served on the proxy port", http.StatusNotFound)
 		return
 	}
+	if isAPI(r.URL.Path) {
+		http.Error(w, "the API is not served on the proxy port", http.StatusNotFound)
+		return
+	}
 	h.serveAPI(w, r)
 }
 
@@ -274,6 +278,10 @@ func responseBody(rule rules.Rule) []byte {
 
 func isAdmin(path string) bool {
 	return path == "/_admin" || strings.HasPrefix(path, "/_admin/")
+}
+
+func isAPI(path string) bool {
+	return path == "/_api" || strings.HasPrefix(path, "/_api/")
 }
 
 func (h *Handler) forward(w http.ResponseWriter, r *http.Request, upstream *url.URL, forwardedPath string) bool {

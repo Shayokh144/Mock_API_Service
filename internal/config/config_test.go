@@ -43,7 +43,7 @@ func TestLoadDefaults(t *testing.T) {
 	}
 
 	lines := StartupLines(cfg)
-	if len(lines) != 3 {
+	if len(lines) != 4 {
 		t.Fatalf("lines = %#v", lines)
 	}
 	if lines[0] != "listening on 127.0.0.1:8080" {
@@ -54,6 +54,9 @@ func TestLoadDefaults(t *testing.T) {
 	}
 	if lines[2] != "dashboard at http://localhost:8081/_admin" {
 		t.Fatalf("line 2 = %q", lines[2])
+	}
+	if lines[3] != "admin token file data/admin.token" {
+		t.Fatalf("line 3 = %q", lines[3])
 	}
 }
 
@@ -86,6 +89,9 @@ func TestLoadOverrides(t *testing.T) {
 	if cfg.UpstreamsPath != filepath.Join("tmp", "upstreams.json") {
 		t.Fatalf("upstreams path = %s", cfg.UpstreamsPath)
 	}
+	if cfg.TokenPath != filepath.Join("tmp", "admin.token") {
+		t.Fatalf("token path = %s", cfg.TokenPath)
+	}
 }
 
 func TestLoadIPv6Loopback(t *testing.T) {
@@ -116,7 +122,7 @@ func TestLoadAllowsMissingUpstream(t *testing.T) {
 		t.Fatalf("upstream = %s", cfg.Upstream)
 	}
 	lines := StartupLines(cfg)
-	if len(lines) != 4 || !strings.Contains(lines[3], "no upstream configured") {
+	if len(lines) != 5 || !strings.Contains(lines[4], "no upstream configured") {
 		t.Fatalf("lines = %#v", lines)
 	}
 }
