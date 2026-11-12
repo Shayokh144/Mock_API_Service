@@ -24,6 +24,7 @@ type formView struct {
 	Action       string
 	Submit       string
 	Name         string
+	APIName      string
 	Enabled      bool
 	FreshRequest bool
 	UpstreamID   string
@@ -47,6 +48,7 @@ func draftFromForm(r *http.Request) (rules.Draft, formView, error) {
 	}
 	view := formView{
 		Name:         r.FormValue("name"),
+		APIName:      r.FormValue("api_name"),
 		Enabled:      r.FormValue("enabled") == "on",
 		FreshRequest: r.FormValue("fresh_request") == "on",
 		UpstreamID:   strings.TrimSpace(r.FormValue("upstream_id")),
@@ -93,6 +95,7 @@ func draftFromForm(r *http.Request) (rules.Draft, formView, error) {
 	}
 	return rules.Draft{
 		Name:         view.Name,
+		APIName:      view.APIName,
 		Enabled:      view.Enabled,
 		FreshRequest: view.FreshRequest,
 		UpstreamID:   view.UpstreamID,
@@ -180,6 +183,7 @@ func viewFromRule(rule rules.Rule, action, submit string) formView {
 		Action:       action,
 		Submit:       submit,
 		Name:         rule.Name,
+		APIName:      rule.APIName,
 		Enabled:      rule.Enabled,
 		FreshRequest: rule.FreshRequest,
 		UpstreamID:   rule.UpstreamID,

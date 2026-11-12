@@ -103,6 +103,7 @@ type ruleGroup struct {
 type ruleRow struct {
 	ID         string
 	Name       string
+	APIName    string
 	Method     string
 	Pattern    string
 	Conditions string
@@ -249,6 +250,7 @@ func (s *Server) rulesPage(w http.ResponseWriter, r *http.Request, status int) {
 		rows = append(rows, ruleRow{
 			ID:         rule.ID,
 			Name:       name,
+			APIName:    rule.APIName,
 			Method:     rule.Method,
 			Pattern:    rule.PathPattern,
 			Conditions: rules.MatchSummary(rule.Match),
@@ -520,6 +522,7 @@ func (s *Server) toggleRule(w http.ResponseWriter, r *http.Request, id string) {
 	}
 	draft := rules.Draft{
 		Name:         rule.Name,
+		APIName:      rule.APIName,
 		Enabled:      !rule.Enabled,
 		FreshRequest: rule.FreshRequest,
 		UpstreamID:   rule.UpstreamID,

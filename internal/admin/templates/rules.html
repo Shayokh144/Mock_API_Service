@@ -26,6 +26,7 @@
     <thead>
       <tr>
         <th scope="col">Name</th>
+        <th scope="col">Stable name</th>
         <th scope="col">Method</th>
         <th scope="col">Pattern</th>
         <th scope="col">Conditions</th>
@@ -42,6 +43,7 @@
       {{range .Rules}}
       <tr>
         <td>{{.Name}}</td>
+        <td>{{.APIName}}</td>
         <td>{{.Method}}</td>
         <td><code>{{.Pattern}}</code></td>
         <td>{{.Conditions}}</td>

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"regexp"
 	"strings"
 	"unicode/utf8"
 
@@ -22,6 +23,7 @@ const maxDelayMS = 60000
 type Rule struct {
 	ID           string            `json:"id"`
 	Name         string            `json:"name"`
+	APIName      string            `json:"api_name,omitempty"`
 	Enabled      bool              `json:"enabled"`
 	FreshRequest bool              `json:"fresh_request"`
 	UpstreamID   string            `json:"upstream_id,omitempty"`
@@ -42,6 +44,7 @@ type Rule struct {
 // Draft is the input for creating or updating a rule.
 type Draft struct {
 	Name         string
+	APIName      string
 	Enabled      bool
 	FreshRequest bool
 	UpstreamID   string
@@ -83,6 +86,10 @@ func normalize(d Draft, allowWildcard bool) (Rule, error) {
 	if utf8.RuneCountInString(name) > 80 {
 		return Rule{}, fmt.Errorf("name must be 80 characters or fewer")
 	}
+	apiName, err := NormalizeAPIName(d.APIName)
+	if err != nil {
+		return Rule{}, err
+	}
 	upstreamID, err := normalizeUpstreamID(d.UpstreamID)
 	if err != nil {
 		return Rule{}, err
@@ -112,6 +119,7 @@ func normalize(d Draft, allowWildcard bool) (Rule, error) {
 		}
 		return Rule{
 			Name:         name,
+			APIName:      apiName,
 			Enabled:      d.Enabled,
 			FreshRequest: d.FreshRequest,
 			UpstreamID:   upstreamID,
@@ -139,6 +147,7 @@ func normalize(d Draft, allowWildcard bool) (Rule, error) {
 	}
 	return Rule{
 		Name:         name,
+		APIName:      apiName,
 		Enabled:      d.Enabled,
 		FreshRequest: d.FreshRequest,
 		UpstreamID:   upstreamID,
@@ -280,6 +289,21 @@ func normalizeBody(raw string) (json.RawMessage, error) {
 		return nil, nil
 	}
 	return json.RawMessage(buf.Bytes()), nil
+}
+
+var apiNamePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}$`)
+
+// NormalizeAPIName checks the optional stable name.
+// An empty name is allowed. A set name is case-sensitive and matches [a-z0-9][a-z0-9._-]{0,63}.
+func NormalizeAPIName(raw string) (string, error) {
+	name := strings.TrimSpace(raw)
+	if name == "" {
+		return "", nil
+	}
+	if !apiNamePattern.MatchString(name) {
+		return "", fmt.Errorf("name must match [a-z0-9][a-z0-9._-]{0,63}")
+	}
+	return name, nil
 }
 
 func cloneRule(rule Rule) Rule {

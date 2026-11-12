@@ -15,6 +15,7 @@ import (
 const maxRulesPerSession = 500
 
 type ruleBody struct {
+	Name         string          `json:"name"`
 	Description  string          `json:"description"`
 	Upstream     string          `json:"upstream"`
 	Method       string          `json:"method"`
@@ -33,6 +34,7 @@ type ruleBody struct {
 
 type ruleResponse struct {
 	ID           string            `json:"id"`
+	Name         string            `json:"name,omitempty"`
 	Description  string            `json:"description"`
 	Upstream     string            `json:"upstream"`
 	Method       string            `json:"method"`
@@ -57,6 +59,10 @@ func (s *Server) rulesRoute(w http.ResponseWriter, r *http.Request, sessionID, r
 	}
 	s.sessions.Touch(sessionID)
 	rest = strings.Trim(rest, "/")
+	if rest == "by-name" || strings.HasPrefix(rest, "by-name/") {
+		s.namedRule(w, r, info, strings.TrimPrefix(strings.TrimPrefix(rest, "by-name"), "/"))
+		return
+	}
 	if rest == "" {
 		switch r.Method {
 		case http.MethodGet:
@@ -81,6 +87,74 @@ func (s *Server) rulesRoute(w http.ResponseWriter, r *http.Request, sessionID, r
 	default:
 		writeError(w, http.StatusNotFound, "not_found", "unknown API path")
 	}
+}
+
+func (s *Server) namedRule(w http.ResponseWriter, r *http.Request, info sessions.Info, rest string) {
+	name, action, _ := strings.Cut(rest, "/")
+	if _, err := rules.NormalizeAPIName(name); err != nil || name == "" {
+		writeError(w, http.StatusBadRequest, "bad_request", "name must match [a-z0-9][a-z0-9._-]{0,63}")
+		return
+	}
+	switch {
+	case action == "" && r.Method == http.MethodGet:
+		rule, ok := info.Rules.FindByAPIName(name)
+		if !ok {
+			writeError(w, http.StatusNotFound, "not_found", "rule not found")
+			return
+		}
+		writeJSON(w, http.StatusOK, toRuleResponse(rule, s.sessions.Upstreams()))
+	case action == "" && r.Method == http.MethodPut:
+		s.upsertNamed(w, r, info, name)
+	case action == "" && r.Method == http.MethodDelete:
+		rule, ok := info.Rules.FindByAPIName(name)
+		if !ok {
+			writeError(w, http.StatusNotFound, "not_found", "rule not found")
+			return
+		}
+		s.deleteRule(w, info, rule.ID)
+	case (action == "enable" || action == "disable") && r.Method == http.MethodPost:
+		rule, ok := info.Rules.FindByAPIName(name)
+		if !ok {
+			writeError(w, http.StatusNotFound, "not_found", "rule not found")
+			return
+		}
+		s.setRuleEnabled(w, r, info, rule.ID, action == "enable")
+	default:
+		writeError(w, http.StatusNotFound, "not_found", "unknown API path")
+	}
+}
+
+func (s *Server) upsertNamed(w http.ResponseWriter, r *http.Request, info sessions.Info, name string) {
+	draft, err := s.draftFromJSON(w, r)
+	if err != nil {
+		return
+	}
+	if draft.APIName == "" {
+		draft.APIName = name
+	}
+	if draft.APIName != name {
+		writeError(w, http.StatusBadRequest, "bad_request", "name in the body must match the path")
+		return
+	}
+	if existing, ok := info.Rules.FindByAPIName(name); ok {
+		saved, err := info.Rules.Update(existing.ID, draft)
+		if err != nil {
+			writeRuleError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, toRuleResponse(saved, s.sessions.Upstreams()))
+		return
+	}
+	if len(info.Rules.List()) >= maxRulesPerSession {
+		writeError(w, http.StatusTooManyRequests, "too_many", "a session can hold 500 rules")
+		return
+	}
+	saved, err := info.Rules.Create(draft)
+	if err != nil {
+		writeRuleError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, toRuleResponse(saved, s.sessions.Upstreams()))
 }
 
 func (s *Server) listRules(w http.ResponseWriter, r *http.Request, info sessions.Info) {
@@ -220,6 +294,7 @@ func (s *Server) draftFromJSON(w http.ResponseWriter, r *http.Request) (rules.Dr
 	}
 	return rules.Draft{
 		Name:         body.Description,
+		APIName:      body.Name,
 		Enabled:      enabled,
 		FreshRequest: body.FreshRequest,
 		UpstreamID:   upstreamID,
@@ -243,6 +318,7 @@ func draftFromRule(rule rules.Rule) rules.Draft {
 	}
 	return rules.Draft{
 		Name:         rule.Name,
+		APIName:      rule.APIName,
 		Enabled:      rule.Enabled,
 		FreshRequest: rule.FreshRequest,
 		UpstreamID:   rule.UpstreamID,
@@ -272,6 +348,7 @@ func toRuleResponse(rule rules.Rule, ups *upstreams.Store) ruleResponse {
 	matchBody := conditionLines(rule.Match.Body)
 	return ruleResponse{
 		ID:           rule.ID,
+		Name:         rule.APIName,
 		Description:  rule.Name,
 		Upstream:     upstreamName(ups, rule.UpstreamID),
 		Method:       rule.Method,
@@ -413,7 +490,7 @@ func writeRuleError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, rules.ErrNotFound):
 		writeError(w, http.StatusNotFound, "not_found", "rule not found")
-	case errors.Is(err, rules.ErrDuplicate):
+	case errors.Is(err, rules.ErrDuplicate), errors.Is(err, rules.ErrNameTaken):
 		writeError(w, http.StatusConflict, "conflict", err.Error())
 	default:
 		writeError(w, http.StatusBadRequest, "bad_request", err.Error())
