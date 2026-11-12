@@ -22,6 +22,9 @@ var ErrNotFound = errors.New("rule not found")
 // ErrDuplicate means another rule already uses this method, path, upstream, and conditions.
 var ErrDuplicate = errors.New("a rule with this method, path, and conditions already exists")
 
+// ErrNameTaken means another rule in this store already uses the stable name.
+var ErrNameTaken = errors.New("a rule with this name already exists")
+
 // Store is the in-memory rule collection. The mutex guards rules.
 // Match copies the winner and releases the lock before the caller writes a response.
 type Store struct {
@@ -60,6 +63,7 @@ func Load(path string) (*Store, error) {
 		doc.Rules = []Rule{}
 	}
 	seen := map[string]struct{}{}
+	names := map[string]struct{}{}
 	for i := range doc.Rules {
 		body, err := compactStoredBody(doc.Rules[i].Body)
 		if err != nil {
@@ -75,6 +79,12 @@ func Load(path string) (*Store, error) {
 			return nil, fmt.Errorf("RULES_PATH %s: duplicate rule %s %s", path, rule.Method, rule.PathPattern)
 		}
 		seen[key] = struct{}{}
+		if rule.APIName != "" {
+			if _, ok := names[rule.APIName]; ok {
+				return nil, fmt.Errorf("RULES_PATH %s: duplicate rule name %s", path, rule.APIName)
+			}
+			names[rule.APIName] = struct{}{}
+		}
 	}
 	store.rules = doc.Rules
 	return store, nil
@@ -108,6 +118,9 @@ func (s *Store) Create(d Draft) (Rule, error) {
 	if s.duplicate(rule, "") {
 		return Rule{}, ErrDuplicate
 	}
+	if s.nameTaken(rule.APIName, "") {
+		return Rule{}, ErrNameTaken
+	}
 	next := append(append([]Rule{}, s.rules...), rule)
 	if err := s.persist(next); err != nil {
 		return Rule{}, err
@@ -134,6 +147,9 @@ func (s *Store) Update(id string, d Draft) (Rule, error) {
 	if s.duplicate(rule, id) {
 		return Rule{}, ErrDuplicate
 	}
+	if s.nameTaken(rule.APIName, id) {
+		return Rule{}, ErrNameTaken
+	}
 	next := append([]Rule{}, s.rules...)
 	next[index] = rule
 	if err := s.persist(next); err != nil {
@@ -159,6 +175,30 @@ func (s *Store) Delete(id string) error {
 	}
 	s.rules = next
 	return nil
+}
+
+// FindByAPIName returns the rule whose stable name matches exactly.
+func (s *Store) FindByAPIName(name string) (Rule, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, rule := range s.rules {
+		if rule.APIName == name {
+			return cloneRule(rule), true
+		}
+	}
+	return Rule{}, false
+}
+
+func (s *Store) nameTaken(name, exceptID string) bool {
+	if name == "" {
+		return false
+	}
+	for _, rule := range s.rules {
+		if rule.APIName == name && rule.ID != exceptID {
+			return true
+		}
+	}
+	return false
 }
 
 // Get returns a copy of one rule.
@@ -372,6 +412,7 @@ func validateLoaded(rule Rule, allowWildcard bool) error {
 	}
 	draft := Draft{
 		Name:         rule.Name,
+		APIName:      rule.APIName,
 		Enabled:      rule.Enabled,
 		FreshRequest: rule.FreshRequest,
 		UpstreamID:   rule.UpstreamID,

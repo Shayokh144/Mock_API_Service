@@ -5,6 +5,9 @@
 <form id="rule-form" class="{{if eq .Form.ResponseMode "raw"}}mode-raw{{else}}mode-fields{{end}}" method="post" action="{{.Form.Action}}">
   <label for="name">Name</label>
   <input id="name" name="name" type="text" maxlength="80" value="{{.Form.Name}}">
+  <label for="api_name">Stable name</label>
+  <input id="api_name" name="api_name" type="text" maxlength="64" pattern="[a-z0-9][a-z0-9._-]{0,63}" value="{{.Form.APIName}}">
+  <p class="hint">Optional. A stable name lets the API update this rule by name. Use lowercase letters, digits, dots, underscores, and hyphens. It must be unique in this session.</p>
   <label for="enabled"><input id="enabled" name="enabled" type="checkbox" value="on" {{if .Form.Enabled}}checked{{end}}> Enabled</label>
   <label for="fresh_request"><input id="fresh_request" name="fresh_request" type="checkbox" value="on" {{if .Form.FreshRequest}}checked{{end}}> Fresh request</label>
   <p class="hint">Fresh request forwards this match to your upstream server (develop/staging) and strips cache validators so the upstream can return a full body. The upstream server must be reachable. The saved status and body are not used while this is checked.</p>

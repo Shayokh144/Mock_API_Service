@@ -438,7 +438,7 @@ flutter run --dart-define=API_BASE_URL=http://10.0.2.2:PORT
 
 ## Rules API
 
-Rules live under `/_api/sessions/{id}/rules`. `id` can be `default`. The JSON uses the same checks as the dashboard form. `description` is the label shown as Name in the dashboard. `upstream` is an upstream name or `Any`. `query_conditions` and `body_conditions` are `key=value` strings. `headers` is an object or a list of `Name: value` strings. `body` is JSON. A `raw_response` string switches the rule to raw mode. `GET` accepts `?upstream=` with the same meaning as the dashboard filter. A session holds at most 500 rules. Edits to `default` are written to `data/rules.json`. Test-session rules stay in memory.
+Rules live under `/_api/sessions/{id}/rules`. `id` can be `default`. The JSON uses the same checks as the dashboard form. `description` is the label shown as Name in the dashboard. `name` is an optional stable slug, stored as `api_name` so older `rules.json` files keep their labels. It matches `[a-z0-9][a-z0-9._-]{0,63}` and is unique in the session. `PUT /_api/sessions/{id}/rules/by-name/{name}` creates the rule or replaces it. The same path accepts GET, DELETE, and POST `enable` or `disable`. A colliding `name` on create is 409. `upstream` is an upstream name or `Any`. `query_conditions` and `body_conditions` are `key=value` strings. `headers` is an object or a list of `Name: value` strings. `body` is JSON. A `raw_response` string switches the rule to raw mode. `GET` accepts `?upstream=` with the same meaning as the dashboard filter. A session holds at most 500 rules. Edits to `default` are written to `data/rules.json`. Test-session rules stay in memory.
 
 Errors use one shape and do not include the token:
 
