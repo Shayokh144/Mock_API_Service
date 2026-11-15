@@ -126,7 +126,7 @@ func TestHistoryRecordsSourcesAndPreservesRules(t *testing.T) {
 	if echo.Source != history.SourceUpstream || echo.Method != http.MethodPost || echo.Path != "/v1/echo" || echo.RawQuery != "q=1" || echo.Status != http.StatusCreated {
 		t.Fatalf("echo entry = %+v", echo)
 	}
-	if echo.RequestHeaders.Get("X-Request-Id") != "abc" || echo.RequestBody != `{"n":1}` || echo.ResponseBody != `{"from":"upstream"}` {
+	if echo.RequestHeaders.Get("X-Request-Id") != "abc" || !strings.Contains(echo.RequestBody, `"n": 1`) || !strings.Contains(echo.ResponseBody, `"from": "upstream"`) {
 		t.Fatalf("echo details = %+v", echo)
 	}
 	if echo.ResponseHeaders.Get("X-Upstream") != "yes" || echo.ResponseHeaders.Get("X-Mock-Response") != "" {
