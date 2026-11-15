@@ -290,8 +290,18 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, upstream *url.
 		incomingPath = r.URL.Path
 	}
 	incomingQuery := r.URL.RawQuery
-	ctx, cancel := context.WithTimeout(r.Context(), h.timeout)
-	defer cancel()
+	// A WebSocket (or other) upgrade must not be buffered, and the upstream
+	// timeout must not cancel the tunneled connection.
+	upgrade := isProtocolUpgrade(r.Header)
+	if capture, ok := w.(*bodyCapture); ok && upgrade {
+		capture.upgrade = true
+	}
+	ctx := r.Context()
+	if !upgrade {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(r.Context(), h.timeout)
+		defer cancel()
+	}
 	outbound := r.WithContext(ctx)
 
 	failed := false
@@ -306,6 +316,9 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, upstream *url.
 		},
 		Transport: h.transport,
 		ModifyResponse: func(resp *http.Response) error {
+			if upgrade || resp.StatusCode == http.StatusSwitchingProtocols {
+				return nil
+			}
 			body, err := readUpTo(resp.Body, config.MaxBufferedBody)
 			if resp.Body != nil {
 				_ = resp.Body.Close()
@@ -334,6 +347,21 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, upstream *url.
 	return failed
 }
 
+// isProtocolUpgrade reports a Connection: Upgrade request with an Upgrade header.
+func isProtocolUpgrade(h http.Header) bool {
+	if strings.TrimSpace(h.Get("Upgrade")) == "" {
+		return false
+	}
+	for _, value := range h.Values("Connection") {
+		for _, part := range strings.Split(value, ",") {
+			if strings.EqualFold(strings.TrimSpace(part), "upgrade") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (h *Handler) record(started time.Time, r *http.Request, reqHeaders http.Header, payload []byte, capw *bodyCapture, source history.Source, ruleID, upstreamID, upstreamName, forwardedPath string, delayMS int) {
 	if h.history == nil {
 		return
@@ -341,10 +369,13 @@ func (h *Handler) record(started time.Time, r *http.Request, reqHeaders http.Hea
 	status, respHeaders, respRaw, respCut := capw.snapshot()
 	var respBody, respPlain string
 	var respTrunc, respDecoded bool
-	if respCut {
+	switch {
+	case capw.upgrade && status == http.StatusSwitchingProtocols && len(respRaw) == 0 && !respCut:
+		respBody = "protocol upgrade; messages were not captured"
+	case respCut:
 		respBody = fmt.Sprintf("body exceeds %d bytes and was not decoded", config.MaxBufferedBody)
 		respTrunc = true
-	} else {
+	default:
 		respBody, respPlain, respTrunc, respDecoded = historyCopy(respHeaders, respRaw)
 	}
 	reqBody, reqTrunc := displayBody(reqHeaders, payload)
