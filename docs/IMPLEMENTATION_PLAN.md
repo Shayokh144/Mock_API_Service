@@ -50,7 +50,7 @@ data/.gitkeep
 
 1. Run `go mod init github.com/Shayokh144/Mock_API_Service`.
 2. In `main`, load config, build the handler, and call `ListenAndServe`.
-3. Log `listening on 127.0.0.1:8080` and `dashboard at http://localhost:8080/_admin` after the address is known.
+3. Log `listening on 127.0.0.1:8080` and `dashboard at http://localhost:8081/_admin` after the address is known. The dashboard listens on `127.0.0.1:8081`.
 4. Read configuration only from the environment. Use the names and defaults in the requirements.
 5. Parse `UPSTREAM_BASE_URL` with `url.Parse`. Require `http` or `https`, and require a host. Reject a query or a fragment.
 6. Resolve `LISTEN_ADDR` and allow only loopback. `localhost` becomes `127.0.0.1`. `[::1]` stays as written.
@@ -74,7 +74,7 @@ The log shows the listen address and the dashboard URL. The process keeps runnin
 **Files:** `internal/proxy/handler.go`.
 
 1. Keep a single HTTP handler. Avoid `ServeMux` for API paths. The default mux redirects some trailing slashes, and those redirects would hide upstream routes. Match and forward `r.URL.Path` as parsed. Do not call `path.Clean`.
-2. If the path is `/_admin` or has the prefix `/_admin/`, return `404` text `admin is not ready` for now. Do not call upstream.
+2. If the path is `/_admin` or has the prefix `/_admin/`, return `404` and `the dashboard is not served on the proxy port`. Do not call upstream. The dashboard is the separate admin listener.
 3. Build a `ReverseProxy`. In `Director`, copy the incoming request onto the upstream URL.
 4. Join paths without dropping a trailing slash. If the base path is empty or `/`, use the request path. Otherwise trim one trailing slash from the base path and concatenate the request path.
 5. Copy `RawQuery` unchanged. Set `req.Host` and `req.URL.Host` to the upstream host. Set `req.URL.Scheme` from the base URL.
@@ -86,6 +86,7 @@ The log shows the listen address and the dashboard URL. The process keeps runnin
 ```sh
 curl -i 'http://127.0.0.1:8080/v1/users?page=2'
 curl -i 'http://127.0.0.1:8080/_admin'
+curl -i 'http://127.0.0.1:8081/_admin'
 ```
 
 The first command returns the upstream body and the query. The second returns `404` and the upstream server sees no `/_admin` request.
@@ -257,6 +258,31 @@ Match only enabled rules. A miss falls through to passthrough.
 **Check:** from a clean shell, follow the README only. Run the tests. Create a `500` rule in the browser. Call it with `curl -i`. Restart and call it again. Clear history and confirm the rule still matches.
 
 **Done when:** a new terminal session can complete that check using the README and no other notes.
+
+## Fresh request
+
+This behavior is task MVP-38. It sits on top of saved rules and passthrough.
+
+1. Add `fresh_request` to the rule and the dashboard form. Default it to false so older files keep returning mocks.
+2. When the winning rule has the flag, skip `writeMock`. Strip `If-None-Match`, `If-Modified-Since`, `If-Match`, `If-Unmodified-Since`, and `If-Range`. Set `Cache-Control: no-cache` and `Pragma: no-cache`. Then use the existing forward path.
+3. Leave method, query, body, and other headers in place. Do not rewrite a `304` into a `200`.
+4. Show fresh or mock on the rules list. Keep the flag across edit, enable, disable, and restart.
+5. Test with `httptest`: validators removed and a full upstream body returned, the flag off still mocks, a disabled rule does not strip headers, and the JSON file round-trips the flag.
+
+**Done when:** a checked Fresh request rule returns the upstream body, and an unchecked rule still returns the saved mock.
+
+## History source filter
+
+This behavior is task MVP-39. It sits on the history list.
+
+1. Add All, Mocked, and Real server links on `GET /_admin/history`. Mocked uses `?source=mock`. Real server uses `?source=upstream`.
+2. Parse the query with the history source values. An unknown value shows every entry and does not echo the bad value in later links.
+3. Print the active filter and the number of entries shown. Keep the query on row, delete, detail, and clear links.
+4. Leave fresh-request rows as source `upstream` with a rule id. Show `upstream (fresh rule)` in the source column. Do not add a new source value.
+5. Delete redirects back to the same filter. Clear all still deletes every entry, then returns to that filter.
+6. Keep the existing Content-Security-Policy. Use links, not a script.
+
+**Done when:** Mocked hides real responses, Real server shows passthrough and fresh-request rows, and a bad `source` query shows All.
 
 ## Troubleshooting
 
