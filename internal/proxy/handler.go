@@ -8,11 +8,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Shayokh144/Mock_API_Service/internal/config"
@@ -290,8 +292,18 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, upstream *url.
 		incomingPath = r.URL.Path
 	}
 	incomingQuery := r.URL.RawQuery
-	ctx, cancel := context.WithTimeout(r.Context(), h.timeout)
+	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
+	var gate sync.Mutex
+	streaming := false
+	timer := time.AfterFunc(h.timeout, func() {
+		gate.Lock()
+		defer gate.Unlock()
+		if !streaming {
+			cancel()
+		}
+	})
+	defer timer.Stop()
 	outbound := r.WithContext(ctx)
 
 	failed := false
@@ -306,6 +318,16 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, upstream *url.
 		},
 		Transport: h.transport,
 		ModifyResponse: func(resp *http.Response) error {
+			if isStreamResponse(resp) {
+				gate.Lock()
+				streaming = true
+				gate.Unlock()
+				timer.Stop()
+				if capture, ok := w.(*bodyCapture); ok {
+					capture.previewLimit = config.HistoryBodyPreview
+				}
+				return nil
+			}
 			body, err := readUpTo(resp.Body, config.MaxBufferedBody)
 			if resp.Body != nil {
 				_ = resp.Body.Close()
@@ -334,6 +356,26 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, upstream *url.
 	return failed
 }
 
+// isStreamResponse reports a body that should be forwarded as it arrives.
+// That is an event stream, a chunked body, or any response of unknown length.
+func isStreamResponse(resp *http.Response) bool {
+	if resp == nil {
+		return false
+	}
+	if media, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type")); err == nil && media == "text/event-stream" {
+		return true
+	}
+	if resp.ContentLength < 0 {
+		return true
+	}
+	for _, value := range resp.Header.Values("Transfer-Encoding") {
+		if strings.Contains(strings.ToLower(value), "chunked") {
+			return true
+		}
+	}
+	return false
+}
+
 func (h *Handler) record(started time.Time, r *http.Request, reqHeaders http.Header, payload []byte, capw *bodyCapture, source history.Source, ruleID, upstreamID, upstreamName, forwardedPath string, delayMS int) {
 	if h.history == nil {
 		return
@@ -346,6 +388,9 @@ func (h *Handler) record(started time.Time, r *http.Request, reqHeaders http.Hea
 		respTrunc = true
 	} else {
 		respBody, respPlain, respTrunc, respDecoded = historyCopy(respHeaders, respRaw)
+		if capw.previewCut {
+			respTrunc = true
+		}
 	}
 	reqBody, reqTrunc := displayBody(reqHeaders, payload)
 	h.history.Add(history.Entry{
