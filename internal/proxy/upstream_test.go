@@ -34,11 +34,11 @@ func TestSwitchingUpstreamChangesTheNextRequest(t *testing.T) {
 	defer develop.Close()
 
 	ups := upstreams.NewMemory()
-	stagingUp, err := ups.Create("staging", staging.URL+"/api")
+	stagingUp, err := ups.Create("staging", staging.URL+"/api", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	developUp, err := ups.Create("develop", develop.URL)
+	developUp, err := ups.Create("develop", develop.URL, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +90,7 @@ func TestSwitchingUpstreamChangesTheNextRequest(t *testing.T) {
 	if len(entries) != 4 {
 		t.Fatalf("history = %d", len(entries))
 	}
-	if entries[0].UpstreamName != "any" || entries[0].UpstreamID != history.UpstreamAny || entries[0].Source != history.SourceMock {
+	if entries[0].UpstreamName != "develop" || entries[0].UpstreamID != developUp.ID || entries[0].Source != history.SourceMock {
 		t.Fatalf("newest = %+v", entries[0])
 	}
 	if entries[1].UpstreamName != "develop" || entries[1].UpstreamID != developUp.ID || entries[1].Source != history.SourceUpstream {

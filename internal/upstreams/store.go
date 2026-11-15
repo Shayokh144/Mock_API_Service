@@ -20,15 +20,23 @@ import (
 var ErrNotFound = errors.New("upstream not found")
 
 // ErrActive means the upstream is the active one and cannot be deleted yet.
-var ErrActive = errors.New("cannot delete the active upstream; switch to another first")
+var ErrActive = errors.New("cannot delete the fallback upstream; set another as fallback first")
 
 // Upstream is one saved base URL.
 type Upstream struct {
 	ID        string    `json:"id"`
 	Name      string    `json:"name"`
 	BaseURL   string    `json:"base_url"`
+	Prefix    string    `json:"prefix,omitempty"`
 	CreatedAt timeValue `json:"created_at"`
 	UpdatedAt timeValue `json:"updated_at"`
+}
+
+// Route is the upstream selected for one request path.
+type Route struct {
+	Upstream      Upstream
+	ForwardedPath string
+	Prefixed      bool
 }
 
 // Store is the in-memory upstream collection. The mutex guards items and activeID.
@@ -71,8 +79,9 @@ func Load(path string) (*Store, error) {
 	}
 	names := map[string]struct{}{}
 	ids := map[string]struct{}{}
+	prefixes := map[string]struct{}{}
 	for i := range doc.Upstreams {
-		item, err := normalize(doc.Upstreams[i].Name, doc.Upstreams[i].BaseURL)
+		item, err := normalize(doc.Upstreams[i].Name, doc.Upstreams[i].BaseURL, doc.Upstreams[i].Prefix)
 		if err != nil {
 			return nil, fmt.Errorf("upstreams file %s: %w", path, err)
 		}
@@ -90,6 +99,12 @@ func Load(path string) (*Store, error) {
 		}
 		if _, ok := names[item.Name]; ok {
 			return nil, fmt.Errorf("upstreams file %s: duplicate upstream name %s", path, item.Name)
+		}
+		if item.Prefix != "" {
+			if _, ok := prefixes[item.Prefix]; ok {
+				return nil, fmt.Errorf("upstreams file %s: duplicate upstream prefix %s", path, item.Prefix)
+			}
+			prefixes[item.Prefix] = struct{}{}
 		}
 		ids[item.ID] = struct{}{}
 		names[item.Name] = struct{}{}
@@ -138,27 +153,30 @@ func (s *Store) Seed(rawURL string) error {
 	if name == "" {
 		name = "default"
 	}
-	return s.createLocked(name, parsed.String())
+	return s.createLocked(name, parsed.String(), "")
 }
 
-// Create validates a name and base URL and stores the upstream.
+// Create validates a name, base URL, and optional prefix, then stores the upstream.
 // The first upstream becomes active. Later ones do not change the active id.
-func (s *Store) Create(name, baseURL string) (Upstream, error) {
+func (s *Store) Create(name, baseURL, prefix string) (Upstream, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if err := s.createLocked(name, baseURL); err != nil {
+	if err := s.createLocked(name, baseURL, prefix); err != nil {
 		return Upstream{}, err
 	}
 	return s.items[len(s.items)-1], nil
 }
 
-func (s *Store) createLocked(name, baseURL string) error {
-	item, err := normalize(name, baseURL)
+func (s *Store) createLocked(name, baseURL, prefix string) error {
+	item, err := normalize(name, baseURL, prefix)
 	if err != nil {
 		return err
 	}
 	if s.nameTaken(item.Name, "") {
 		return fmt.Errorf("an upstream named %q already exists", item.Name)
+	}
+	if s.prefixTaken(item.Prefix, "") {
+		return fmt.Errorf("an upstream already uses prefix %s", item.Prefix)
 	}
 	id, err := s.uniqueID()
 	if err != nil {
@@ -181,9 +199,9 @@ func (s *Store) createLocked(name, baseURL string) error {
 	return nil
 }
 
-// Update replaces the name and base URL. The id and created_at stay the same.
-func (s *Store) Update(id, name, baseURL string) (Upstream, error) {
-	item, err := normalize(name, baseURL)
+// Update replaces the name, base URL, and prefix. The id and created_at stay the same.
+func (s *Store) Update(id, name, baseURL, prefix string) (Upstream, error) {
+	item, err := normalize(name, baseURL, prefix)
 	if err != nil {
 		return Upstream{}, err
 	}
@@ -195,6 +213,9 @@ func (s *Store) Update(id, name, baseURL string) (Upstream, error) {
 	}
 	if s.nameTaken(item.Name, id) {
 		return Upstream{}, fmt.Errorf("an upstream named %q already exists", item.Name)
+	}
+	if s.prefixTaken(item.Prefix, id) {
+		return Upstream{}, fmt.Errorf("an upstream already uses prefix %s", item.Prefix)
 	}
 	item.ID = id
 	item.CreatedAt = s.items[index].CreatedAt
@@ -229,7 +250,15 @@ func (s *Store) Delete(id string) error {
 	return nil
 }
 
-// Activate makes id the upstream used by the next passthrough request.
+// ClearActiveForTest removes the fallback so a non-matching path has no upstream.
+// Prefix matches still route. The dashboard cannot save this state.
+func (s *Store) ClearActiveForTest() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.activeID = ""
+}
+
+// Activate makes id the fallback for requests that match no prefix.
 func (s *Store) Activate(id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -268,6 +297,30 @@ func (s *Store) Get(id string) (Upstream, bool) {
 	return s.items[index], true
 }
 
+// Route selects the upstream for path.
+// A prefix matches the whole path or a following slash, and that prefix is removed.
+// Otherwise the active upstream is the fallback and the path stays unchanged.
+func (s *Store) Route(path string) (Route, bool) {
+	if path == "" {
+		path = "/"
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for i := range s.items {
+		item := s.items[i]
+		forwarded, ok := stripPrefix(path, item.Prefix)
+		if !ok {
+			continue
+		}
+		return Route{Upstream: item, ForwardedPath: forwarded, Prefixed: true}, true
+	}
+	index := s.index(s.activeID)
+	if index < 0 {
+		return Route{}, false
+	}
+	return Route{Upstream: s.items[index], ForwardedPath: path}, true
+}
+
 // List returns copies in creation order.
 func (s *Store) List() []Upstream {
 	s.mu.RLock()
@@ -277,7 +330,45 @@ func (s *Store) List() []Upstream {
 	return out
 }
 
-func normalize(name, baseURL string) (Upstream, error) {
+func stripPrefix(path, prefix string) (string, bool) {
+	if prefix == "" {
+		return "", false
+	}
+	if path == prefix {
+		return "/", true
+	}
+	if strings.HasPrefix(path, prefix+"/") {
+		return path[len(prefix):], true
+	}
+	return "", false
+}
+
+func normalizePrefix(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", nil
+	}
+	if strings.HasPrefix(raw, "/_admin") {
+		return "", fmt.Errorf("prefix must not use /_admin")
+	}
+	if !strings.HasPrefix(raw, "/") || strings.HasSuffix(raw, "/") || strings.Count(raw, "/") != 1 {
+		return "", fmt.Errorf("prefix must be one path segment, such as /okya")
+	}
+	segment := raw[1:]
+	if segment == "" {
+		return "", fmt.Errorf("prefix must be one path segment, such as /okya")
+	}
+	for _, r := range segment {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-', r == '_':
+		default:
+			return "", fmt.Errorf("prefix must use only letters, digits, - and _")
+		}
+	}
+	return raw, nil
+}
+
+func normalize(name, baseURL, prefix string) (Upstream, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return Upstream{}, fmt.Errorf("name is required")
@@ -294,7 +385,11 @@ func normalize(name, baseURL string) (Upstream, error) {
 	if err != nil {
 		return Upstream{}, err
 	}
-	return Upstream{Name: name, BaseURL: parsed.String()}, nil
+	prefix, err = normalizePrefix(prefix)
+	if err != nil {
+		return Upstream{}, err
+	}
+	return Upstream{Name: name, BaseURL: parsed.String(), Prefix: prefix}, nil
 }
 
 func parseBaseURL(raw string) (*url.URL, error) {
@@ -381,6 +476,21 @@ func (s *Store) index(id string) int {
 		}
 	}
 	return -1
+}
+
+func (s *Store) prefixTaken(prefix, exceptID string) bool {
+	if prefix == "" {
+		return false
+	}
+	for _, item := range s.items {
+		if item.ID == exceptID {
+			continue
+		}
+		if item.Prefix == prefix {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Store) nameTaken(name, exceptID string) bool {

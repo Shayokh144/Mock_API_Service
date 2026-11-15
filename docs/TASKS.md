@@ -27,7 +27,7 @@ Each task is one change you can review on its own. Tests belong with the behavio
   - The variables, defaults, and validation match the requirements table.
   - A missing or invalid `UPSTREAM_BASE_URL` exits with status 1 and names the setting.
   - `LISTEN_ADDR=0.0.0.0:8080` exits with status 1 before `ListenAndServe`.
-  - A valid config logs the listen address and `http://localhost:8080/_admin`.
+  - A valid config logs the listen address and `http://localhost:8081/_admin`.
 
 ### Phase 2 — Passthrough
 

@@ -3,6 +3,7 @@ data/rules.json
 data/rules.json.tmp
 data/upstreams.json
 data/upstreams.json.tmp
+data/admin.token
 
 # go build -o mockproxy ./cmd/mockproxy
 /mockproxy

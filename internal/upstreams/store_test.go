@@ -14,7 +14,7 @@ func TestCreateActivateAndRejectBadURLs(t *testing.T) {
 	store.now = func() time.Time {
 		return time.Date(2026, 11, 5, 12, 0, 0, 0, time.FixedZone("ICT", 7*3600))
 	}
-	staging, err := store.Create(" staging ", "HTTPS://staging.example.com/v1")
+	staging, err := store.Create(" staging ", "HTTPS://staging.example.com/v1", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -29,7 +29,7 @@ func TestCreateActivateAndRejectBadURLs(t *testing.T) {
 		t.Fatalf("active = %+v ok=%v", active, ok)
 	}
 
-	develop, err := store.Create("develop", "http://develop.example.com")
+	develop, err := store.Create("develop", "http://develop.example.com", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,11 +45,11 @@ func TestCreateActivateAndRejectBadURLs(t *testing.T) {
 		t.Fatalf("active = %+v", active)
 	}
 
-	if _, err := store.Create("develop", "http://other.example.com"); err == nil {
+	if _, err := store.Create("develop", "http://other.example.com", ""); err == nil {
 		t.Fatal("duplicate name was accepted")
 	}
 	for _, raw := range []string{"", "staging.example.com", "ftp://files.example.com", "http://staging.example.com/?q=1", "http://staging.example.com/#x", "/v1"} {
-		if _, err := store.Create("bad", raw); err == nil {
+		if _, err := store.Create("bad", raw, ""); err == nil {
 			t.Fatalf("accepted %q", raw)
 		}
 	}
@@ -135,11 +135,11 @@ func TestLoadRejectsBrokenFile(t *testing.T) {
 
 func TestUpdateKeepsIDAndActiveFlag(t *testing.T) {
 	store := NewMemory()
-	first, err := store.Create("staging", "https://old.example.com")
+	first, err := store.Create("staging", "https://old.example.com", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	updated, err := store.Update(first.ID, "staging", "https://new.example.com/v1")
+	updated, err := store.Update(first.ID, "staging", "https://new.example.com/v1", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -154,11 +154,11 @@ func TestUpdateKeepsIDAndActiveFlag(t *testing.T) {
 
 func TestSwitchIsSafeAcrossGoroutines(t *testing.T) {
 	store := NewMemory()
-	a, err := store.Create("a", "http://a.example")
+	a, err := store.Create("a", "http://a.example", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := store.Create("b", "http://b.example")
+	b, err := store.Create("b", "http://b.example", "")
 	if err != nil {
 		t.Fatal(err)
 	}

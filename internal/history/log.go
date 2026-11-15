@@ -28,16 +28,21 @@ const UpstreamAny = "any"
 type Entry struct {
 	ID                    string
 	StartedAt             time.Time
+	DurationMS            int
 	Method                string
 	Path                  string
 	RawQuery              string
+	ForwardedPath         string
 	RequestHeaders        http.Header
 	RequestBody           string
 	Status                int
 	ResponseHeaders       http.Header
 	ResponseBody          string
+	ResponsePlain         string
+	ResponseDecoded       bool
 	Source                Source
 	RuleID                string
+	DelayMS               int
 	UpstreamID            string
 	UpstreamName          string
 	RequestBodyTruncated  bool

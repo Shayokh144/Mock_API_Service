@@ -27,7 +27,17 @@
     .error { background: #fde8e8; color: #6d1414; padding: 0.7rem 0.9rem; border: 1px solid #e3b0b0; }
     .hint { color: #333; }
     .actions { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+    form.mode-fields .raw-only { display: none; }
+    form.mode-raw .fields-only { display: none; }
+    form:has(#mode_raw:checked) .raw-only { display: block; }
+    form:has(#mode_raw:checked) .fields-only { display: none; }
+    form:has(#mode_fields:checked) .fields-only { display: block; }
+    form:has(#mode_fields:checked) .raw-only { display: none; }
     a[aria-current="page"] { font-weight: 700; text-decoration: underline; }
+    dialog { border: 1px solid #d5d8de; border-radius: 6px; padding: 1rem 1.2rem; max-width: 28rem; }
+    dialog::backdrop { background: rgba(16, 35, 63, 0.45); }
+    dialog p { margin-top: 0; }
+    dialog form { display: flex; gap: 0.5rem; justify-content: flex-end; }
   </style>
 </head>
 <body>
@@ -39,9 +49,21 @@
       <a href="/_admin/upstreams">Upstreams</a>
       <a href="/_admin/history">History</a>
     </nav>
+    {{if .Sessions}}
+    <form method="get" action="{{.SessionAction}}">
+      <label for="dashboard-session">Session</label>
+      <select id="dashboard-session" name="session">
+        {{range .Sessions}}
+        <option value="{{.ID}}" {{if .Selected}}selected{{end}}>{{.Name}}</option>
+        {{end}}
+      </select>
+      <button type="submit">View</button>
+    </form>
+    {{end}}
   </header>
   <main id="main">
     <h1>{{.Title}}</h1>
+    {{if .ReadOnly}}<p class="hint">This test session is read-only in the dashboard.</p>{{end}}
 {{end}}
 
 {{define "foot"}}

@@ -2,6 +2,7 @@ package admin
 
 import (
 	"fmt"
+	"net"
 	"net/http"
 	"strings"
 
@@ -37,28 +38,71 @@ func (s *Server) upstreamRoute(w http.ResponseWriter, r *http.Request, rest stri
 	}
 }
 
-func (s *Server) upstreamsPage(w http.ResponseWriter, status int, message string) {
+func (s *Server) upstreamsPage(w http.ResponseWriter, r *http.Request, status int, message string) {
 	rows := []upstreamRow{}
 	activeID := ""
+	port := s.appPort(r)
 	if s.upstreams != nil {
 		if active, ok := s.upstreams.Active(); ok {
 			activeID = active.ID
 		}
 		for _, item := range s.upstreams.List() {
+			localURL, androidURL := "", ""
+			if item.Prefix != "" {
+				localURL = "http://127.0.0.1:" + port + item.Prefix
+				androidURL = "http://10.0.2.2:" + port + item.Prefix
+			}
+			fallback := item.ID == activeID
 			rows = append(rows, upstreamRow{
-				ID:      item.ID,
-				Name:    item.Name,
-				BaseURL: item.BaseURL,
-				Active:  item.ID == activeID,
+				ID:         item.ID,
+				Name:       item.Name,
+				BaseURL:    item.BaseURL,
+				Prefix:     item.Prefix,
+				LocalURL:   localURL,
+				AndroidURL: androidURL,
+				Routing:    routingStatus(item.Prefix, fallback),
+				Active:     fallback,
 			})
 		}
 	}
-	s.render(w, "upstreams", page{
+	s.render(w, r, "upstreams", page{
 		Title:          "Upstreams",
 		Upstreams:      rows,
 		ActiveUpstream: s.activeUpstreamName(),
 		Error:          message,
 	}, status)
+}
+
+func routingStatus(prefix string, fallback bool) string {
+	if prefix != "" {
+		status := "Always on via " + prefix
+		if fallback {
+			status += " and fallback"
+		}
+		return status
+	}
+	if fallback {
+		return "Fallback"
+	}
+	return "Not used"
+}
+
+func (s *Server) appPort(r *http.Request) string {
+	if s.proxyPort != "" {
+		return s.proxyPort
+	}
+	return requestPort(r)
+}
+
+func requestPort(r *http.Request) string {
+	if r == nil {
+		return "8080"
+	}
+	_, port, err := net.SplitHostPort(r.Host)
+	if err != nil || port == "" {
+		return "8080"
+	}
+	return port
 }
 
 func (s *Server) createUpstream(w http.ResponseWriter, r *http.Request) {
@@ -70,9 +114,9 @@ func (s *Server) createUpstream(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "upstreams are not available", http.StatusNotFound)
 		return
 	}
-	name, baseURL, view := upstreamFromForm(r, "/_admin/upstreams", "Create upstream")
-	if _, err := s.upstreams.Create(name, baseURL); err != nil {
-		s.upstreamError(w, "New upstream", view, err)
+	name, baseURL, prefix, view := upstreamFromForm(r, "/_admin/upstreams", "Create upstream")
+	if _, err := s.upstreams.Create(name, baseURL, prefix); err != nil {
+		s.upstreamError(w, r, "New upstream", view, err)
 		return
 	}
 	http.Redirect(w, r, "/_admin/upstreams", http.StatusSeeOther)
@@ -93,13 +137,14 @@ func (s *Server) editUpstream(w http.ResponseWriter, r *http.Request, id string,
 		Submit:  "Save upstream",
 		Name:    item.Name,
 		BaseURL: item.BaseURL,
+		Prefix:  item.Prefix,
 	}
 	if message != "" {
 		view = posted
 		view.Action = "/_admin/upstreams/" + id
 		view.Submit = "Save upstream"
 	}
-	s.render(w, "upstream_form", page{
+	s.render(w, r, "upstream_form", page{
 		Title:        "Edit upstream",
 		UpstreamForm: view,
 		Error:        message,
@@ -115,8 +160,8 @@ func (s *Server) updateUpstream(w http.ResponseWriter, r *http.Request, id strin
 		http.NotFound(w, r)
 		return
 	}
-	name, baseURL, view := upstreamFromForm(r, "/_admin/upstreams/"+id, "Save upstream")
-	if _, err := s.upstreams.Update(id, name, baseURL); err != nil {
+	name, baseURL, prefix, view := upstreamFromForm(r, "/_admin/upstreams/"+id, "Save upstream")
+	if _, err := s.upstreams.Update(id, name, baseURL, prefix); err != nil {
 		if err == upstreams.ErrNotFound {
 			http.NotFound(w, r)
 			return
@@ -157,37 +202,38 @@ func (s *Server) deleteUpstream(w http.ResponseWriter, r *http.Request, id strin
 		return
 	}
 	if active, ok := s.upstreams.Active(); ok && active.ID == id {
-		s.upstreamsPage(w, http.StatusBadRequest, upstreams.ErrActive.Error())
+		s.upstreamsPage(w, r, http.StatusBadRequest, upstreams.ErrActive.Error())
 		return
 	}
 	if err := s.rules.DetachUpstream(id); err != nil {
-		s.upstreamsPage(w, http.StatusBadRequest, err.Error())
+		s.upstreamsPage(w, r, http.StatusBadRequest, err.Error())
 		return
 	}
 	if err := s.upstreams.Delete(id); err != nil {
-		s.upstreamsPage(w, http.StatusBadRequest, err.Error())
+		s.upstreamsPage(w, r, http.StatusBadRequest, err.Error())
 		return
 	}
 	http.Redirect(w, r, "/_admin/upstreams", http.StatusSeeOther)
 }
 
-func (s *Server) upstreamError(w http.ResponseWriter, title string, view upstreamForm, err error) {
-	s.render(w, "upstream_form", page{
+func (s *Server) upstreamError(w http.ResponseWriter, r *http.Request, title string, view upstreamForm, err error) {
+	s.render(w, r, "upstream_form", page{
 		Title:        title,
 		UpstreamForm: view,
 		Error:        err.Error(),
 	}, http.StatusBadRequest)
 }
 
-func upstreamFromForm(r *http.Request, action, submit string) (string, string, upstreamForm) {
+func upstreamFromForm(r *http.Request, action, submit string) (string, string, string, upstreamForm) {
 	_ = r.ParseForm()
 	view := upstreamForm{
 		Action:  action,
 		Submit:  submit,
 		Name:    r.FormValue("name"),
 		BaseURL: r.FormValue("base_url"),
+		Prefix:  r.FormValue("prefix"),
 	}
-	return view.Name, view.BaseURL, view
+	return view.Name, view.BaseURL, view.Prefix, view
 }
 
 func (s *Server) knownUpstream(id string) error {

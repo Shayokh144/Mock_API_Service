@@ -8,11 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync/atomic"
 	"testing"
-	"time"
 
-	"github.com/Shayokh144/Mock_API_Service/internal/proxy"
 	"github.com/Shayokh144/Mock_API_Service/internal/rules"
 )
 
@@ -27,21 +24,7 @@ func TestRulesDashboard(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var hits atomic.Int32
-	upstream := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
-		hits.Add(1)
-	}))
-	defer upstream.Close()
-	base, err := url.Parse(upstream.URL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	proxySrv := httptest.NewServer(proxy.New(proxy.Options{
-		Upstream: base,
-		Timeout:  time.Second,
-		Rules:    store,
-		Admin:    dashboard,
-	}))
+	proxySrv := httptest.NewServer(dashboard)
 	defer proxySrv.Close()
 	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
 		return http.ErrUseLastResponse
@@ -106,9 +89,6 @@ func TestRulesDashboard(t *testing.T) {
 		if !strings.Contains(page, want) {
 			t.Fatalf("list missing %s", want)
 		}
-	}
-	if hits.Load() != 0 {
-		t.Fatal("dashboard request reached upstream")
 	}
 	saved := store.List()
 	if len(saved) != 1 {

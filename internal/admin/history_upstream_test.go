@@ -24,11 +24,11 @@ func TestHistoryUpstreamFilter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	staging, err := ups.Create("staging", "https://staging.example.com")
+	staging, err := ups.Create("staging", "https://staging.example.com", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	develop, err := ups.Create("develop", "https://develop.example.com")
+	develop, err := ups.Create("develop", "https://develop.example.com", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,7 +112,7 @@ func TestHistoryUpstreamFilter(t *testing.T) {
 		t.Fatal("history.js does not pass the upstream filter to the feed")
 	}
 
-	if _, err := ups.Update(staging.ID, "staging-renamed", "https://staging.example.com/v2"); err != nil {
+	if _, err := ups.Update(staging.ID, "staging-renamed", "https://staging.example.com/v2", ""); err != nil {
 		t.Fatal(err)
 	}
 	renamed := get(t, client, srv.URL+"/_admin/history?upstream="+staging.ID)

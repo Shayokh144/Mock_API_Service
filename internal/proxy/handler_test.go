@@ -412,12 +412,25 @@ func TestAdminPrefixIsNotForwarded(t *testing.T) {
 		if resp.StatusCode != http.StatusNotFound {
 			t.Fatalf("%s status = %d", path, resp.StatusCode)
 		}
-		if !strings.Contains(string(body), "admin is not ready") {
+		if !strings.Contains(string(body), "the dashboard is not served on the proxy port") {
 			t.Fatalf("%s body = %s", path, body)
 		}
 	}
 	if hits.Load() != 0 {
 		t.Fatalf("upstream hits = %d", hits.Load())
+	}
+
+	apiResp, err := http.Get(proxySrv.URL + "/_api/health")
+	if err != nil {
+		t.Fatal(err)
+	}
+	apiBody, _ := io.ReadAll(apiResp.Body)
+	apiResp.Body.Close()
+	if apiResp.StatusCode != http.StatusNotFound || !strings.Contains(string(apiBody), "the API is not served on the proxy port") {
+		t.Fatalf("/_api status=%d body=%s", apiResp.StatusCode, apiBody)
+	}
+	if hits.Load() != 0 {
+		t.Fatalf("api was forwarded, hits = %d", hits.Load())
 	}
 
 	resp, err := http.Get(proxySrv.URL + "/_adminfoo")
@@ -430,6 +443,33 @@ func TestAdminPrefixIsNotForwarded(t *testing.T) {
 	}
 	if hits.Load() != 1 {
 		t.Fatalf("expected /_adminfoo to be forwarded, hits = %d", hits.Load())
+	}
+}
+
+func TestEmulatorHostIsForwarded(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, "ok")
+	}))
+	defer upstream.Close()
+	base, err := url.Parse(upstream.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := New(Options{Upstream: base, Timeout: time.Second})
+	req := httptest.NewRequest(http.MethodGet, "http://10.0.2.2:8080/v1/health", nil)
+	req.Host = "10.0.2.2:8080"
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK || rr.Body.String() != "ok" {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+
+	admin := httptest.NewRequest(http.MethodGet, "http://10.0.2.2:8080/_admin", nil)
+	admin.Host = "10.0.2.2:8080"
+	adminRR := httptest.NewRecorder()
+	handler.ServeHTTP(adminRR, admin)
+	if adminRR.Code != http.StatusNotFound || !strings.Contains(adminRR.Body.String(), "the dashboard is not served on the proxy port") {
+		t.Fatalf("admin on proxy status=%d body=%s", adminRR.Code, adminRR.Body.String())
 	}
 }
 
