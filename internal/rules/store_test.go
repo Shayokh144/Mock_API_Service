@@ -164,7 +164,7 @@ func TestValidation(t *testing.T) {
 		{"bad method", func(d *Draft) { d.Method = "TRACE" }, "method"},
 		{"low status", func(d *Draft) { d.StatusCode = 99 }, "status_code"},
 		{"high status", func(d *Draft) { d.StatusCode = 600 }, "status_code"},
-		{"wildcard", func(d *Draft) { d.PathPattern = "/v1/*" }, "exact"},
+		{"glued star", func(d *Draft) { d.PathPattern = "/v1/id*" }, "whole segment"},
 		{"admin", func(d *Draft) { d.PathPattern = "/_admin" }, "/_admin"},
 		{"admin child", func(d *Draft) { d.PathPattern = "/_admin/rules" }, "/_admin"},
 		{"relative", func(d *Draft) { d.PathPattern = "v1/items" }, "start with /"},

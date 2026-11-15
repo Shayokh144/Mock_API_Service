@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -210,6 +211,182 @@ func TestExactRuleMatchesIgnoringQuery(t *testing.T) {
 	}
 }
 
+func TestMockStatusHeadersAndForcedSentryHeader(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("upstream saw %s", r.URL.Path)
+	}))
+	defer upstream.Close()
+	base, err := url.Parse(upstream.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := rules.NewMemory()
+	cases := []rules.Draft{
+		{Enabled: true, Method: "GET", PathPattern: "/v1/created", StatusCode: http.StatusCreated, Headers: map[string]string{"X-Extra": "yes", "X-Mock-Response": "false"}, Body: `{"created":true}`},
+		{Enabled: true, Method: "GET", PathPattern: "/v1/missing", StatusCode: http.StatusNotFound, Body: `{"error":"missing"}`},
+		{Enabled: true, Method: "GET", PathPattern: "/v1/boom", StatusCode: http.StatusInternalServerError, Headers: map[string]string{"Content-Type": "application/problem+json"}, Body: `{"error":"boom"}`},
+		{Enabled: true, Method: "DELETE", PathPattern: "/v1/gone", StatusCode: http.StatusNoContent},
+	}
+	for _, draft := range cases {
+		if _, err := store.Create(draft); err != nil {
+			t.Fatal(err)
+		}
+	}
+	proxySrv := httptest.NewServer(New(Options{Upstream: base, Timeout: time.Second, Rules: store}))
+	defer proxySrv.Close()
+
+	created, err := http.Get(proxySrv.URL + "/v1/created")
+	if err != nil {
+		t.Fatal(err)
+	}
+	createdBody, _ := io.ReadAll(created.Body)
+	created.Body.Close()
+	if created.StatusCode != http.StatusCreated || string(createdBody) != `{"created":true}` {
+		t.Fatalf("created status=%d body=%s", created.StatusCode, createdBody)
+	}
+	if created.Header.Get("X-Extra") != "yes" {
+		t.Fatalf("custom header = %q", created.Header.Get("X-Extra"))
+	}
+	if created.Header.Get("X-Mock-Response") != "true" {
+		t.Fatalf("sentry header = %q", created.Header.Get("X-Mock-Response"))
+	}
+	if created.Header.Get("Content-Type") != "application/json" {
+		t.Fatalf("content type = %s", created.Header.Get("Content-Type"))
+	}
+
+	missing, err := http.Get(proxySrv.URL + "/v1/missing")
+	if err != nil {
+		t.Fatal(err)
+	}
+	missingBody, _ := io.ReadAll(missing.Body)
+	missing.Body.Close()
+	if missing.StatusCode != http.StatusNotFound || string(missingBody) != `{"error":"missing"}` {
+		t.Fatalf("missing status=%d body=%s", missing.StatusCode, missingBody)
+	}
+	if missing.Header.Get("X-Mock-Response") != "true" {
+		t.Fatal("404 missing sentry header")
+	}
+
+	boom, err := http.Get(proxySrv.URL + "/v1/boom")
+	if err != nil {
+		t.Fatal(err)
+	}
+	boomBody, _ := io.ReadAll(boom.Body)
+	boom.Body.Close()
+	if boom.StatusCode != http.StatusInternalServerError || string(boomBody) != `{"error":"boom"}` {
+		t.Fatalf("boom status=%d body=%s", boom.StatusCode, boomBody)
+	}
+	if boom.Header.Get("Content-Type") != "application/problem+json" {
+		t.Fatalf("content type = %s", boom.Header.Get("Content-Type"))
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, proxySrv.URL+"/v1/gone", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	empty, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	emptyBody, _ := io.ReadAll(empty.Body)
+	empty.Body.Close()
+	if empty.StatusCode != http.StatusNoContent || len(emptyBody) != 0 {
+		t.Fatalf("empty status=%d body=%q", empty.StatusCode, emptyBody)
+	}
+	if empty.Header.Get("X-Mock-Response") != "true" {
+		t.Fatal("204 missing sentry header")
+	}
+}
+
+func TestWildcardRuleDoesNotReachUpstream(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("upstream saw %s", r.URL.RequestURI())
+	}))
+	defer upstream.Close()
+	base, err := url.Parse(upstream.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := rules.NewMemory()
+	for _, pattern := range []string{"/api/users/1", "/api/users/*", "/api/*/*"} {
+		if _, err := store.Create(rules.Draft{
+			Enabled:     true,
+			Method:      "GET",
+			PathPattern: pattern,
+			StatusCode:  http.StatusOK,
+			Body:        `{"pattern":"` + pattern + `"}`,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	proxySrv := httptest.NewServer(New(Options{Upstream: base, Timeout: time.Second, Rules: store}))
+	defer proxySrv.Close()
+
+	exact, err := http.Get(proxySrv.URL + "/api/users/1?page=2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	exactBody, _ := io.ReadAll(exact.Body)
+	exact.Body.Close()
+	if string(exactBody) != `{"pattern":"/api/users/1"}` {
+		t.Fatalf("exact body = %s", exactBody)
+	}
+	wild, err := http.Get(proxySrv.URL + "/api/users/2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wildBody, _ := io.ReadAll(wild.Body)
+	wild.Body.Close()
+	if string(wildBody) != `{"pattern":"/api/users/*"}` || wild.Header.Get("X-Mock-Response") != "true" {
+		t.Fatalf("wildcard body = %s header=%s", wildBody, wild.Header.Get("X-Mock-Response"))
+	}
+}
+
+func TestLoadedRuleMatchesFirstRequest(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "rules.json")
+	store, err := rules.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Create(rules.Draft{
+		Name:        "Saved",
+		Enabled:     true,
+		Method:      "GET",
+		PathPattern: "/v1/saved",
+		StatusCode:  http.StatusOK,
+		Body:        `{"saved":true}`,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := rules.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("upstream saw %s", r.URL.Path)
+	}))
+	defer upstream.Close()
+	base, err := url.Parse(upstream.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proxySrv := httptest.NewServer(New(Options{Upstream: base, Timeout: time.Second, Rules: reloaded}))
+	defer proxySrv.Close()
+	resp, err := http.Get(proxySrv.URL + "/v1/saved?page=1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK || string(body) != `{"saved":true}` {
+		t.Fatalf("status=%d body=%s", resp.StatusCode, body)
+	}
+	if resp.Header.Get("X-Mock-Response") != "true" {
+		t.Fatal("missing mock header")
+	}
+}
+
 func TestAdminPrefixIsNotForwarded(t *testing.T) {
 	var hits atomic.Int32
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -235,12 +412,25 @@ func TestAdminPrefixIsNotForwarded(t *testing.T) {
 		if resp.StatusCode != http.StatusNotFound {
 			t.Fatalf("%s status = %d", path, resp.StatusCode)
 		}
-		if !strings.Contains(string(body), "admin is not ready") {
+		if !strings.Contains(string(body), "the dashboard is not served on the proxy port") {
 			t.Fatalf("%s body = %s", path, body)
 		}
 	}
 	if hits.Load() != 0 {
 		t.Fatalf("upstream hits = %d", hits.Load())
+	}
+
+	apiResp, err := http.Get(proxySrv.URL + "/_api/health")
+	if err != nil {
+		t.Fatal(err)
+	}
+	apiBody, _ := io.ReadAll(apiResp.Body)
+	apiResp.Body.Close()
+	if apiResp.StatusCode != http.StatusNotFound || !strings.Contains(string(apiBody), "the API is not served on the proxy port") {
+		t.Fatalf("/_api status=%d body=%s", apiResp.StatusCode, apiBody)
+	}
+	if hits.Load() != 0 {
+		t.Fatalf("api was forwarded, hits = %d", hits.Load())
 	}
 
 	resp, err := http.Get(proxySrv.URL + "/_adminfoo")
@@ -253,6 +443,33 @@ func TestAdminPrefixIsNotForwarded(t *testing.T) {
 	}
 	if hits.Load() != 1 {
 		t.Fatalf("expected /_adminfoo to be forwarded, hits = %d", hits.Load())
+	}
+}
+
+func TestEmulatorHostIsForwarded(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, "ok")
+	}))
+	defer upstream.Close()
+	base, err := url.Parse(upstream.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := New(Options{Upstream: base, Timeout: time.Second})
+	req := httptest.NewRequest(http.MethodGet, "http://10.0.2.2:8080/v1/health", nil)
+	req.Host = "10.0.2.2:8080"
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK || rr.Body.String() != "ok" {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+
+	admin := httptest.NewRequest(http.MethodGet, "http://10.0.2.2:8080/_admin", nil)
+	admin.Host = "10.0.2.2:8080"
+	adminRR := httptest.NewRecorder()
+	handler.ServeHTTP(adminRR, admin)
+	if adminRR.Code != http.StatusNotFound || !strings.Contains(adminRR.Body.String(), "the dashboard is not served on the proxy port") {
+		t.Fatalf("admin on proxy status=%d body=%s", adminRR.Code, adminRR.Body.String())
 	}
 }
 
