@@ -41,6 +41,12 @@ func better(a, b Rule) bool {
 	if len(a.PathPattern) != len(b.PathPattern) {
 		return len(a.PathPattern) > len(b.PathPattern)
 	}
+	if (a.UpstreamID == "") != (b.UpstreamID == "") {
+		return a.UpstreamID != ""
+	}
+	if n := conditionCount(a.Match) - conditionCount(b.Match); n != 0 {
+		return n > 0
+	}
 	if !a.CreatedAt.Equal(b.CreatedAt.Time) {
 		return a.CreatedAt.Before(b.CreatedAt.Time)
 	}
