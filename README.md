@@ -36,7 +36,7 @@ The process reads only environment variables. It does not take flags, and it doe
 | `ADMIN_LISTEN_ADDR` | no | `127.0.0.1:8081` | Dashboard loopback address. Same host rules as `LISTEN_ADDR`. It must differ from the proxy address. |
 | `RULES_PATH` | no | `data/rules.json` | Rule file. A missing file means there are no rules. |
 | `HISTORY_LIMIT` | no | `500` | Newest history entries kept in memory. |
-| `UPSTREAM_TIMEOUT` | no | `30s` | Time allowed for one upstream call. |
+| `UPSTREAM_TIMEOUT` | no | `30s` | Time allowed for one upstream call. A WebSocket upgrade is not limited by this timeout. |
 
 ```sh
 export UPSTREAM_BASE_URL='https://upstream.example.com'
@@ -85,6 +85,8 @@ Open [http://127.0.0.1:8081/_admin/upstreams](http://127.0.0.1:8081/_admin/upstr
 A named rule matches when the request resolves to that upstream, by its prefix or as the fallback. **Any upstream** matches for every resolved upstream, and also when none is resolved. Rules see the path after the prefix is removed. When both match the same path, the more specific pattern still wins. If the patterns tie, the named rule wins over Any.
 
 Passthrough uses the resolved upstream. Its base URL path is joined in front of the forwarded path.
+
+A WebSocket upgrade (`Connection: Upgrade` and an `Upgrade` header) is tunneled. The proxy does not buffer that response and does not apply `UPSTREAM_TIMEOUT` to the open socket. History records status 101 and does not store the messages. A path prefix is removed the same way as any other forwarded call.
 
 With no matching prefix and no fallback upstream, passthrough returns `503` and `{"error":"no upstream is configured; add one at /_admin"}`. A matching Any rule still returns the mock.
 
