@@ -39,7 +39,7 @@ func TestHistoryFeedFiltersAndGrows(t *testing.T) {
 		Source:    history.SourceUpstream,
 		RuleID:    "bbbbbbbbbbbbbbbb",
 	})
-	dashboard, err := New(store, log)
+	dashboard, err := New(store, log, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -50,7 +50,7 @@ data/.gitkeep
 
 1. Run `go mod init github.com/Shayokh144/Mock_API_Service`.
 2. In `main`, load config, build the handler, and call `ListenAndServe`.
-3. Log `listening on 127.0.0.1:8080` and `dashboard at http://localhost:8080/_admin` after the address is known.
+3. Log `listening on 127.0.0.1:8080` and `dashboard at http://localhost:8081/_admin` after the address is known. The dashboard listens on `127.0.0.1:8081`.
 4. Read configuration only from the environment. Use the names and defaults in the requirements.
 5. Parse `UPSTREAM_BASE_URL` with `url.Parse`. Require `http` or `https`, and require a host. Reject a query or a fragment.
 6. Resolve `LISTEN_ADDR` and allow only loopback. `localhost` becomes `127.0.0.1`. `[::1]` stays as written.
@@ -74,7 +74,7 @@ The log shows the listen address and the dashboard URL. The process keeps runnin
 **Files:** `internal/proxy/handler.go`.
 
 1. Keep a single HTTP handler. Avoid `ServeMux` for API paths. The default mux redirects some trailing slashes, and those redirects would hide upstream routes. Match and forward `r.URL.Path` as parsed. Do not call `path.Clean`.
-2. If the path is `/_admin` or has the prefix `/_admin/`, return `404` text `admin is not ready` for now. Do not call upstream.
+2. If the path is `/_admin` or has the prefix `/_admin/`, return `404` and `the dashboard is not served on the proxy port`. Do not call upstream. The dashboard is the separate admin listener.
 3. Build a `ReverseProxy`. In `Director`, copy the incoming request onto the upstream URL.
 4. Join paths without dropping a trailing slash. If the base path is empty or `/`, use the request path. Otherwise trim one trailing slash from the base path and concatenate the request path.
 5. Copy `RawQuery` unchanged. Set `req.Host` and `req.URL.Host` to the upstream host. Set `req.URL.Scheme` from the base URL.
@@ -86,6 +86,7 @@ The log shows the listen address and the dashboard URL. The process keeps runnin
 ```sh
 curl -i 'http://127.0.0.1:8080/v1/users?page=2'
 curl -i 'http://127.0.0.1:8080/_admin'
+curl -i 'http://127.0.0.1:8081/_admin'
 ```
 
 The first command returns the upstream body and the query. The second returns `404` and the upstream server sees no `/_admin` request.
