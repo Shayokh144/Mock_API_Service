@@ -1,0 +1,47 @@
+{{define "history_detail"}}
+{{template "head" .}}
+<p>Rules are kept. Deleting this entry does not delete rules.</p>
+<p><a href="/_admin/history{{.FilterQuery}}">Back to history</a></p>
+{{with .Entry}}
+<dl>
+  <dt>Method</dt><dd>{{.Method}}</dd>
+  <dt>URL</dt><dd>{{.URL}}</dd>
+  <dt>Forwarded path</dt><dd>{{.Forwarded}}</dd>
+  <dt>Status</dt><dd>{{.Status}}</dd>
+  <dt>Source</dt><dd>{{.Source}}</dd>
+  <dt>Upstream</dt><dd>{{if .Upstream}}{{.Upstream}}{{else}}none{{end}}</dd>
+  <dt>Timestamp</dt><dd>{{.When}}</dd>
+  <dt>Rule id</dt><dd>{{if .RuleID}}{{.RuleID}}{{else}}none{{end}}</dd>
+  <dt>Delay</dt><dd>{{if .Delay}}{{.Delay}}{{else}}0 ms{{end}}</dd>
+</dl>
+<h2>Request headers</h2>
+{{if .RequestHeaders}}
+<ul>
+  {{range .RequestHeaders}}<li>{{template "header_line" .}}</li>{{end}}
+</ul>
+{{else}}<p>No request headers.</p>{{end}}
+<h2>Request body</h2>
+{{if .RequestTruncated}}<p>Request body preview was truncated.</p>{{end}}
+<pre>{{.RequestBody}}</pre>
+<h2>Response headers</h2>
+{{if .ResponseHeaders}}
+<ul>
+  {{range .ResponseHeaders}}<li>{{template "header_line" .}}</li>{{end}}
+</ul>
+{{else}}<p>No response headers.</p>{{end}}
+<h2>Response body</h2>
+{{if .ResponseTruncated}}<p>Response body preview was truncated.</p>{{end}}
+<pre>{{.ResponseBody}}</pre>
+{{if not $.ReadOnly}}<div class="actions">
+  <a href="/_admin/rules/new?from={{.ID}}">Create rule</a>
+  <form class="inline" method="post" action="/_admin/history/{{.ID}}/delete{{$.FilterQuery}}">
+    <button class="danger" type="submit">Delete this entry</button>
+  </form>
+</div>{{end}}
+{{end}}
+{{template "foot" .}}
+{{end}}
+
+{{define "header_line"}}
+{{if .Secret}}<code>{{.Name}}: ••••••••</code> <details><summary>Show value</summary><code>{{.Name}}: {{.Value}}</code></details>{{else}}<code>{{.Name}}: {{.Value}}</code>{{end}}
+{{end}}
