@@ -5,12 +5,17 @@ import (
 	"embed"
 	"encoding/hex"
 	"html/template"
+	"net"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
 	"github.com/Shayokh144/Mock_API_Service/internal/history"
 	"github.com/Shayokh144/Mock_API_Service/internal/rules"
+	"github.com/Shayokh144/Mock_API_Service/internal/scenario"
+	"github.com/Shayokh144/Mock_API_Service/internal/sessions"
+	"github.com/Shayokh144/Mock_API_Service/internal/upstreams"
 )
 
 //go:embed templates/*.html
@@ -18,40 +23,132 @@ var templateFiles embed.FS
 
 // Server renders the dashboard.
 type Server struct {
-	rules   *rules.Store
-	history *history.Log
-	tmpl    *template.Template
+	rules      *rules.Store
+	history    *history.Log
+	upstreams  *upstreams.Store
+	tmpl       *template.Template
+	listenPort string
+	proxyPort  string
+	sessions   *sessions.Manager
+}
+
+// UseListenAddr pins the dashboard Host check to this loopback address's port.
+func (s *Server) UseListenAddr(addr string) {
+	_, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		s.listenPort = ""
+		return
+	}
+	s.listenPort = port
+}
+
+// UseProxyAddr is the proxy listener. The Upstreams page copies this port into app URLs.
+func (s *Server) UseProxyAddr(addr string) {
+	_, port, err := net.SplitHostPort(addr)
+	if err != nil || port == "" {
+		return
+	}
+	s.proxyPort = port
+}
+
+// UseSessions lets the dashboard show test sessions. They are read-only here.
+func (s *Server) UseSessions(m *sessions.Manager) {
+	s.sessions = m
 }
 
 // New parses the embedded templates. A parse error should stop startup.
-func New(store *rules.Store, log *history.Log) (*Server, error) {
+func New(store *rules.Store, log *history.Log, ups *upstreams.Store) (*Server, error) {
 	tmpl, err := template.ParseFS(templateFiles, "templates/*.html")
 	if err != nil {
 		return nil, err
 	}
-	return &Server{rules: store, history: log, tmpl: tmpl}, nil
+	return &Server{rules: store, history: log, upstreams: ups, tmpl: tmpl}, nil
 }
 
 type page struct {
-	Title   string
+	Title               string
+	Rules               []ruleRow
+	Form                formView
+	Methods             []string
+	Error               string
+	ActiveUpstream      string
+	Upstreams           []upstreamRow
+	UpstreamForm        upstreamForm
+	UpstreamChoices     []upstreamChoice
+	RulesAction         string
+	RuleUpstreamKey     string
+	RuleUpstreamLabel   string
+	RuleUpstreamChoices []upstreamChoice
+	RuleShown           int
+	RuleTotal           int
+	RuleGroups          []ruleGroup
+	RuleFilterQuery     string
+	Sessions            []sessionChoice
+	SessionAction       string
+	SessionID           string
+	ReadOnly            bool
+}
+
+type sessionChoice struct {
+	ID       string
+	Name     string
+	Selected bool
+}
+
+type ruleGroup struct {
+	Heading string
+	Count   string
 	Rules   []ruleRow
-	Form    formView
-	Methods []string
-	Error   string
 }
 
 type ruleRow struct {
-	ID      string
+	ID         string
+	Name       string
+	APIName    string
+	Method     string
+	Pattern    string
+	Conditions string
+	Kind       string
+	Enabled    bool
+	Fresh      bool
+	Status     string
+	Delay      string
+	Mode       string
+	Upstream   string
+	UpstreamID string
+}
+
+type upstreamRow struct {
+	ID         string
+	Name       string
+	BaseURL    string
+	Prefix     string
+	LocalURL   string
+	AndroidURL string
+	Routing    string
+	Active     bool
+}
+
+type upstreamForm struct {
+	Action  string
+	Submit  string
 	Name    string
-	Method  string
-	Pattern string
-	Kind    string
-	Enabled bool
-	Status  string
+	BaseURL string
+	Prefix  string
+}
+
+type upstreamChoice struct {
+	ID       string
+	Name     string
+	Selected bool
 }
 
 // ServeHTTP routes the dashboard. API traffic never reaches this handler.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if !allowedAdminHost(r.Host, s.listenPort) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
 	path := r.URL.Path
 	switch {
 	case path == "/_admin/rules" && r.Method == http.MethodPost:
@@ -61,15 +158,36 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		s.rulesPage(w, http.StatusOK)
+		s.rulesPage(w, r, http.StatusOK)
+	case path == "/_admin/scenario" && r.Method == http.MethodGet:
+		s.exportScenario(w, r)
 	case path == "/_admin/rules/new" && r.Method == http.MethodGet:
-		s.render(w, "rule_form", page{
-			Title:   "New rule",
-			Methods: methods,
-			Form:    formView{Action: "/_admin/rules", Submit: "Create rule", Method: http.MethodGet, StatusCode: "200", Enabled: true},
-		}, http.StatusOK)
+		s.newRule(w, r)
 	case strings.HasPrefix(path, "/_admin/rules/"):
 		s.ruleRoute(w, r, strings.TrimPrefix(path, "/_admin/rules/"))
+	case path == "/_admin/upstreams" && r.Method == http.MethodPost:
+		s.createUpstream(w, r)
+	case path == "/_admin/upstreams" && r.Method == http.MethodGet:
+		s.upstreamsPage(w, r, http.StatusOK, "")
+	case path == "/_admin/upstreams/new" && r.Method == http.MethodGet:
+		s.render(w, r, "upstream_form", page{
+			Title:        "New upstream",
+			UpstreamForm: upstreamForm{Action: "/_admin/upstreams", Submit: "Create upstream"},
+		}, http.StatusOK)
+	case strings.HasPrefix(path, "/_admin/upstreams/"):
+		s.upstreamRoute(w, r, strings.TrimPrefix(path, "/_admin/upstreams/"))
+	case path == "/_admin/history" && r.Method == http.MethodGet:
+		s.historyPage(w, r)
+	case path == "/_admin/history/feed" && r.Method == http.MethodGet:
+		s.historyFeed(w, r)
+	case path == "/_admin/history.js" && r.Method == http.MethodGet:
+		s.historyScript(w, r)
+	case path == "/_admin/history/clear" && r.Method == http.MethodGet:
+		s.clearConfirm(w, r)
+	case path == "/_admin/history/clear" && r.Method == http.MethodPost:
+		s.clearHistory(w, r)
+	case strings.HasPrefix(path, "/_admin/history/"):
+		s.historyRoute(w, r, strings.TrimPrefix(path, "/_admin/history/"))
 	default:
 		http.NotFound(w, r)
 	}
@@ -108,9 +226,22 @@ func (s *Server) ruleRoute(w http.ResponseWriter, r *http.Request, rest string) 
 	}
 }
 
-func (s *Server) rulesPage(w http.ResponseWriter, status int) {
+func (s *Server) rulesPage(w http.ResponseWriter, r *http.Request, status int) {
+	store, _, _, readOnly, found := s.scope(r)
+	if !found {
+		s.render(w, r, "rules", page{Title: "Rules", Error: "That session is not open."}, http.StatusNotFound)
+		return
+	}
+	all := []rules.Rule{}
+	if store != nil {
+		all = store.List()
+	}
+	key, label := s.parseRuleUpstream(r.URL.Query().Get("upstream"))
 	rows := make([]ruleRow, 0)
-	for _, rule := range s.rules.List() {
+	for _, rule := range all {
+		if !ruleMatchesUpstream(rule, key, s.upstreamIDByName(key)) {
+			continue
+		}
 		name := rule.Name
 		if name == "" {
 			name = "Untitled"
@@ -120,19 +251,231 @@ func (s *Server) rulesPage(w http.ResponseWriter, status int) {
 			kind = "wildcard"
 		}
 		rows = append(rows, ruleRow{
-			ID:      rule.ID,
-			Name:    name,
-			Method:  rule.Method,
-			Pattern: rule.PathPattern,
-			Kind:    kind,
-			Enabled: rule.Enabled,
-			Status:  strconv.Itoa(rule.StatusCode),
+			ID:         rule.ID,
+			Name:       name,
+			APIName:    rule.APIName,
+			Method:     rule.Method,
+			Pattern:    rule.PathPattern,
+			Conditions: rules.MatchSummary(rule.Match),
+			Kind:       kind,
+			Enabled:    rule.Enabled,
+			Fresh:      rule.FreshRequest,
+			Status:     strconv.Itoa(rule.StatusCode),
+			Delay:      delayLabel(rule.DelayMS),
+			Mode:       modeLabel(rule.ResponseMode),
+			Upstream:   s.upstreamLabel(rule.UpstreamID),
+			UpstreamID: rule.UpstreamID,
 		})
 	}
-	s.render(w, "rules", page{Title: "Rules", Rules: rows}, status)
+	action := r.URL.Path
+	if action == "/_admin/" {
+		action = "/_admin"
+	}
+	s.render(w, r, "rules", page{
+		Title:               "Rules",
+		Rules:               rows,
+		ActiveUpstream:      s.activeUpstreamName(),
+		RulesAction:         action,
+		RuleUpstreamKey:     key,
+		RuleUpstreamLabel:   label,
+		RuleUpstreamChoices: s.ruleUpstreamChoices(key),
+		RuleShown:           len(rows),
+		RuleTotal:           len(all),
+		RuleGroups:          s.ruleGroups(rows),
+		RuleFilterQuery:     s.upstreamQuery(r),
+		ReadOnly:            readOnly,
+	}, status)
+}
+
+func (s *Server) parseRuleUpstream(raw string) (string, string) {
+	name := strings.TrimSpace(raw)
+	if name == "" {
+		return "", "All upstreams"
+	}
+	if name == "any" {
+		return "any", "Any"
+	}
+	if s.upstreamIDByName(name) != "" {
+		return name, name
+	}
+	return "", "All upstreams"
+}
+
+func (s *Server) upstreamIDByName(name string) string {
+	if name == "" || name == "any" || s.upstreams == nil {
+		return ""
+	}
+	for _, item := range s.upstreams.List() {
+		if item.Name == name {
+			return item.ID
+		}
+	}
+	return ""
+}
+
+func (s *Server) ruleUpstreamChoices(selected string) []upstreamChoice {
+	if s.upstreams == nil {
+		return nil
+	}
+	choices := make([]upstreamChoice, 0)
+	for _, item := range s.upstreams.List() {
+		choices = append(choices, upstreamChoice{
+			ID:       item.ID,
+			Name:     item.Name,
+			Selected: item.Name == selected,
+		})
+	}
+	return choices
+}
+
+func (s *Server) ruleGroups(rows []ruleRow) []ruleGroup {
+	anyRows := []ruleRow{}
+	byID := map[string][]ruleRow{}
+	unknown := map[string][]ruleRow{}
+	var unknownIDs []string
+	known := map[string]upstreams.Upstream{}
+	activeID := ""
+	if s.upstreams != nil {
+		if active, ok := s.upstreams.Active(); ok {
+			activeID = active.ID
+		}
+		for _, item := range s.upstreams.List() {
+			known[item.ID] = item
+		}
+	}
+	for _, row := range rows {
+		if row.UpstreamID == "" {
+			anyRows = append(anyRows, row)
+			continue
+		}
+		if _, ok := known[row.UpstreamID]; ok {
+			byID[row.UpstreamID] = append(byID[row.UpstreamID], row)
+			continue
+		}
+		if _, seen := unknown[row.UpstreamID]; !seen {
+			unknownIDs = append(unknownIDs, row.UpstreamID)
+		}
+		unknown[row.UpstreamID] = append(unknown[row.UpstreamID], row)
+	}
+	groups := []ruleGroup{}
+	if s.upstreams != nil {
+		for _, item := range s.upstreams.List() {
+			block := byID[item.ID]
+			if len(block) == 0 {
+				continue
+			}
+			groups = append(groups, ruleGroup{
+				Heading: upstreamBlockHeading(item, item.ID == activeID),
+				Count:   ruleCountLabel(len(block)),
+				Rules:   block,
+			})
+		}
+	}
+	for _, id := range unknownIDs {
+		block := unknown[id]
+		groups = append(groups, ruleGroup{
+			Heading: "Unknown upstream: " + id,
+			Count:   ruleCountLabel(len(block)),
+			Rules:   block,
+		})
+	}
+	if len(anyRows) > 0 {
+		groups = append(groups, ruleGroup{
+			Heading: "Any upstream",
+			Count:   ruleCountLabel(len(anyRows)),
+			Rules:   anyRows,
+		})
+	}
+	return groups
+}
+
+func upstreamBlockHeading(item upstreams.Upstream, fallback bool) string {
+	heading := item.Name
+	if item.Prefix != "" {
+		heading += " · " + item.Prefix
+	}
+	if fallback {
+		heading += " · fallback"
+	}
+	return heading
+}
+
+func ruleCountLabel(n int) string {
+	if n == 1 {
+		return "1 rule"
+	}
+	return strconv.Itoa(n) + " rules"
+}
+
+func (s *Server) upstreamQuery(r *http.Request) string {
+	key, _ := s.parseRuleUpstream(r.URL.Query().Get("upstream"))
+	if key == "" {
+		return ""
+	}
+	return "?" + url.Values{"upstream": {key}}.Encode()
+}
+
+func (s *Server) rulesHome(r *http.Request) string {
+	query := s.upstreamQuery(r)
+	if query == "" {
+		return "/_admin"
+	}
+	return "/_admin" + query
+}
+
+func ruleMatchesUpstream(rule rules.Rule, key, namedID string) bool {
+	switch key {
+	case "":
+		return true
+	case "any":
+		return rule.UpstreamID == ""
+	default:
+		return rule.UpstreamID == namedID || rule.UpstreamID == ""
+	}
+}
+
+func (s *Server) exportScenario(w http.ResponseWriter, r *http.Request) {
+	store, _, _, _, found := s.scope(r)
+	if !found || store == nil {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return
+	}
+	format := "yaml"
+	if strings.EqualFold(r.URL.Query().Get("format"), "json") {
+		format = "json"
+	}
+	doc := scenario.FromRules("exported", "", store.List(), func(id string) string {
+		if id == "" {
+			return "Any"
+		}
+		if s.upstreams == nil {
+			return id
+		}
+		if item, ok := s.upstreams.Get(id); ok {
+			return item.Name
+		}
+		return id
+	})
+	payload, err := scenario.Marshal(doc, format)
+	if err != nil {
+		http.Error(w, "could not export the scenario", http.StatusInternalServerError)
+		return
+	}
+	if format == "json" {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	} else {
+		w.Header().Set("Content-Type", "application/yaml; charset=utf-8")
+	}
+	w.Header().Set("Content-Disposition", "attachment; filename=scenario."+format)
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(payload)
 }
 
 func (s *Server) createRule(w http.ResponseWriter, r *http.Request) {
+	if s.readOnlyPost(w, r) {
+		return
+	}
 	if !sameOrigin(r) {
 		http.Error(w, "cross-origin form posts are not allowed", http.StatusForbidden)
 		return
@@ -141,11 +484,15 @@ func (s *Server) createRule(w http.ResponseWriter, r *http.Request) {
 	view.Action = "/_admin/rules"
 	view.Submit = "Create rule"
 	if err != nil {
-		s.formError(w, "New rule", view, err)
+		s.formError(w, r, "New rule", view, err)
+		return
+	}
+	if err := s.knownUpstream(draft.UpstreamID); err != nil {
+		s.formError(w, r, "New rule", view, err)
 		return
 	}
 	if _, err := s.rules.Create(draft); err != nil {
-		s.formError(w, "New rule", view, err)
+		s.formError(w, r, "New rule", view, err)
 		return
 	}
 	http.Redirect(w, r, "/_admin", http.StatusSeeOther)
@@ -157,21 +504,26 @@ func (s *Server) editForm(w http.ResponseWriter, r *http.Request, id string, pos
 		http.NotFound(w, r)
 		return
 	}
-	view := viewFromRule(rule, "/_admin/rules/"+id, "Save rule")
+	action := "/_admin/rules/" + id + s.upstreamQuery(r)
+	view := viewFromRule(rule, action, "Save rule")
 	if message != "" {
 		view = posted
-		view.Action = "/_admin/rules/" + id
+		view.Action = action
 		view.Submit = "Save rule"
 	}
-	s.render(w, "rule_form", page{
-		Title:   "Edit rule",
-		Form:    view,
-		Methods: methods,
-		Error:   message,
+	s.render(w, r, "rule_form", page{
+		Title:           "Edit rule",
+		Form:            view,
+		Methods:         methods,
+		UpstreamChoices: s.upstreamChoices(view.UpstreamID),
+		Error:           message,
 	}, statusFor(message))
 }
 
 func (s *Server) updateRule(w http.ResponseWriter, r *http.Request, id string) {
+	if s.readOnlyPost(w, r) {
+		return
+	}
 	if !sameOrigin(r) {
 		http.Error(w, "cross-origin form posts are not allowed", http.StatusForbidden)
 		return
@@ -185,14 +537,21 @@ func (s *Server) updateRule(w http.ResponseWriter, r *http.Request, id string) {
 		s.editForm(w, r, id, view, err.Error())
 		return
 	}
+	if err := s.knownUpstream(draft.UpstreamID); err != nil {
+		s.editForm(w, r, id, view, err.Error())
+		return
+	}
 	if _, err := s.rules.Update(id, draft); err != nil {
 		s.editForm(w, r, id, view, err.Error())
 		return
 	}
-	http.Redirect(w, r, "/_admin", http.StatusSeeOther)
+	http.Redirect(w, r, s.rulesHome(r), http.StatusSeeOther)
 }
 
 func (s *Server) toggleRule(w http.ResponseWriter, r *http.Request, id string) {
+	if s.readOnlyPost(w, r) {
+		return
+	}
 	if !sameOrigin(r) {
 		http.Error(w, "cross-origin form posts are not allowed", http.StatusForbidden)
 		return
@@ -203,22 +562,33 @@ func (s *Server) toggleRule(w http.ResponseWriter, r *http.Request, id string) {
 		return
 	}
 	draft := rules.Draft{
-		Name:        rule.Name,
-		Enabled:     !rule.Enabled,
-		Method:      rule.Method,
-		PathPattern: rule.PathPattern,
-		StatusCode:  rule.StatusCode,
-		Headers:     rule.Headers,
-		Body:        string(rule.Body),
+		Name:         rule.Name,
+		APIName:      rule.APIName,
+		Enabled:      !rule.Enabled,
+		FreshRequest: rule.FreshRequest,
+		UpstreamID:   rule.UpstreamID,
+		Method:       rule.Method,
+		PathPattern:  rule.PathPattern,
+		Match:        rule.Match,
+		StatusCode:   rule.StatusCode,
+		DelayMS:      rule.DelayMS,
+		ResponseMode: rule.ResponseMode,
+		RawResponse:  rule.RawResponse,
+		MockHeader:   rule.MockHeader,
+		Headers:      rule.Headers,
+		Body:         string(rule.Body),
 	}
 	if _, err := s.rules.Update(id, draft); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	http.Redirect(w, r, "/_admin", http.StatusSeeOther)
+	http.Redirect(w, r, s.rulesHome(r), http.StatusSeeOther)
 }
 
 func (s *Server) deleteRule(w http.ResponseWriter, r *http.Request, id string) {
+	if s.readOnlyPost(w, r) {
+		return
+	}
 	if !sameOrigin(r) {
 		http.Error(w, "cross-origin form posts are not allowed", http.StatusForbidden)
 		return
@@ -227,25 +597,87 @@ func (s *Server) deleteRule(w http.ResponseWriter, r *http.Request, id string) {
 		http.NotFound(w, r)
 		return
 	}
-	http.Redirect(w, r, "/_admin", http.StatusSeeOther)
+	http.Redirect(w, r, s.rulesHome(r), http.StatusSeeOther)
 }
 
-func (s *Server) formError(w http.ResponseWriter, title string, view formView, err error) {
-	s.render(w, "rule_form", page{
-		Title:   title,
-		Form:    view,
-		Methods: methods,
-		Error:   err.Error(),
+func (s *Server) formError(w http.ResponseWriter, r *http.Request, title string, view formView, err error) {
+	s.render(w, r, "rule_form", page{
+		Title:           title,
+		Form:            view,
+		Methods:         methods,
+		UpstreamChoices: s.upstreamChoices(view.UpstreamID),
+		Error:           err.Error(),
 	}, http.StatusBadRequest)
 }
 
-func (s *Server) render(w http.ResponseWriter, name string, data page, status int) {
+func (s *Server) scope(r *http.Request) (*rules.Store, *history.Log, string, bool, bool) {
+	id := ""
+	if r != nil {
+		id = strings.TrimSpace(r.URL.Query().Get("session"))
+	}
+	if s.sessions == nil || id == "" || id == sessions.DefaultID {
+		return s.rules, s.history, sessions.DefaultID, false, true
+	}
+	info, ok := s.sessions.Get(id)
+	if !ok {
+		return nil, nil, id, true, false
+	}
+	s.sessions.Touch(id)
+	return info.Rules, info.History, info.ID, info.ReadOnly, true
+}
+
+func (s *Server) sessionChrome(r *http.Request) ([]sessionChoice, string, bool) {
+	_, _, id, readOnly, found := s.scope(r)
+	if s.sessions == nil {
+		return nil, id, false
+	}
+	if !found {
+		id = ""
+	}
+	var choices []sessionChoice
+	for _, item := range s.sessions.List() {
+		choices = append(choices, sessionChoice{
+			ID:       item.ID,
+			Name:     item.Name,
+			Selected: item.ID == id || (id == "" && item.ID == sessions.DefaultID),
+		})
+	}
+	return choices, id, readOnly
+}
+
+func (s *Server) decorate(r *http.Request, data page) page {
+	data.Sessions, data.SessionID, data.ReadOnly = s.sessionChrome(r)
+	if r != nil {
+		data.SessionAction = r.URL.Path
+	}
+	return data
+}
+
+func (s *Server) readOnlyPost(w http.ResponseWriter, r *http.Request) bool {
+	_, _, _, readOnly, found := s.scope(r)
+	if !found {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return true
+	}
+	if readOnly {
+		http.Error(w, "test sessions are read-only in the dashboard", http.StatusForbidden)
+		return true
+	}
+	return false
+}
+
+func (s *Server) render(w http.ResponseWriter, r *http.Request, name string, data page, status int) {
+	data = s.decorate(r, data)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Referrer-Policy", "same-origin")
 	w.Header().Set("X-Frame-Options", "DENY")
-	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
+	csp := "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
+	if name == "rule_form" {
+		csp = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
+	}
+	w.Header().Set("Content-Security-Policy", csp)
 	w.WriteHeader(status)
 	if err := s.tmpl.ExecuteTemplate(w, name, data); err != nil {
 		http.Error(w, "template error", http.StatusInternalServerError)
