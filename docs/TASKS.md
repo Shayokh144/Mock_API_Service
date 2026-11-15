@@ -27,7 +27,7 @@ Each task is one change you can review on its own. Tests belong with the behavio
   - The variables, defaults, and validation match the requirements table.
   - A missing or invalid `UPSTREAM_BASE_URL` exits with status 1 and names the setting.
   - `LISTEN_ADDR=0.0.0.0:8080` exits with status 1 before `ListenAndServe`.
-  - A valid config logs the listen address and `http://localhost:8080/_admin`.
+  - A valid config logs the listen address and `http://localhost:8081/_admin`.
 
 ### Phase 2 — Passthrough
 
@@ -309,7 +309,7 @@ Each task is one change you can review on its own. Tests belong with the behavio
   - Columns are method, URL, status, source, and timestamp.
   - The URL is path plus query.
   - The newest entry is first.
-  - The timestamp uses the local zone.
+  - The timestamp uses the local zone, printed with a numeric offset such as `+07:00` or `-05:00`.
 
 #### MVP-32 — Inspect one history entry
 
@@ -368,6 +368,37 @@ Each task is one change you can review on its own. Tests belong with the behavio
   - `.gitignore` includes `data/rules.json` and the built binary name.
   - `data/.gitkeep` remains so the directory exists.
   - `git status` after a local save shows no rule-file change.
+
+### Fresh request
+
+#### MVP-38 — Bypass cache validators for one rule
+
+- **Outcome:** A rule can forward a fresh upstream request instead of returning its saved mock.
+- **Depends on:** MVP-12, MVP-14, MVP-30
+- **Acceptance criteria:**
+  - `fresh_request` defaults to false. Existing mock rules keep returning the saved status, headers, body, and `X-Mock-Response: true`.
+  - When the winning enabled rule has `fresh_request` set, the proxy forwards upstream and does not write the saved mock.
+  - That forward removes `If-None-Match`, `If-Modified-Since`, `If-Match`, `If-Unmodified-Since`, and `If-Range`, then sets `Cache-Control: no-cache` and `Pragma: no-cache`.
+  - Method, query, body, and other headers stay. A `304` is not rewritten into a `200`.
+  - The dashboard checkbox edits the flag. The rules list shows fresh or mock. Enable, disable, and restart keep the flag.
+  - The upstream server must be reachable. The mode is pass-through of fresh data, not a mock response.
+  - `httptest` covers validators removed, the upstream body returned, the flag off, persistence, and the dashboard.
+
+### History filter
+
+#### MVP-39 — Filter history by source
+
+- **Outcome:** The history page can show all entries, mocked entries, or real server entries.
+- **Depends on:** MVP-31, MVP-33, MVP-38
+- **Acceptance criteria:**
+  - `GET /_admin/history` offers All, Mocked (`?source=mock`), and Real server (`?source=upstream`).
+  - The page names the active filter and the number of entries shown. Refresh keeps the query.
+  - An unknown `source` value shows All and is not copied into later links.
+  - A fresh-request success stays source `upstream` with a rule id. Real server includes it. The source column says `upstream (fresh rule)`.
+  - `upstream-error` and `rejected` stay under All. They are not mocks.
+  - Delete returns to the active filter. Clear all still removes every entry, including hidden ones, and does not change rules.
+  - The page has no script. The existing Content-Security-Policy stays.
+  - Tests cover filter selection, query parsing, an invalid value, the active filter text, and delete and clear.
 
 ## Future
 
