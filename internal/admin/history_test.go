@@ -62,7 +62,7 @@ func TestHistoryDashboard(t *testing.T) {
 		ResponseBodyTruncated: true,
 	})
 
-	dashboard, err := New(store, log)
+	dashboard, err := New(store, log, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

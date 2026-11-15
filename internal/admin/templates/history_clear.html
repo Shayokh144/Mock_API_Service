@@ -1,9 +1,9 @@
 {{define "history_clear"}}
 {{template "head" .}}
-<p>Rules are kept. This deletes every history entry and leaves mock rules in place.</p>
-<form method="post" action="/_admin/history/clear">
+<p>Rules are kept. This deletes every history entry, including entries hidden by the current filter, and leaves mock rules in place.</p>
+<form method="post" action="/_admin/history/clear{{.FilterQuery}}">
   <button class="danger" type="submit">Clear all history</button>
 </form>
-<p><a href="/_admin/history">Cancel</a></p>
+<p><a href="/_admin/history{{.FilterQuery}}">Cancel</a></p>
 {{template "foot" .}}
 {{end}}
