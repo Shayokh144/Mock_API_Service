@@ -86,6 +86,8 @@ A named rule matches when the request resolves to that upstream, by its prefix o
 
 Passthrough uses the resolved upstream. Its base URL path is joined in front of the forwarded path.
 
+An absolute `Location` or `Content-Location` that uses the matched upstream's scheme and host is rewritten to this proxy: the request's Host on that session port, plus the upstream's path prefix. Relative URLs and URLs for any other host stay as the upstream sent them. On `Set-Cookie`, a `Domain` that matches the upstream host is dropped, `Secure` is dropped because the proxy is plain HTTP, and `Path` is prefixed when that upstream has a path prefix. A mocked rule response keeps the headers the rule saved. The default session and test sessions both do this.
+
 With no matching prefix and no fallback upstream, passthrough returns `503` and `{"error":"no upstream is configured; add one at /_admin"}`. A matching Any rule still returns the mock.
 
 ## Two apps at once

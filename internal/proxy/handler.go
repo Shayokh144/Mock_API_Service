@@ -290,6 +290,7 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, upstream *url.
 		incomingPath = r.URL.Path
 	}
 	incomingQuery := r.URL.RawQuery
+	prefix := h.routePrefix(r.URL.Path)
 	ctx, cancel := context.WithTimeout(r.Context(), h.timeout)
 	defer cancel()
 	outbound := r.WithContext(ctx)
@@ -306,6 +307,7 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, upstream *url.
 		},
 		Transport: h.transport,
 		ModifyResponse: func(resp *http.Response) error {
+			rewriteUpstreamResponse(resp, r.Host, upstream, prefix)
 			body, err := readUpTo(resp.Body, config.MaxBufferedBody)
 			if resp.Body != nil {
 				_ = resp.Body.Close()
@@ -332,6 +334,17 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, upstream *url.
 	}
 	reverse.ServeHTTP(w, outbound)
 	return failed
+}
+
+func (h *Handler) routePrefix(path string) string {
+	if h.upstreams == nil {
+		return ""
+	}
+	route, ok := h.upstreams.Route(path)
+	if !ok {
+		return ""
+	}
+	return route.Upstream.Prefix
 }
 
 func (h *Handler) record(started time.Time, r *http.Request, reqHeaders http.Header, payload []byte, capw *bodyCapture, source history.Source, ruleID, upstreamID, upstreamName, forwardedPath string, delayMS int) {
