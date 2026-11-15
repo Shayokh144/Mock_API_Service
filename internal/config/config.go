@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -12,9 +13,11 @@ import (
 
 const (
 	DefaultListenAddr      = "127.0.0.1:8080"
+	DefaultAdminListenAddr = "127.0.0.1:8081"
 	DefaultRulesPath       = "data/rules.json"
 	DefaultHistoryLimit    = 500
 	DefaultUpstreamTimeout = 30 * time.Second
+	ReadHeaderTimeout      = 10 * time.Second
 
 	// MaxMockBody is the largest JSON body a rule may store.
 	MaxMockBody = 1 << 20
@@ -28,7 +31,10 @@ const (
 type Config struct {
 	Upstream        *url.URL
 	ListenAddr      string
+	AdminListenAddr string
 	RulesPath       string
+	UpstreamsPath   string
+	TokenPath       string
 	HistoryLimit    int
 	UpstreamTimeout time.Duration
 }
@@ -44,9 +50,16 @@ func Load(getenv func(string) string) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	listenAddr, err := resolveListenAddr(getenv("LISTEN_ADDR"))
+	listenAddr, err := resolveListenAddr(getenv("LISTEN_ADDR"), "LISTEN_ADDR", DefaultListenAddr)
 	if err != nil {
 		return Config{}, err
+	}
+	adminAddr, err := resolveListenAddr(getenv("ADMIN_LISTEN_ADDR"), "ADMIN_LISTEN_ADDR", DefaultAdminListenAddr)
+	if err != nil {
+		return Config{}, err
+	}
+	if listenAddr == adminAddr {
+		return Config{}, fmt.Errorf("ADMIN_LISTEN_ADDR must use a different address from LISTEN_ADDR")
 	}
 	historyLimit, err := parseHistoryLimit(getenv("HISTORY_LIMIT"))
 	if err != nil {
@@ -65,18 +78,43 @@ func Load(getenv func(string) string) (Config, error) {
 	return Config{
 		Upstream:        upstream,
 		ListenAddr:      listenAddr,
+		AdminListenAddr: adminAddr,
 		RulesPath:       rulesPath,
+		UpstreamsPath:   UpstreamsPath(rulesPath),
+		TokenPath:       TokenPath(rulesPath),
 		HistoryLimit:    historyLimit,
 		UpstreamTimeout: timeout,
 	}, nil
 }
 
+// UpstreamsPath is the upstream file stored next to the rules file.
+func UpstreamsPath(rulesPath string) string {
+	if strings.TrimSpace(rulesPath) == "" {
+		rulesPath = DefaultRulesPath
+	}
+	return filepath.Join(filepath.Dir(rulesPath), "upstreams.json")
+}
+
+// TokenPath is the admin API token stored next to the rules file.
+func TokenPath(rulesPath string) string {
+	if strings.TrimSpace(rulesPath) == "" {
+		rulesPath = DefaultRulesPath
+	}
+	return filepath.Join(filepath.Dir(rulesPath), "admin.token")
+}
+
 // StartupLines are the human-readable lines printed before the process listens.
 func StartupLines(cfg Config) []string {
-	return []string{
+	lines := []string{
 		"listening on " + cfg.ListenAddr,
-		"dashboard at " + DashboardURL(cfg.ListenAddr),
+		"admin listening on " + cfg.AdminListenAddr,
+		"dashboard at " + DashboardURL(cfg.AdminListenAddr),
+		"admin token file " + cfg.TokenPath,
 	}
+	if cfg.Upstream == nil {
+		lines = append(lines, "no upstream configured; add one at the dashboard")
+	}
+	return lines
 }
 
 // DashboardURL is the local browser URL for the resolved listen address.
@@ -94,7 +132,7 @@ func DashboardURL(listenAddr string) string {
 func parseUpstream(raw string) (*url.URL, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		return nil, fmt.Errorf("UPSTREAM_BASE_URL is required")
+		return nil, nil
 	}
 	u, err := url.Parse(raw)
 	if err != nil || u == nil || (u.Host == "" && u.Scheme == "") {
@@ -117,29 +155,29 @@ func parseUpstream(raw string) (*url.URL, error) {
 	return u, nil
 }
 
-func resolveListenAddr(raw string) (string, error) {
+func resolveListenAddr(raw, envName, fallback string) (string, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		raw = DefaultListenAddr
+		raw = fallback
 	}
 	host, port, err := net.SplitHostPort(raw)
 	if err != nil || port == "" {
-		return "", fmt.Errorf("LISTEN_ADDR is invalid")
+		return "", fmt.Errorf("%s is invalid", envName)
 	}
 	if n, err := strconv.Atoi(port); err != nil || n < 1 || n > 65535 {
-		return "", fmt.Errorf("LISTEN_ADDR is invalid")
+		return "", fmt.Errorf("%s is invalid", envName)
 	}
 
 	switch strings.ToLower(host) {
 	case "localhost":
 		host = "127.0.0.1"
 	case "":
-		return "", fmt.Errorf("LISTEN_ADDR must be a loopback address")
+		return "", fmt.Errorf("%s must be a loopback address", envName)
 	}
 
 	ip := net.ParseIP(host)
 	if ip == nil || !ip.IsLoopback() {
-		return "", fmt.Errorf("LISTEN_ADDR must be a loopback address")
+		return "", fmt.Errorf("%s must be a loopback address", envName)
 	}
 	return net.JoinHostPort(ip.String(), port), nil
 }
