@@ -39,6 +39,9 @@ type Rule struct {
 	Body         json.RawMessage   `json:"body"`
 	CreatedAt    timeValue         `json:"created_at"`
 	UpdatedAt    timeValue         `json:"updated_at"`
+	// Temporary marks a rule loaded from --scenario without --scenario-persist.
+	// It is never serialized and is left out of every save.
+	Temporary bool `json:"-"`
 }
 
 // Draft is the input for creating or updating a rule.

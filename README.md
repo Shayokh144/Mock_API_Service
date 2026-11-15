@@ -27,7 +27,7 @@ Run commands from the repository root. The default rules file is `data/rules.jso
 
 ## Configuration
 
-The process reads only environment variables. It does not take flags, and it does not store upstream credentials.
+The process reads environment variables. It also accepts `--scenario` and `--scenario-persist`, described under Scenarios. It does not store upstream credentials.
 
 | Variable | Required | Default | Meaning |
 | --- | --- | --- | --- |
@@ -458,7 +458,7 @@ A scenario is a YAML or JSON file with `version: 1`, a name, a description, and 
 go run ./cmd/mockproxy --scenario scenarios/okya-auth-refresh-failure.yaml
 ```
 
-That merges the file into the default session and does not write `data/rules.json`. Add `--scenario-persist` to save it. Examples live in `scenarios/`. They use dummy data only. `upstream` is an upstream name or `Any`. `query_conditions` and `body_conditions` are `key=value` strings. `headers` is an object or a list of `Name: value` strings. `body` is JSON. A `raw_response` string switches the rule to raw mode. `GET` accepts `?upstream=` with the same meaning as the dashboard filter. A session holds at most 500 rules. Edits to `default` are written to `data/rules.json`. Test-session rules stay in memory.
+That merges the file into the default session. Without `--scenario-persist`, those rules are temporary. They stay in memory and are left out of every save of `data/rules.json`, including a later save of an unrelated rule. Editing a temporary rule in the dashboard keeps it temporary, so that edit is not written either. Add `--scenario-persist` to save the scenario rules into `data/rules.json`. Examples live in `scenarios/`. They use dummy data only. `upstream` is an upstream name or `Any`. `query_conditions` and `body_conditions` are `key=value` strings. `headers` is an object or a list of `Name: value` strings. `body` is JSON. A `raw_response` string switches the rule to raw mode. `GET` accepts `?upstream=` with the same meaning as the dashboard filter. A session holds at most 500 rules. Edits to `default` are written to `data/rules.json`, except temporary scenario rules. Test-session rules stay in memory.
 
 Errors use one shape and do not include the token:
 
