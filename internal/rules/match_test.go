@@ -62,8 +62,6 @@ func TestRejectedWildcardPatterns(t *testing.T) {
 	}{
 		{pattern: "/v1/users/*/", substr: "empty segment"},
 		{pattern: "/v1/users/id*", substr: "whole segment"},
-		{pattern: "/v1/users/**", substr: "whole segment"},
-		{pattern: "/v1/users/*/**", substr: "whole segment"},
 		{pattern: "v1/users", substr: "start with /"},
 		{pattern: "/v1/users/?", substr: "query string"},
 	}

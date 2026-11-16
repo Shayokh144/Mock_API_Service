@@ -117,8 +117,9 @@ func (h *Handler) serveAPI(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			if rule.Fault != "" {
-				h.applyFault(capw, r, rule.Fault)
+				h.waitFault(capw, r, rule.Fault)
 				h.record(started, r, reqHeaders, payload, capw, history.SourceFault, rule.ID, id, name, forwarded, rule.DelayMS)
+				h.closeFault(capw)
 				return
 			}
 			if rule.FreshRequest {
@@ -152,16 +153,20 @@ func (h *Handler) serveAPI(w http.ResponseWriter, r *http.Request) {
 	h.record(started, r, reqHeaders, payload, capw, source, "", id, name, forwarded, 0)
 }
 
-func (h *Handler) applyFault(w *bodyCapture, r *http.Request, fault string) {
+func (h *Handler) waitFault(w *bodyCapture, r *http.Request, fault string) {
 	w.fault = fault
-	if fault == "hang" {
-		timer := time.NewTimer(h.timeout)
-		defer timer.Stop()
-		select {
-		case <-r.Context().Done():
-		case <-timer.C:
-		}
+	if fault != "hang" {
+		return
 	}
+	timer := time.NewTimer(h.timeout)
+	defer timer.Stop()
+	select {
+	case <-r.Context().Done():
+	case <-timer.C:
+	}
+}
+
+func (h *Handler) closeFault(w *bodyCapture) {
 	hj, ok := w.ResponseWriter.(http.Hijacker)
 	if !ok {
 		return

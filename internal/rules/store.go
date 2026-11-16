@@ -355,7 +355,7 @@ func headerEqual(a, b map[string]string) bool {
 }
 
 func matchEqual(a, b MatchSpec) bool {
-	return conditionEqual(a.Query, b.Query) && conditionEqual(a.Body, b.Body)
+	return conditionEqual(a.Query, b.Query) && conditionEqual(a.Body, b.Body) && conditionEqual(a.Headers, b.Headers)
 }
 
 func responsesEqual(a, b []ResponseStep) bool {
@@ -372,7 +372,7 @@ func conditionEqual(a, b []Condition) bool {
 		return false
 	}
 	for i := range a {
-		if a[i].Key != b[i].Key {
+		if a[i].Key != b[i].Key || a[i].Op != b[i].Op {
 			return false
 		}
 		if (a[i].Value == nil) != (b[i].Value == nil) {
@@ -517,6 +517,9 @@ func (s *Store) match(method, path, upstreamID string, query url.Values, header 
 			continue
 		}
 		if !queryMatches(rule.Match.Query, query) {
+			continue
+		}
+		if len(rule.Match.Headers) > 0 && !headerMatches(rule.Match.Headers, header) {
 			continue
 		}
 		if len(rule.Match.Body) > 0 {

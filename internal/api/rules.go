@@ -22,6 +22,7 @@ type ruleBody struct {
 	Path         string          `json:"path"`
 	Query        []string        `json:"query_conditions"`
 	BodyMatch    []string        `json:"body_conditions"`
+	HeaderMatch  []string        `json:"header_conditions"`
 	Status       int             `json:"status"`
 	Headers      json.RawMessage `json:"headers"`
 	Body         json.RawMessage `json:"body"`
@@ -46,6 +47,7 @@ type ruleResponse struct {
 	Path         string               `json:"path"`
 	Query        []string             `json:"query_conditions"`
 	BodyMatch    []string             `json:"body_conditions"`
+	HeaderMatch  []string             `json:"header_conditions"`
 	Status       int                  `json:"status"`
 	Headers      map[string]string    `json:"headers"`
 	Body         json.RawMessage      `json:"body"`
@@ -302,6 +304,11 @@ func (s *Server) draftFromJSON(w http.ResponseWriter, r *http.Request) (rules.Dr
 		writeError(w, http.StatusBadRequest, "bad_request", err.Error())
 		return rules.Draft{}, errStop
 	}
+	headerMatch, err := rules.ParseConditions(strings.Join(body.HeaderMatch, "\n"), "header")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "bad_request", err.Error())
+		return rules.Draft{}, errStop
+	}
 	headers, err := parseHeaderField(body.Headers)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "bad_request", err.Error())
@@ -338,7 +345,7 @@ func (s *Server) draftFromJSON(w http.ResponseWriter, r *http.Request) (rules.Dr
 		UpstreamID:   upstreamID,
 		Method:       body.Method,
 		PathPattern:  body.Path,
-		Match:        rules.MatchSpec{Query: query, Body: matchBody},
+		Match:        rules.MatchSpec{Query: query, Body: matchBody, Headers: headerMatch},
 		StatusCode:   body.Status,
 		DelayMS:      body.DelayMS,
 		Priority:     body.Priority,
@@ -394,6 +401,7 @@ func toRuleResponse(rule rules.Rule, ups *upstreams.Store) ruleResponse {
 	}
 	query := conditionLines(rule.Match.Query)
 	matchBody := conditionLines(rule.Match.Body)
+	headerMatch := conditionLines(rule.Match.Headers)
 	return ruleResponse{
 		ID:           rule.ID,
 		Name:         rule.APIName,
@@ -403,6 +411,7 @@ func toRuleResponse(rule rules.Rule, ups *upstreams.Store) ruleResponse {
 		Path:         rule.PathPattern,
 		Query:        query,
 		BodyMatch:    matchBody,
+		HeaderMatch:  headerMatch,
 		Status:       rule.StatusCode,
 		Headers:      headers,
 		Body:         body,

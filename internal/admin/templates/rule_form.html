@@ -30,6 +30,9 @@
   <label for="query_conditions">Query conditions</label>
   <textarea id="query_conditions" name="query_conditions">{{.Form.Query}}</textarea>
   <p class="hint">Optional. One condition per line. refresh_token means that query key is present. page=2 means that exact value. Every line must match.</p>
+  <label for="header_conditions">Header conditions</label>
+  <textarea id="header_conditions" name="header_conditions">{{.Form.HeaderMatch}}</textarea>
+  <p class="hint">Optional. One condition per line. Authorization means the header is present. Authorization:absent means it is missing or empty. Accept-Language:prefix=th matches a prefix. X-Request-Id:contains=okya matches text inside the value. user.email:regex=@okya\.test$ uses a regular expression. Header names ignore case. ** in a path is only a whole trailing segment and matches the rest of the path.</p>
   <label for="body_conditions">Body conditions</label>
   <textarea id="body_conditions" name="body_conditions">{{.Form.BodyMatch}}</textarea>
   <p class="hint">Optional. One condition per line, for a form body or a JSON body. grant_type=refresh_token matches a form field. user.role=admin matches a JSON path. Numbers and booleans match their text, so active=true matches true. A body over 1 MiB does not match. Every line must match.</p>

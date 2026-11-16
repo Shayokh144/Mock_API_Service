@@ -11,7 +11,9 @@ import (
 	"mime"
 	"net/http"
 	"net/url"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/andybalholm/brotli"
@@ -28,13 +30,18 @@ const maxConditions = 32
 type Condition struct {
 	Key   string  `json:"key"`
 	Value *string `json:"value,omitempty"`
+	// Op is eq, prefix, contains, regex, present, or absent. Empty means eq when
+	// Value is set and present when it is not, which is how older rules match.
+	Op string         `json:"op,omitempty"`
+	re *regexp.Regexp `json:"-"`
 }
 
 // MatchSpec is the optional query and body conditions on a rule.
 // Every condition must hold. An empty spec matches any query and body.
 type MatchSpec struct {
-	Query []Condition `json:"query,omitempty"`
-	Body  []Condition `json:"body,omitempty"`
+	Query   []Condition `json:"query,omitempty"`
+	Body    []Condition `json:"body,omitempty"`
+	Headers []Condition `json:"headers,omitempty"`
 }
 
 // ParseConditions reads one condition per line.
@@ -51,23 +58,15 @@ func ParseConditions(text, label string) ([]Condition, error) {
 		if len(out) >= maxConditions {
 			return nil, fmt.Errorf("%s conditions are limited to %d", label, maxConditions)
 		}
-		key := line
-		var value *string
-		if before, after, ok := strings.Cut(line, "="); ok {
-			key = strings.TrimSpace(before)
-			value = stringPtr(strings.TrimSpace(after))
-		}
-		if err := validateConditionKey(key, label); err != nil {
+		cond, err := parseConditionLine(line, label)
+		if err != nil {
 			return nil, err
 		}
-		if value != nil && len(*value) > 4096 {
-			return nil, fmt.Errorf("%s condition value for %q is too long", label, key)
+		if _, ok := seen[cond.Key]; ok {
+			return nil, fmt.Errorf("duplicate %s condition %q", label, cond.Key)
 		}
-		if _, ok := seen[key]; ok {
-			return nil, fmt.Errorf("duplicate %s condition %q", label, key)
-		}
-		seen[key] = struct{}{}
-		out = append(out, Condition{Key: key, Value: value})
+		seen[cond.Key] = struct{}{}
+		out = append(out, cond)
 	}
 	return out, nil
 }
@@ -94,6 +93,9 @@ func MatchSummary(m MatchSpec) string {
 	for _, c := range m.Body {
 		parts = append(parts, "body "+formatCondition(c))
 	}
+	for _, c := range m.Headers {
+		parts = append(parts, "header "+formatCondition(c))
+	}
 	summary := strings.Join(parts, ", ")
 	if len(summary) > 80 {
 		return summary[:77] + "..."
@@ -106,10 +108,82 @@ func stringPtr(s string) *string {
 }
 
 func formatCondition(c Condition) string {
-	if c.Value == nil {
+	op := c.Op
+	if op == "" {
+		if c.Value == nil {
+			return c.Key
+		}
+		return c.Key + "=" + *c.Value
+	}
+	if op == "present" {
 		return c.Key
 	}
-	return c.Key + "=" + *c.Value
+	if op == "absent" {
+		return c.Key + ":absent"
+	}
+	value := ""
+	if c.Value != nil {
+		value = *c.Value
+	}
+	return c.Key + ":" + op + "=" + value
+}
+
+func parseConditionLine(line, label string) (Condition, error) {
+	key := line
+	op := ""
+	var value *string
+	if before, after, ok := strings.Cut(line, ":"); ok && isOperator(operatorHead(after)) {
+		key = strings.TrimSpace(before)
+		name, raw, hasValue := operatorName(after), "", false
+		if left, right, ok := strings.Cut(after, "="); ok {
+			name = operatorName(left)
+			raw = strings.TrimSpace(right)
+			hasValue = true
+		}
+		op = name
+		switch op {
+		case "present", "absent":
+			if hasValue {
+				return Condition{}, fmt.Errorf("%s condition %q does not take a value", label, op)
+			}
+		default:
+			if !hasValue {
+				return Condition{}, fmt.Errorf("%s condition %q needs a value", label, op)
+			}
+			value = stringPtr(raw)
+		}
+	} else if before, after, ok := strings.Cut(line, "="); ok {
+		key = strings.TrimSpace(before)
+		value = stringPtr(strings.TrimSpace(after))
+	}
+	if err := validateConditionKey(key, label); err != nil {
+		return Condition{}, err
+	}
+	cond := Condition{Key: key, Op: op, Value: value}
+	if err := prepareCondition(&cond, label); err != nil {
+		return Condition{}, err
+	}
+	return cond, nil
+}
+
+func operatorName(raw string) string {
+	return strings.ToLower(strings.TrimSpace(raw))
+}
+
+func operatorHead(raw string) string {
+	if left, _, ok := strings.Cut(raw, "="); ok {
+		return operatorName(left)
+	}
+	return operatorName(raw)
+}
+
+func isOperator(name string) bool {
+	switch name {
+	case "eq", "prefix", "contains", "regex", "present", "absent":
+		return true
+	default:
+		return false
+	}
 }
 
 func canonicalMatch(m MatchSpec) (MatchSpec, error) {
@@ -117,6 +191,9 @@ func canonicalMatch(m MatchSpec) (MatchSpec, error) {
 		return MatchSpec{}, err
 	}
 	if err := validateConditionList(m.Body, "body"); err != nil {
+		return MatchSpec{}, err
+	}
+	if err := validateConditionList(m.Headers, "header"); err != nil {
 		return MatchSpec{}, err
 	}
 	return cloneMatch(m), nil
@@ -127,12 +204,16 @@ func validateConditionList(list []Condition, label string) error {
 		return fmt.Errorf("%s conditions are limited to %d", label, maxConditions)
 	}
 	seen := map[string]struct{}{}
-	for _, c := range list {
+	for i := range list {
+		c := list[i]
 		if err := validateConditionKey(c.Key, label); err != nil {
 			return err
 		}
 		if c.Value != nil && len(*c.Value) > 4096 {
 			return fmt.Errorf("%s condition value for %q is too long", label, c.Key)
+		}
+		if err := prepareCondition(&list[i], label); err != nil {
+			return err
 		}
 		if _, ok := seen[c.Key]; ok {
 			return fmt.Errorf("duplicate %s condition %q", label, c.Key)
@@ -163,11 +244,15 @@ func validateConditionKey(key, label string) error {
 }
 
 func conditionCount(m MatchSpec) int {
-	return len(m.Query) + len(m.Body)
+	return len(m.Query) + len(m.Body) + len(m.Headers)
 }
 
 func cloneMatch(m MatchSpec) MatchSpec {
-	return MatchSpec{Query: cloneConditions(m.Query), Body: cloneConditions(m.Body)}
+	return MatchSpec{
+		Query:   cloneConditions(m.Query),
+		Body:    cloneConditions(m.Body),
+		Headers: cloneConditions(m.Headers),
+	}
 }
 
 func cloneConditions(in []Condition) []Condition {
@@ -181,6 +266,7 @@ func cloneConditions(in []Condition) []Condition {
 			v := *c.Value
 			out[i].Value = &v
 		}
+		out[i].re = c.re
 	}
 	return out
 }
@@ -197,38 +283,130 @@ func conditionSignature(m MatchSpec) string {
 	for _, c := range m.Body {
 		parts = append(parts, "b\x01"+conditionToken(c))
 	}
+	for _, c := range m.Headers {
+		parts = append(parts, "h\x01"+conditionToken(c))
+	}
 	sort.Strings(parts)
 	return strings.Join(parts, "\x02")
 }
 
 func conditionToken(c Condition) string {
-	if c.Value == nil {
-		return c.Key + "\x01*"
+	op := c.Op
+	if op == "" {
+		op = "eq"
 	}
-	return c.Key + "\x01=" + *c.Value
+	if c.Value == nil {
+		return c.Key + "\x01" + op
+	}
+	return c.Key + "\x01" + op + "\x01" + *c.Value
 }
 
 func queryMatches(list []Condition, query url.Values) bool {
 	for _, c := range list {
-		values, ok := query[c.Key]
-		if !ok {
-			return false
-		}
-		if c.Value == nil {
-			continue
-		}
-		found := false
-		for _, value := range values {
-			if value == *c.Value {
-				found = true
-				break
-			}
-		}
-		if !found {
+		if !valuesMatch(c, query[c.Key]) {
 			return false
 		}
 	}
 	return true
+}
+
+func headerMatches(list []Condition, header http.Header) bool {
+	if header == nil {
+		header = http.Header{}
+	}
+	for _, c := range list {
+		if !valuesMatch(c, header.Values(c.Key)) {
+			return false
+		}
+	}
+	return true
+}
+
+func valuesMatch(c Condition, values []string) bool {
+	op := c.Op
+	if op == "" {
+		if c.Value == nil {
+			op = "present"
+		} else {
+			op = "eq"
+		}
+	}
+	switch op {
+	case "absent":
+		for _, value := range values {
+			if value != "" {
+				return false
+			}
+		}
+		return true
+	case "present":
+		return len(values) > 0
+	case "eq", "prefix", "contains", "regex":
+		re := c.re
+		if op == "regex" && re == nil && c.Value != nil {
+			compiled, err := regexp.Compile(*c.Value)
+			if err != nil {
+				return false
+			}
+			re = compiled
+		}
+		for _, value := range values {
+			if valueMatches(op, c.Value, re, value) {
+				return true
+			}
+		}
+		return false
+	default:
+		return false
+	}
+}
+
+func valueMatches(op string, want *string, re *regexp.Regexp, value string) bool {
+	if want == nil {
+		return false
+	}
+	switch op {
+	case "eq":
+		return value == *want
+	case "prefix":
+		return strings.HasPrefix(value, *want)
+	case "contains":
+		return strings.Contains(value, *want)
+	case "regex":
+		return re != nil && re.MatchString(value)
+	default:
+		return false
+	}
+}
+
+func prepareCondition(c *Condition, label string) error {
+	op := c.Op
+	if op == "" {
+		return nil
+	}
+	if !isOperator(op) {
+		return fmt.Errorf("%s condition operator %q is not supported", label, op)
+	}
+	if (op == "present" || op == "absent") && c.Value != nil {
+		return fmt.Errorf("%s condition %q does not take a value", label, op)
+	}
+	if op != "present" && op != "absent" && c.Value == nil {
+		return fmt.Errorf("%s condition %q needs a value", label, op)
+	}
+	if op == "regex" {
+		re, err := regexp.Compile(*c.Value)
+		if err != nil {
+			return fmt.Errorf("%s condition regex for %q is invalid", label, c.Key)
+		}
+		c.re = re
+	}
+	if op == "present" {
+		c.Op = ""
+	}
+	if op == "eq" {
+		c.Op = ""
+	}
+	return nil
 }
 
 func bodyMatches(list []Condition, header http.Header, body []byte) bool {
@@ -278,13 +456,23 @@ func jsonBodyMatches(list []Condition, body []byte) bool {
 	}
 	for _, c := range list {
 		present, scalar, scalarOK := lookupJSON(root, c.Key)
-		if !present {
-			return false
+		op := c.Op
+		if op == "" && c.Value == nil {
+			op = "present"
 		}
-		if c.Value == nil {
+		if op == "present" {
+			if !present {
+				return false
+			}
 			continue
 		}
-		if !scalarOK || scalar != *c.Value {
+		if !present || !scalarOK {
+			if !valuesMatch(c, nil) {
+				return false
+			}
+			continue
+		}
+		if !valuesMatch(c, []string{scalar}) {
 			return false
 		}
 	}
@@ -294,15 +482,22 @@ func jsonBodyMatches(list []Condition, body []byte) bool {
 func lookupJSON(root any, key string) (present bool, scalar string, scalarOK bool) {
 	cur := root
 	for _, part := range strings.Split(key, ".") {
-		obj, ok := cur.(map[string]any)
-		if !ok {
+		switch node := cur.(type) {
+		case map[string]any:
+			next, ok := node[part]
+			if !ok {
+				return false, "", false
+			}
+			cur = next
+		case []any:
+			idx, err := strconv.Atoi(part)
+			if err != nil || idx < 0 || idx >= len(node) {
+				return false, "", false
+			}
+			cur = node[idx]
+		default:
 			return false, "", false
 		}
-		next, ok := obj[part]
-		if !ok {
-			return false, "", false
-		}
-		cur = next
 	}
 	scalar, scalarOK = jsonScalar(cur)
 	return true, scalar, scalarOK

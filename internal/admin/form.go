@@ -33,6 +33,7 @@ type formView struct {
 	PathPattern  string
 	Query        string
 	BodyMatch    string
+	HeaderMatch  string
 	StatusCode   string
 	DelayMS      string
 	Priority     string
@@ -62,6 +63,7 @@ func draftFromForm(r *http.Request) (rules.Draft, formView, error) {
 		PathPattern:  strings.TrimSpace(r.FormValue("path_pattern")),
 		Query:        r.FormValue("query_conditions"),
 		BodyMatch:    r.FormValue("body_conditions"),
+		HeaderMatch:  r.FormValue("header_conditions"),
 		StatusCode:   strings.TrimSpace(r.FormValue("status_code")),
 		DelayMS:      strings.TrimSpace(r.FormValue("delay_ms")),
 		Priority:     strings.TrimSpace(r.FormValue("priority")),
@@ -116,6 +118,10 @@ func draftFromForm(r *http.Request) (rules.Draft, formView, error) {
 	if err != nil {
 		return rules.Draft{}, view, err
 	}
+	headerMatch, err := rules.ParseConditions(view.HeaderMatch, "header")
+	if err != nil {
+		return rules.Draft{}, view, err
+	}
 	return rules.Draft{
 		Name:         view.Name,
 		APIName:      view.APIName,
@@ -124,7 +130,7 @@ func draftFromForm(r *http.Request) (rules.Draft, formView, error) {
 		UpstreamID:   view.UpstreamID,
 		Method:       view.Method,
 		PathPattern:  view.PathPattern,
-		Match:        rules.MatchSpec{Query: query, Body: bodyMatch},
+		Match:        rules.MatchSpec{Query: query, Body: bodyMatch, Headers: headerMatch},
 		StatusCode:   status,
 		DelayMS:      delay,
 		Priority:     priority,
@@ -275,6 +281,7 @@ func viewFromRule(rule rules.Rule, action, submit string) formView {
 		PathPattern:  rule.PathPattern,
 		Query:        rules.FormatConditions(rule.Match.Query),
 		BodyMatch:    rules.FormatConditions(rule.Match.Body),
+		HeaderMatch:  rules.FormatConditions(rule.Match.Headers),
 		StatusCode:   strconv.Itoa(rule.StatusCode),
 		DelayMS:      strconv.Itoa(rule.DelayMS),
 		Priority:     strconv.Itoa(rule.Priority),

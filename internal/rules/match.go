@@ -8,6 +8,19 @@ func matchPattern(pattern, path string) bool {
 	}
 	patternParts := strings.Split(pattern, "/")
 	pathParts := strings.Split(path, "/")
+	if len(patternParts) > 0 && patternParts[len(patternParts)-1] == "**" {
+		if len(pathParts) < len(patternParts)-1 {
+			return false
+		}
+		return segmentsMatch(patternParts[:len(patternParts)-1], pathParts[:len(patternParts)-1])
+	}
+	if len(patternParts) != len(pathParts) {
+		return false
+	}
+	return segmentsMatch(patternParts, pathParts)
+}
+
+func segmentsMatch(patternParts, pathParts []string) bool {
 	if len(patternParts) != len(pathParts) {
 		return false
 	}
@@ -57,7 +70,7 @@ func literalSegments(pattern string) int {
 	parts := strings.Split(pattern, "/")
 	count := 0
 	for i := 1; i < len(parts); i++ {
-		if parts[i] != "" && parts[i] != "*" {
+		if parts[i] != "" && parts[i] != "*" && parts[i] != "**" {
 			count++
 		}
 	}

@@ -321,11 +321,23 @@ func validatePattern(pattern string, allowWildcard bool) error {
 			}
 			return fmt.Errorf("path pattern has an empty segment")
 		}
-		if seg == "*" {
+		if seg == "*" || seg == "**" {
 			if !allowWildcard {
 				return fmt.Errorf("path pattern must be an exact path")
 			}
+			if seg == "**" && i != len(parts)-1 {
+				return fmt.Errorf("** is only allowed as the last path segment")
+			}
 			continue
+		}
+		stars := 0
+		for _, part := range parts[1:] {
+			if part == "**" {
+				stars++
+			}
+		}
+		if stars > 1 {
+			return fmt.Errorf("path pattern can use ** only once")
 		}
 		if strings.ContainsAny(seg, "*?") {
 			return fmt.Errorf("path pattern must use * only as a whole segment")

@@ -31,6 +31,7 @@ type Rule struct {
 	Path         string               `json:"path" yaml:"path"`
 	Query        []string             `json:"query_conditions" yaml:"query_conditions"`
 	BodyMatch    []string             `json:"body_conditions" yaml:"body_conditions"`
+	HeaderMatch  []string             `json:"header_conditions" yaml:"header_conditions"`
 	Status       int                  `json:"status" yaml:"status"`
 	Headers      any                  `json:"headers" yaml:"headers"`
 	Body         any                  `json:"body" yaml:"body"`
@@ -125,6 +126,10 @@ func (d Document) Drafts(resolve func(string) (string, error)) ([]rules.Draft, e
 		if err != nil {
 			return nil, fmt.Errorf("rules[%d].body_conditions: %s", i, err.Error())
 		}
+		headerMatch, err := rules.ParseConditions(strings.Join(rule.HeaderMatch, "\n"), "header")
+		if err != nil {
+			return nil, fmt.Errorf("rules[%d].header_conditions: %s", i, err.Error())
+		}
 		headers, err := headerMap(rule.Headers)
 		if err != nil {
 			return nil, fmt.Errorf("rules[%d].headers: %s", i, err.Error())
@@ -152,7 +157,7 @@ func (d Document) Drafts(resolve func(string) (string, error)) ([]rules.Draft, e
 			UpstreamID:   upstreamID,
 			Method:       rule.Method,
 			PathPattern:  rule.Path,
-			Match:        rules.MatchSpec{Query: query, Body: bodyMatch},
+			Match:        rules.MatchSpec{Query: query, Body: bodyMatch, Headers: headerMatch},
 			StatusCode:   rule.Status,
 			DelayMS:      rule.DelayMS,
 			Priority:     rule.Priority,
@@ -187,6 +192,7 @@ func FromRules(name, description string, list []rules.Rule, upstreamName func(id
 			Path:         rule.PathPattern,
 			Query:        lines(rule.Match.Query),
 			BodyMatch:    lines(rule.Match.Body),
+			HeaderMatch:  lines(rule.Match.Headers),
 			Status:       rule.StatusCode,
 			DelayMS:      rule.DelayMS,
 			Priority:     rule.Priority,
