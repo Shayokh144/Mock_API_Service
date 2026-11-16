@@ -11,6 +11,29 @@ import (
 	"github.com/Shayokh144/Mock_API_Service/internal/rules"
 )
 
+// dashboardClient is the test stand-in for a browser on the admin origin.
+// A form POST from Chrome sends Sec-Fetch-Site: same-origin. Requests that
+// already set Origin or Sec-Fetch-Site are left alone so a cross-origin case
+// stays cross-origin.
+func dashboardClient() *http.Client {
+	return &http.Client{
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+		Transport: dashboardTransport{},
+	}
+}
+
+type dashboardTransport struct{}
+
+func (dashboardTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	clone := r.Clone(r.Context())
+	if clone.Header.Get("Origin") == "" && clone.Header.Get("Sec-Fetch-Site") == "" {
+		clone.Header.Set("Sec-Fetch-Site", "same-origin")
+	}
+	return http.DefaultTransport.RoundTrip(clone)
+}
+
 func TestSameOriginLoopbackNames(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -24,10 +47,12 @@ func TestSameOriginLoopbackNames(t *testing.T) {
 		{name: "127.0.0.1 origin against localhost", host: "localhost:8080", origin: "http://127.0.0.1:8080", ok: true},
 		{name: "ipv6 origin against localhost", host: "localhost:8080", origin: "http://[::1]:8080", ok: true},
 		{name: "127.0.0.1 origin against ipv6 host", host: "[::1]:8080", origin: "http://127.0.0.1:8080", ok: true},
-		{name: "missing origin with same-origin referer", host: "127.0.0.1:8080", referer: "http://localhost:8080/_admin/rules/new", ok: true},
-		{name: "null origin with same-origin referer", host: "localhost:8080", origin: "null", referer: "http://[::1]:8080/_admin/rules/new", ok: true},
+		{name: "missing origin with same-origin referer", host: "127.0.0.1:8080", referer: "http://localhost:8080/_admin/rules/new", ok: false},
+		{name: "null origin with same-origin referer", host: "localhost:8080", origin: "null", referer: "http://[::1]:8080/_admin/rules/new", ok: false},
 		{name: "null origin with Sec-Fetch-Site same-origin", host: "127.0.0.1:8080", origin: "null", site: "same-origin", ok: true},
-		{name: "null origin with Sec-Fetch-Site none", host: "127.0.0.1:8080", origin: "null", site: "none", ok: true},
+		{name: "null origin with Sec-Fetch-Site none", host: "127.0.0.1:8080", origin: "null", site: "none", ok: false},
+		{name: "Sec-Fetch-Site same-origin without origin", host: "127.0.0.1:8080", site: "same-origin", ok: true},
+		{name: "loopback origin without Sec-Fetch-Site", host: "127.0.0.1:8080", origin: "http://127.0.0.1:8080", ok: true},
 		{name: "null origin with Sec-Fetch-Site cross-site", host: "127.0.0.1:8080", origin: "null", site: "cross-site", ok: false},
 		{name: "null origin alone", host: "127.0.0.1:8080", origin: "null", ok: false},
 		{name: "foreign origin", host: "localhost:8080", origin: "http://evil.example", ok: false},
@@ -36,7 +61,7 @@ func TestSameOriginLoopbackNames(t *testing.T) {
 		{name: "foreign origin with same-origin fetch site", host: "127.0.0.1:8080", origin: "http://evil.example:8080", site: "same-origin", ok: false},
 		{name: "foreign referer without origin", host: "localhost:8080", referer: "http://evil.example/phish", ok: false},
 		{name: "different loopback port", host: "localhost:8080", origin: "http://127.0.0.1:9090", ok: false},
-		{name: "neither header", host: "127.0.0.1:8080", ok: true},
+		{name: "neither header", host: "127.0.0.1:8080", ok: false},
 		{name: "matching non-loopback origin", host: "rebind.evil.example:8081", origin: "http://rebind.evil.example:8081", ok: false},
 		{name: "emulator host is not an admin origin", host: "10.0.2.2:8081", origin: "http://10.0.2.2:8081", ok: false},
 	}
@@ -72,9 +97,7 @@ func TestCreateRuleAcceptsLocalhostOrigin(t *testing.T) {
 	}
 	srv := httptest.NewServer(dashboard)
 	defer srv.Close()
-	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
-		return http.ErrUseLastResponse
-	}}
+	client := dashboardClient()
 
 	body := url.Values{
 		"name":         {"From browser"},
@@ -120,9 +143,7 @@ func TestCreateRuleAcceptsChromeSameOriginPost(t *testing.T) {
 	}
 	srv := httptest.NewServer(dashboard)
 	defer srv.Close()
-	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
-		return http.ErrUseLastResponse
-	}}
+	client := dashboardClient()
 
 	form, err := client.Get(srv.URL + "/_admin/rules/new")
 	if err != nil {

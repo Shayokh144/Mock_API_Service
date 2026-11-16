@@ -45,9 +45,7 @@ func TestPrefixFormTableAndHistoryDetail(t *testing.T) {
 	}))
 	defer proxySrv.Close()
 	dashboard.UseProxyAddr(proxySrv.Listener.Addr().String())
-	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
-		return http.ErrUseLastResponse
-	}}
+	client := dashboardClient()
 
 	bad, err := client.PostForm(adminSrv.URL+"/_admin/upstreams", url.Values{
 		"name": {"okya"}, "base_url": {upstreamSrv.URL}, "prefix": {"/okya/"},

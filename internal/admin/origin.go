@@ -7,15 +7,15 @@ import (
 	"strings"
 )
 
-// sameOrigin allows a dashboard form post from this process.
+// sameOrigin allows a state-changing dashboard request from a browser on this
+// admin origin. Scripts change state through /_api with the bearer token.
 //
-// Fetch says a request whose referrer policy is no-referrer serializes Origin
-// as the string "null", even for a same-origin form POST. Browsers still send
-// Sec-Fetch-Site: same-origin on that navigation. Trust same-origin and none.
-// A concrete Origin and the Host must both be loopback, on the same port.
-// localhost, 127.0.0.1, and [::1] are the same local server. A matching
-// non-loopback name is rejected, so a DNS rebinding page cannot post here.
-// A missing Origin falls back to Referer. Neither header means a non-browser client.
+// Accept Sec-Fetch-Site: same-origin. A concrete Origin must be loopback, on
+// the same port as Host. localhost, 127.0.0.1, and [::1] are the same local
+// server. A matching non-loopback name is rejected, so a DNS rebinding page
+// cannot post here. A request with neither a same-origin fetch site nor a
+// loopback Origin is rejected, including a curl-style request that sends no
+// Origin and no Sec-Fetch-Site. Referer alone is not enough.
 func sameOrigin(r *http.Request) bool {
 	switch fetchSite(r) {
 	case "cross-site", "same-site":
@@ -24,14 +24,7 @@ func sameOrigin(r *http.Request) bool {
 	if raw, ok := statedSource(r.Header.Get("Origin")); ok {
 		return loopbackSamePort(raw, r.Host)
 	}
-	if referer := strings.TrimSpace(r.Header.Get("Referer")); referer != "" {
-		return loopbackSamePort(referer, r.Host)
-	}
-	if strings.EqualFold(strings.TrimSpace(r.Header.Get("Origin")), "null") {
-		site := fetchSite(r)
-		return site == "same-origin" || site == "none"
-	}
-	return true
+	return fetchSite(r) == "same-origin"
 }
 
 func fetchSite(r *http.Request) string {
