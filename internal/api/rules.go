@@ -68,6 +68,9 @@ func (s *Server) rulesRoute(w http.ResponseWriter, r *http.Request, sessionID, r
 		case http.MethodGet:
 			s.listRules(w, r, info)
 		case http.MethodPost:
+			if !requireDefaultConfirm(w, r, info.ID) {
+				return
+			}
 			s.createRule(w, r, info)
 		default:
 			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
@@ -79,10 +82,19 @@ func (s *Server) rulesRoute(w http.ResponseWriter, r *http.Request, sessionID, r
 	case action == "" && r.Method == http.MethodGet:
 		s.getRule(w, info, id)
 	case action == "" && r.Method == http.MethodPut:
+		if !requireDefaultConfirm(w, r, info.ID) {
+			return
+		}
 		s.putRule(w, r, info, id)
 	case action == "" && r.Method == http.MethodDelete:
+		if !requireDefaultConfirm(w, r, info.ID) {
+			return
+		}
 		s.deleteRule(w, info, id)
 	case (action == "enable" || action == "disable") && r.Method == http.MethodPost:
+		if !requireDefaultConfirm(w, r, info.ID) {
+			return
+		}
 		s.setRuleEnabled(w, r, info, id, action == "enable")
 	default:
 		writeError(w, http.StatusNotFound, "not_found", "unknown API path")
@@ -104,8 +116,14 @@ func (s *Server) namedRule(w http.ResponseWriter, r *http.Request, info sessions
 		}
 		writeJSON(w, http.StatusOK, toRuleResponse(rule, s.sessions.Upstreams()))
 	case action == "" && r.Method == http.MethodPut:
+		if !requireDefaultConfirm(w, r, info.ID) {
+			return
+		}
 		s.upsertNamed(w, r, info, name)
 	case action == "" && r.Method == http.MethodDelete:
+		if !requireDefaultConfirm(w, r, info.ID) {
+			return
+		}
 		rule, ok := info.Rules.FindByAPIName(name)
 		if !ok {
 			writeError(w, http.StatusNotFound, "not_found", "rule not found")
@@ -113,6 +131,9 @@ func (s *Server) namedRule(w http.ResponseWriter, r *http.Request, info sessions
 		}
 		s.deleteRule(w, info, rule.ID)
 	case (action == "enable" || action == "disable") && r.Method == http.MethodPost:
+		if !requireDefaultConfirm(w, r, info.ID) {
+			return
+		}
 		rule, ok := info.Rules.FindByAPIName(name)
 		if !ok {
 			writeError(w, http.StatusNotFound, "not_found", "rule not found")

@@ -442,11 +442,11 @@ flutter run --dart-define=API_BASE_URL=http://10.0.2.2:PORT
 
 ## Rules API
 
-Rules live under `/_api/sessions/{id}/rules`. `id` can be `default`. The JSON uses the same checks as the dashboard form. `description` is the label shown as Name in the dashboard. `name` is an optional stable slug, stored as `api_name` so older `rules.json` files keep their labels. It matches `[a-z0-9][a-z0-9._-]{0,63}` and is unique in the session. `PUT /_api/sessions/{id}/rules/by-name/{name}` creates the rule or replaces it. The same path accepts GET, DELETE, and POST `enable` or `disable`. A colliding `name` on create is 409.
+Rules live under `/_api/sessions/{id}/rules`. `id` can be `default`. Every write to `default` — create, update, delete, enable, disable, a named upsert, scenario load, and reset — needs `?confirm=default`. Without that query the response is 409 and nothing changes. Test sessions do not need the flag. GET does not need it. `DELETE /_api/sessions/default` stays 409 because that session cannot be deleted, whether or not the flag is set. Dashboard form posts do not use this flag. The JSON uses the same checks as the dashboard form. `description` is the label shown as Name in the dashboard. `name` is an optional stable slug, stored as `api_name` so older `rules.json` files keep their labels. It matches `[a-z0-9][a-z0-9._-]{0,63}` and is unique in the session. `PUT /_api/sessions/{id}/rules/by-name/{name}` creates the rule or replaces it. The same path accepts GET, DELETE, and POST `enable` or `disable`. A colliding `name` on create is 409.
 
 ## Reset and history
 
-`POST /_api/sessions/{id}/reset` clears that session's rules and history. The body `{"rules":true,"history":true}` can leave one of them out; a missing field means true. Resetting `default` needs `?confirm=default`, or the response is 409.
+`POST /_api/sessions/{id}/reset` clears that session's rules and history. The body `{"rules":true,"history":true}` can leave one of them out; a missing field means true. Resetting `default` needs `?confirm=default`, the same flag as every other write to that session, or the response is 409.
 
 `GET /_api/sessions/{id}/history` returns the newest entries. Filters are `method`, `path` (contains), `path_exact`, `upstream`, `status`, `mocked`, `rule_name`, `rule_id`, `since` (an RFC3339 time or an entry id), and `limit` (default 100, maximum 500). `Authorization` and `Cookie` are masked unless `reveal=1`. A body over the capture cap sets `truncated`. `DELETE /_api/sessions/{id}/history` clears history only.
 
@@ -454,7 +454,7 @@ Rules live under `/_api/sessions/{id}/rules`. `id` can be `default`. The JSON us
 
 A scenario is a YAML or JSON file with `version: 1`, a name, a description, and rules. Each rule needs a stable `name` and uses the same fields as the rules API.
 
-`POST /_api/sessions/{id}/scenarios/load` reads the scenario from the body. `Content-Type` is `application/json` or `application/yaml`. `?mode=replace` is the default and replaces the session's rules. `?mode=merge` updates rules by name and leaves the others. A bad file changes nothing. The response lists `created`, `updated`, and `unchanged` names. The API does not accept a file path.
+`POST /_api/sessions/{id}/scenarios/load` reads the scenario from the body. Loading into `default` also needs `?confirm=default`. `Content-Type` is `application/json` or `application/yaml`. `?mode=replace` is the default and replaces the session's rules. `?mode=merge` updates rules by name and leaves the others. A bad file changes nothing. The response lists `created`, `updated`, and `unchanged` names. The API does not accept a file path.
 
 `POST /_api/sessions` can include a `scenario` object so the new session starts with those rules. `GET /_api/sessions/{id}/scenario?format=yaml` exports the current rules. The rules page also has an Export as scenario link.
 
