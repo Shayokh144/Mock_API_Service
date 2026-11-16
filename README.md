@@ -36,7 +36,8 @@ The process reads environment variables. It also accepts `--scenario` and `--sce
 | `ADMIN_LISTEN_ADDR` | no | `127.0.0.1:8081` | Dashboard loopback address. Same host rules as `LISTEN_ADDR`. It must differ from the proxy address. |
 | `RULES_PATH` | no | `data/rules.json` | Rule file. A missing file means there are no rules. |
 | `HISTORY_LIMIT` | no | `500` | Newest history entries kept in memory. |
-| `UPSTREAM_TIMEOUT` | no | `30s` | Time allowed for one upstream call. A WebSocket upgrade is not limited by this timeout. |
+| `UPSTREAM_TIMEOUT` | no | `30s` | Time allowed for the upstream to send response headers. When it expires the proxy returns `504` with `{"error":"upstream timed out"}`. A WebSocket upgrade is not limited by this timeout. A stream that has already started is not cut off. |
+| `MAX_BODY_BYTES` | no | `8388608` | Largest request body and fully buffered upstream response. A request over the cap is `413`. A known-length upstream response over the cap is `502` with `{"error":"upstream response too large"}`. Zero, a negative value, or a non-integer fails startup. Rule bodies and body-condition matching stay at 1 MiB. |
 
 ```sh
 export UPSTREAM_BASE_URL='https://upstream.example.com'
@@ -293,7 +294,7 @@ An empty body is the right shape for `204`. Invalid JSON is rejected and the rul
 
 A path pattern still ignores the query string. Add **Query conditions** or **Body conditions** when calls that share one path should do different things. Each box takes one condition per line. `key=value` is an exact match. A bare `key` means that key is present, with any value. Every line must match. Keys are case-sensitive. The order of the lines does not matter.
 
-Query conditions read the URL query. Body conditions read a form body (`application/x-www-form-urlencoded`) or a JSON body. JSON can use a top-level key or a dot path such as `user.role=admin`. Numbers and booleans match their text, so `active=true` matches `true` and `count=1` matches `1`. The proxy reads the body once, up to 1 MiB, and puts the original bytes back. Passthrough and Fresh request forward those original bytes, including a gzip body. A body over 1 MiB, or one that cannot be decoded, does not satisfy body conditions. The request can still be forwarded when it is under the 8 MiB proxy limit.
+Query conditions read the URL query. Body conditions read a form body (`application/x-www-form-urlencoded`) or a JSON body. JSON can use a top-level key or a dot path such as `user.role=admin`. Numbers and booleans match their text, so `active=true` matches `true` and `count=1` matches `1`. The proxy reads the body once, up to 1 MiB, and puts the original bytes back. Passthrough and Fresh request forward those original bytes, including a gzip body. A body over 1 MiB, or one that cannot be decoded, does not satisfy body conditions. The request can still be forwarded when it is under `MAX_BODY_BYTES` (8 MiB unless you set that variable).
 
 A rule with more conditions wins over an otherwise equal rule with fewer. Two rules may share a method and path when their conditions differ. An older rules file has no `match` field and keeps matching only on method and path.
 
@@ -393,7 +394,7 @@ While the list is open, it asks for new rows about once a second and adds them a
 
 A fresh-request rule is a real server response, not a mock. Its source stays `upstream`, so **Real server** includes it. The source column says `upstream (fresh rule)` when a rule selected that response. A failed fresh request stays `upstream-error` and shows under All.
 
-Open a row to see headers and bodies. `Authorization` and `Cookie` values are hidden until you choose **Show value**. That control is a disclosure element, so the detail page still has no script. A preview longer than 64 KiB is marked truncated. For a buffered response, the full body is still what the client and the upstream server exchanged, up to the 8 MiB buffer limit. Server-sent events, chunked responses, and responses with no content length are streamed straight through and flushed as bytes arrive. History keeps the first 64 KiB of that stream and marks it truncated when the stream is longer. `UPSTREAM_TIMEOUT` applies until those response headers arrive, then the stream is not cut off by it. A mocked rule response is unchanged.
+Open a row to see headers and bodies. `Authorization` and `Cookie` values are hidden until you choose **Show value**. That control is a disclosure element, so the detail page still has no script. A preview longer than 64 KiB is marked truncated. For a buffered response, the full body is still what the client and the upstream server exchanged, up to `MAX_BODY_BYTES` (8 MiB by default). Server-sent events, chunked responses, and responses with no content length are streamed straight through and flushed as bytes arrive. History keeps the first 64 KiB of that stream and marks it truncated when the stream is longer. `UPSTREAM_TIMEOUT` applies until those response headers arrive, then the stream is not cut off by it. A mocked rule response is unchanged.
 
 History stores a decoded copy of the body when `Content-Encoding` is `gzip`, `deflate` (zlib or raw), `br`, or `identity`. Stacked encodings are undone from the outside in. The bytes and headers sent to the client stay unchanged. The decoded copy stops at 64 KiB. A corrupt or unknown encoding is a short note, not compressed bytes. A binary or non-UTF-8 body is a note with the size and content type. JSON is indented. Request bodies follow the same rules. Decoding happens when the row is recorded, so history keeps the preview text.
 
@@ -537,10 +538,11 @@ Use this on a Mac after the automated tests pass. The implementation environment
 | Limit | Result |
 | --- | --- |
 | Mock JSON body over 1 MiB | The dashboard refuses the rule. |
-| Request body over 8 MiB | `413`. The request is not forwarded. |
-| Request body over 1 MiB | Body conditions do not match. The request is still forwarded when it is under 8 MiB. |
-| Upstream response over 8 MiB | `502` with `{"error":"upstream response too large"}`. |
-| Upstream timeout or connection failure | `502` with `{"error":"upstream unavailable"}`. |
+| Request body over `MAX_BODY_BYTES` (8 MiB by default) | `413`. The request is not forwarded. |
+| Request body over 1 MiB | Body conditions do not match. The request is still forwarded when it is under `MAX_BODY_BYTES`. |
+| Buffered upstream response over `MAX_BODY_BYTES` | `502` with `{"error":"upstream response too large"}`. Chunked and unknown-length bodies are streamed instead. |
+| Upstream does not send headers before `UPSTREAM_TIMEOUT` | `504` with `{"error":"upstream timed out"}`. |
+| Upstream connection failure | `502` with `{"error":"upstream unavailable"}`. |
 | History preview | First 64 KiB, with a truncated flag. |
 | History rows | `HISTORY_LIMIT`, then the oldest row is dropped. |
 

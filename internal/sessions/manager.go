@@ -64,6 +64,7 @@ type Options struct {
 	AdminAddr    string
 	Timeout      time.Duration
 	HistoryLimit int
+	MaxBody      int
 }
 
 // Manager tracks the developer session and test sessions.
@@ -203,6 +204,7 @@ func (m *Manager) Create(name string, port int, idle time.Duration) (Info, error
 		Timeout:   m.opts.Timeout,
 		Rules:     rulesStore,
 		History:   log,
+		MaxBody:   m.opts.MaxBody,
 	})
 	item := &live{
 		info: Info{

@@ -98,6 +98,7 @@ func run(getenv func(string) string, stderr io.Writer, listen func(string, http.
 		AdminAddr:    cfg.AdminListenAddr,
 		Timeout:      cfg.UpstreamTimeout,
 		HistoryLimit: cfg.HistoryLimit,
+		MaxBody:      cfg.MaxBufferedBody,
 	})
 	defer manager.Close()
 	dashboard.UseSessions(manager)
@@ -114,6 +115,7 @@ func run(getenv func(string) string, stderr io.Writer, listen func(string, http.
 		Timeout:   cfg.UpstreamTimeout,
 		Rules:     store,
 		History:   log,
+		MaxBody:   cfg.MaxBufferedBody,
 	})
 	return listenBoth(listen, cfg.AdminListenAddr, adminHandler, cfg.ListenAddr, handler)
 }

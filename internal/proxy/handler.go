@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"mime"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -35,6 +36,9 @@ type Options struct {
 	Transport http.RoundTripper
 	Rules     *rules.Store
 	History   *history.Log
+	// MaxBody is the proxy buffer for request bodies and fully buffered upstream
+	// responses. Zero uses config.MaxBufferedBody. It does not change rule bodies.
+	MaxBody int
 }
 
 // Handler is the local proxy. /_admin is never forwarded.
@@ -45,6 +49,7 @@ type Handler struct {
 	transport http.RoundTripper
 	rules     *rules.Store
 	history   *history.Log
+	maxBody   int
 	wait      func(context.Context, time.Duration) error
 }
 
@@ -54,6 +59,10 @@ func New(opts Options) *Handler {
 	if timeout <= 0 {
 		timeout = config.DefaultUpstreamTimeout
 	}
+	maxBody := opts.MaxBody
+	if maxBody <= 0 {
+		maxBody = config.MaxBufferedBody
+	}
 	return &Handler{
 		upstream:  opts.Upstream,
 		upstreams: opts.Upstreams,
@@ -61,6 +70,7 @@ func New(opts Options) *Handler {
 		transport: opts.Transport,
 		rules:     opts.Rules,
 		history:   opts.History,
+		maxBody:   maxBody,
 	}
 }
 
@@ -80,7 +90,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) serveAPI(w http.ResponseWriter, r *http.Request) {
 	started := time.Now().UTC()
 	reqHeaders := r.Header.Clone()
-	payload, err := readUpTo(r.Body, config.MaxBufferedBody)
+	payload, err := readUpTo(r.Body, h.maxBody)
 	if r.Body != nil {
 		_ = r.Body.Close()
 	}
@@ -99,7 +109,7 @@ func (h *Handler) serveAPI(w http.ResponseWriter, r *http.Request) {
 	}
 
 	name, id, forwarded, dest, hasTarget := h.resolve(r.URL.Path)
-	capw := &bodyCapture{ResponseWriter: w}
+	capw := &bodyCapture{ResponseWriter: w, limit: h.maxBody}
 	if h.rules != nil {
 		if rule, ok := h.rules.MatchHTTP(r.Method, forwarded, id, r.URL.RawQuery, r.Header, payload); ok {
 			if err := h.pause(r.Context(), rule.DelayMS); err != nil {
@@ -164,7 +174,7 @@ func (h *Handler) unavailable(w *bodyCapture, started time.Time, r *http.Request
 }
 
 func (h *Handler) finish(w http.ResponseWriter, r *http.Request, started time.Time, reqHeaders http.Header, payload []byte, source history.Source, ruleID, upstreamID, upstreamName string, status int, reason string) {
-	capw := &bodyCapture{ResponseWriter: w}
+	capw := &bodyCapture{ResponseWriter: w, limit: h.maxBody}
 	writeJSONError(capw, status, reason)
 	h.record(started, r, reqHeaders, payload, capw, source, ruleID, upstreamID, upstreamName, r.URL.Path, 0)
 }
@@ -305,8 +315,10 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, upstream *url.
 	streaming := false
 	var timer *time.Timer
 	if !upgrade {
-		ctx, cancel = context.WithCancel(r.Context())
-		defer cancel()
+		var stop context.CancelCauseFunc
+		ctx, stop = context.WithCancelCause(r.Context())
+		defer stop(nil)
+		cancel = func() { stop(context.DeadlineExceeded) }
 		timer = time.AfterFunc(h.timeout, func() {
 			gate.Lock()
 			defer gate.Unlock()
@@ -346,7 +358,7 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, upstream *url.
 				}
 				return nil
 			}
-			body, err := readUpTo(resp.Body, config.MaxBufferedBody)
+			body, err := readUpTo(resp.Body, h.maxBody)
 			if resp.Body != nil {
 				_ = resp.Body.Close()
 			}
@@ -363,11 +375,16 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, upstream *url.
 		},
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
 			failed = true
+			status := http.StatusBadGateway
 			reason := "upstream unavailable"
-			if errors.Is(err, errResponseTooLarge) {
+			switch {
+			case errors.Is(err, errResponseTooLarge):
 				reason = "upstream response too large"
+			case upstreamTimedOut(r, err):
+				status = http.StatusGatewayTimeout
+				reason = "upstream timed out"
 			}
-			writeJSONError(w, http.StatusBadGateway, reason)
+			writeJSONError(w, status, reason)
 		},
 	}
 	reverse.ServeHTTP(w, outbound)
@@ -431,7 +448,7 @@ func (h *Handler) record(started time.Time, r *http.Request, reqHeaders http.Hea
 	case capw.upgrade && status == http.StatusSwitchingProtocols && len(respRaw) == 0 && !respCut:
 		respBody = "protocol upgrade; messages were not captured"
 	case respCut:
-		respBody = fmt.Sprintf("body exceeds %d bytes and was not decoded", config.MaxBufferedBody)
+		respBody = fmt.Sprintf("body exceeds %d bytes and was not decoded", h.maxBody)
 		respTrunc = true
 	default:
 		respBody, respPlain, respTrunc, respDecoded = historyCopy(respHeaders, respRaw)
@@ -462,6 +479,14 @@ func (h *Handler) record(started time.Time, r *http.Request, reqHeaders http.Hea
 		RequestBodyTruncated:  reqTrunc,
 		ResponseBodyTruncated: respTrunc,
 	})
+}
+
+func upstreamTimedOut(r *http.Request, err error) bool {
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(context.Cause(r.Context()), context.DeadlineExceeded) {
+		return true
+	}
+	var netErr net.Error
+	return errors.As(err, &netErr) && netErr.Timeout()
 }
 
 func writeJSONError(w http.ResponseWriter, status int, reason string) {

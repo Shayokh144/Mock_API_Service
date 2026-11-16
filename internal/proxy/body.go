@@ -37,6 +37,7 @@ type bodyCapture struct {
 	previewLimit int
 	previewCut   bool
 	upgrade      bool
+	limit        int
 }
 
 func (c *bodyCapture) WriteHeader(status int) {
@@ -52,7 +53,10 @@ func (c *bodyCapture) Write(p []byte) (int, error) {
 	if !c.wrote {
 		c.WriteHeader(http.StatusOK)
 	}
-	limit := config.MaxBufferedBody
+	limit := c.limit
+	if limit <= 0 {
+		limit = config.MaxBufferedBody
+	}
 	if c.previewLimit > 0 {
 		limit = c.previewLimit
 	}
@@ -96,8 +100,12 @@ func (c *bodyCapture) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 func (c *bodyCapture) note(status int, body []byte) {
 	c.wrote = true
 	c.status = status
-	if len(body) > config.MaxBufferedBody {
-		_, _ = c.buf.Write(body[:config.MaxBufferedBody])
+	limit := c.limit
+	if limit <= 0 {
+		limit = config.MaxBufferedBody
+	}
+	if len(body) > limit {
+		_, _ = c.buf.Write(body[:limit])
 		c.truncated = true
 		return
 	}

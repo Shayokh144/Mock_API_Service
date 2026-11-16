@@ -41,6 +41,9 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.UpstreamTimeout != DefaultUpstreamTimeout {
 		t.Fatalf("timeout = %s", cfg.UpstreamTimeout)
 	}
+	if cfg.MaxBufferedBody != MaxBufferedBody {
+		t.Fatalf("max body = %d", cfg.MaxBufferedBody)
+	}
 
 	lines := StartupLines(cfg)
 	if len(lines) != 4 {
@@ -67,6 +70,7 @@ func TestLoadOverrides(t *testing.T) {
 		"RULES_PATH":        "tmp/rules.json",
 		"HISTORY_LIMIT":     "12",
 		"UPSTREAM_TIMEOUT":  "2s",
+		"MAX_BODY_BYTES":    "4096",
 	}))
 	if err != nil {
 		t.Fatal(err)
@@ -83,7 +87,7 @@ func TestLoadOverrides(t *testing.T) {
 	if DashboardURL(cfg.AdminListenAddr) != "http://localhost:8081/_admin" {
 		t.Fatalf("dashboard = %s", DashboardURL(cfg.AdminListenAddr))
 	}
-	if cfg.RulesPath != "tmp/rules.json" || cfg.HistoryLimit != 12 || cfg.UpstreamTimeout != 2*time.Second {
+	if cfg.RulesPath != "tmp/rules.json" || cfg.HistoryLimit != 12 || cfg.UpstreamTimeout != 2*time.Second || cfg.MaxBufferedBody != 4096 {
 		t.Fatalf("cfg = %+v", cfg)
 	}
 	if cfg.UpstreamsPath != filepath.Join("tmp", "upstreams.json") {
@@ -145,6 +149,9 @@ func TestLoadRejectsBadSettings(t *testing.T) {
 		{"bad limit", map[string]string{"UPSTREAM_BASE_URL": "http://127.0.0.1:9", "HISTORY_LIMIT": "0"}, "HISTORY_LIMIT"},
 		{"bad timeout", map[string]string{"UPSTREAM_BASE_URL": "http://127.0.0.1:9", "UPSTREAM_TIMEOUT": "soon"}, "UPSTREAM_TIMEOUT"},
 		{"zero timeout", map[string]string{"UPSTREAM_BASE_URL": "http://127.0.0.1:9", "UPSTREAM_TIMEOUT": "0s"}, "UPSTREAM_TIMEOUT"},
+		{"zero body", map[string]string{"MAX_BODY_BYTES": "0"}, "MAX_BODY_BYTES"},
+		{"negative body", map[string]string{"MAX_BODY_BYTES": "-1"}, "MAX_BODY_BYTES"},
+		{"text body", map[string]string{"MAX_BODY_BYTES": "eight"}, "MAX_BODY_BYTES"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
