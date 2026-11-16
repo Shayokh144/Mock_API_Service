@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -237,5 +238,116 @@ func TestScenarioFlagMergesWithoutWritingRules(t *testing.T) {
 	}
 	if _, err := os.Stat(rulesPath); !os.IsNotExist(err) {
 		t.Fatal("scenario wrote rules.json")
+	}
+}
+
+func TestScenarioWithoutPersistStaysOutOfLaterSave(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "demo.yaml")
+	raw := []byte("version: 1\nname: demo\ndescription: sample\nrules:\n  - name: ping\n    method: GET\n    path: /v1/ping\n    status: 200\n    body:\n      ok: true\n")
+	if err := os.WriteFile(file, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	scenarioFile = file
+	scenarioPersist = false
+	t.Cleanup(func() {
+		scenarioFile = ""
+		scenarioPersist = false
+	})
+	rulesPath := filepath.Join(dir, "rules.json")
+	var admin, proxy http.Handler
+	err := run(func(key string) string {
+		switch key {
+		case "RULES_PATH":
+			return rulesPath
+		case "UPSTREAMS_PATH":
+			return filepath.Join(dir, "upstreams.json")
+		default:
+			return ""
+		}
+	}, io.Discard, func(addr string, handler http.Handler) error {
+		switch {
+		case strings.HasSuffix(addr, ":8081"):
+			admin = handler
+		case strings.HasSuffix(addr, ":8080"):
+			proxy = handler
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if admin == nil || proxy == nil {
+		t.Fatal("listeners did not start")
+	}
+	form := url.Values{
+		"name": {"Kept"}, "enabled": {"on"}, "method": {"GET"},
+		"path_pattern": {"/v1/kept"}, "status_code": {"200"}, "body": {`{"ok":true}`},
+	}
+	req := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:8081/_admin/rules", strings.NewReader(form.Encode()))
+	req.Host = "127.0.0.1:8081"
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Origin", "http://127.0.0.1:8081")
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
+	rr := httptest.NewRecorder()
+	admin.ServeHTTP(rr, req)
+	if rr.Code != http.StatusSeeOther {
+		t.Fatalf("save status = %d body %s", rr.Code, rr.Body.String())
+	}
+	saved, err := os.ReadFile(rulesPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(saved)
+	if strings.Contains(text, "ping") || strings.Contains(text, "/v1/ping") {
+		t.Fatalf("scenario rule leaked into rules.json: %s", text)
+	}
+	if !strings.Contains(text, "/v1/kept") {
+		t.Fatalf("saved rule missing: %s", text)
+	}
+	ping := httptest.NewRecorder()
+	proxy.ServeHTTP(ping, httptest.NewRequest(http.MethodGet, "/v1/ping", nil))
+	if ping.Code != http.StatusOK {
+		t.Fatalf("temporary rule status = %d", ping.Code)
+	}
+}
+
+func TestScenarioPersistWritesRulesFile(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "demo.yaml")
+	raw := []byte("version: 1\nname: demo\ndescription: sample\nrules:\n  - name: ping\n    method: GET\n    path: /v1/ping\n    status: 200\n    body:\n      ok: true\n")
+	if err := os.WriteFile(file, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	scenarioFile = file
+	scenarioPersist = true
+	t.Cleanup(func() {
+		scenarioFile = ""
+		scenarioPersist = false
+	})
+	rulesPath := filepath.Join(dir, "rules.json")
+	err := run(func(key string) string {
+		switch key {
+		case "RULES_PATH":
+			return rulesPath
+		case "UPSTREAMS_PATH":
+			return filepath.Join(dir, "upstreams.json")
+		default:
+			return ""
+		}
+	}, io.Discard, func(string, http.Handler) error { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved, err := os.ReadFile(rulesPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(saved)
+	if !strings.Contains(text, "ping") || !strings.Contains(text, "/v1/ping") {
+		t.Fatalf("persisted file = %s", text)
+	}
+	if strings.Contains(text, "temporary") {
+		t.Fatalf("temporary flag was serialized: %s", text)
 	}
 }

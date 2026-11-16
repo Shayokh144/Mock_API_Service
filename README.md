@@ -27,7 +27,7 @@ Run commands from the repository root. The default rules file is `data/rules.jso
 
 ## Configuration
 
-The process reads only environment variables. It does not take flags, and it does not store upstream credentials.
+The process reads environment variables. It also accepts `--scenario` and `--scenario-persist`, described under Scenarios. It does not store upstream credentials.
 
 | Variable | Required | Default | Meaning |
 | --- | --- | --- | --- |
@@ -36,7 +36,7 @@ The process reads only environment variables. It does not take flags, and it doe
 | `ADMIN_LISTEN_ADDR` | no | `127.0.0.1:8081` | Dashboard loopback address. Same host rules as `LISTEN_ADDR`. It must differ from the proxy address. |
 | `RULES_PATH` | no | `data/rules.json` | Rule file. A missing file means there are no rules. |
 | `HISTORY_LIMIT` | no | `500` | Newest history entries kept in memory. |
-| `UPSTREAM_TIMEOUT` | no | `30s` | Time allowed for one upstream call. |
+| `UPSTREAM_TIMEOUT` | no | `30s` | Time allowed for one upstream call. A WebSocket upgrade is not limited by this timeout. |
 
 ```sh
 export UPSTREAM_BASE_URL='https://upstream.example.com'
@@ -62,7 +62,7 @@ dashboard at http://localhost:8081/_admin
 
 Open [http://localhost:8081/_admin](http://localhost:8081/_admin). Stop the process with Ctrl+C.
 
-The dashboard is a separate listener so a mocked HTML response cannot share the dashboard origin. `http://localhost:8080/_admin` returns 404 and says the dashboard is not served on the proxy port. A dashboard request whose Host is not `localhost`, `127.0.0.1`, or `[::1]` on the admin port is rejected with 403. Both listeners set a 10 second read-header timeout.
+The dashboard is a separate listener so a mocked HTML response cannot share the dashboard origin. `http://localhost:8080/_admin` returns 404 and says the dashboard is not served on the proxy port. A dashboard request whose Host is not `localhost`, `127.0.0.1`, or `[::1]` on the admin port is rejected with 403. A state-changing dashboard request is accepted only from a browser on that admin origin: `Sec-Fetch-Site: same-origin`, or a loopback `Origin` on the same admin host and port. A request with neither, including a curl-style POST that sends no `Origin` and no `Sec-Fetch-Site`, is 403 and changes nothing. Scripts create and change rules through `/_api` with the bearer token. Both listeners set a 10 second read-header timeout.
 
 Rules are saved when you create, edit, enable, disable, or delete them. They are still there after a restart. History is memory only. A restart clears history and keeps rules.
 
@@ -87,6 +87,8 @@ A named rule matches when the request resolves to that upstream, by its prefix o
 Passthrough uses the resolved upstream. Its base URL path is joined in front of the forwarded path.
 
 An absolute `Location` or `Content-Location` that uses the matched upstream's scheme and host is rewritten to this proxy: the request's Host on that session port, plus the upstream's path prefix. Relative URLs and URLs for any other host stay as the upstream sent them. On `Set-Cookie`, a `Domain` that matches the upstream host is dropped, `Secure` is dropped because the proxy is plain HTTP, and `Path` is prefixed when that upstream has a path prefix. A mocked rule response keeps the headers the rule saved. The default session and test sessions both do this.
+
+A WebSocket upgrade (`Connection: Upgrade` and an `Upgrade` header) is tunneled. The proxy does not buffer that response and does not apply `UPSTREAM_TIMEOUT` to the open socket. History records status 101 and does not store the messages. A path prefix is removed the same way as any other forwarded call.
 
 With no matching prefix and no fallback upstream, passthrough returns `503` and `{"error":"no upstream is configured; add one at /_admin"}`. A matching Any rule still returns the mock.
 
@@ -391,7 +393,7 @@ While the list is open, it asks for new rows about once a second and adds them a
 
 A fresh-request rule is a real server response, not a mock. Its source stays `upstream`, so **Real server** includes it. The source column says `upstream (fresh rule)` when a rule selected that response. A failed fresh request stays `upstream-error` and shows under All.
 
-Open a row to see headers and bodies. `Authorization` and `Cookie` values are hidden until you choose **Show value**. That control is a disclosure element, so the detail page still has no script. A preview longer than 64 KiB is marked truncated. The full body is still what the client and the upstream server exchanged, up to the 8 MiB buffer limit.
+Open a row to see headers and bodies. `Authorization` and `Cookie` values are hidden until you choose **Show value**. That control is a disclosure element, so the detail page still has no script. A preview longer than 64 KiB is marked truncated. For a buffered response, the full body is still what the client and the upstream server exchanged, up to the 8 MiB buffer limit. Server-sent events, chunked responses, and responses with no content length are streamed straight through and flushed as bytes arrive. History keeps the first 64 KiB of that stream and marks it truncated when the stream is longer. `UPSTREAM_TIMEOUT` applies until those response headers arrive, then the stream is not cut off by it. A mocked rule response is unchanged.
 
 History stores a decoded copy of the body when `Content-Encoding` is `gzip`, `deflate` (zlib or raw), `br`, or `identity`. Stacked encodings are undone from the outside in. The bytes and headers sent to the client stay unchanged. The decoded copy stops at 64 KiB. A corrupt or unknown encoding is a short note, not compressed bytes. A binary or non-UTF-8 body is a note with the size and content type. JSON is indented. Request bodies follow the same rules. Decoding happens when the row is recorded, so history keeps the preview text.
 
@@ -401,7 +403,7 @@ Delete one row from the list or the detail page. The list returns to the same fi
 
 ## Automation API
 
-The API listens only on the admin address, `http://127.0.0.1:8081` by default. The proxy port returns 404 for `/_api`.
+The API listens only on the admin address, `http://127.0.0.1:8081` by default. The proxy port returns 404 for `/_api`. Scripts that create, edit, or delete rules and upstreams use `/_api` with the bearer token. The dashboard forms are for a browser on the admin origin and do not accept a token.
 
 On the first start the process writes a 32-byte token to `data/admin.token` (or next to `RULES_PATH`). The directory is mode `0700` and the file is mode `0600`. Later starts reuse that file. The log prints the file path and never the token.
 
@@ -460,7 +462,7 @@ A scenario is a YAML or JSON file with `version: 1`, a name, a description, and 
 go run ./cmd/mockproxy --scenario scenarios/okya-auth-refresh-failure.yaml
 ```
 
-That merges the file into the default session and does not write `data/rules.json`. Add `--scenario-persist` to save it. Examples live in `scenarios/`. They use dummy data only. `upstream` is an upstream name or `Any`. `query_conditions` and `body_conditions` are `key=value` strings. `headers` is an object or a list of `Name: value` strings. `body` is JSON. A `raw_response` string switches the rule to raw mode. `GET` accepts `?upstream=` with the same meaning as the dashboard filter. A session holds at most 500 rules. Edits to `default` are written to `data/rules.json`. Test-session rules stay in memory.
+That merges the file into the default session. Without `--scenario-persist`, those rules are temporary. They stay in memory and are left out of every save of `data/rules.json`, including a later save of an unrelated rule. Editing a temporary rule in the dashboard keeps it temporary, so that edit is not written either. Add `--scenario-persist` to save the scenario rules into `data/rules.json`. Examples live in `scenarios/`. They use dummy data only. `upstream` is an upstream name or `Any`. `query_conditions` and `body_conditions` are `key=value` strings. `headers` is an object or a list of `Name: value` strings. `body` is JSON. A `raw_response` string switches the rule to raw mode. `GET` accepts `?upstream=` with the same meaning as the dashboard filter. A session holds at most 500 rules. Edits to `default` are written to `data/rules.json`, except temporary scenario rules. Test-session rules stay in memory.
 
 Errors use one shape and do not include the token:
 

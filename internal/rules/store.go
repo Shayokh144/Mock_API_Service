@@ -144,6 +144,7 @@ func (s *Store) Update(id string, d Draft) (Rule, error) {
 	rule.ID = id
 	rule.CreatedAt = s.rules[index].CreatedAt
 	rule.UpdatedAt = utc(s.now())
+	rule.Temporary = s.rules[index].Temporary
 	if s.duplicate(rule, id) {
 		return Rule{}, ErrDuplicate
 	}
@@ -224,6 +225,7 @@ func (s *Store) ApplyDrafts(drafts []Draft, replace, persist bool) (ApplyResult,
 			rule.ID = id
 			rule.CreatedAt = now
 			rule.UpdatedAt = now
+			rule.Temporary = !persist
 			next = append(next, rule)
 			result.Created = append(result.Created, rule.APIName)
 		}
@@ -250,17 +252,22 @@ func (s *Store) ApplyDrafts(drafts []Draft, replace, persist bool) (ApplyResult,
 				rule.ID = id
 				rule.CreatedAt = now
 				rule.UpdatedAt = now
+				rule.Temporary = !persist
 				next = append(next, rule)
 				result.Created = append(result.Created, rule.APIName)
 				continue
 			}
 			if sameRule(next[index], rule) {
+				if persist {
+					next[index].Temporary = false
+				}
 				result.Unchanged = append(result.Unchanged, rule.APIName)
 				continue
 			}
 			rule.ID = next[index].ID
 			rule.CreatedAt = next[index].CreatedAt
 			rule.UpdatedAt = now
+			rule.Temporary = !persist
 			next[index] = rule
 			result.Updated = append(result.Updated, rule.APIName)
 		}
@@ -551,9 +558,7 @@ func (s *Store) persist(rules []Rule) error {
 	if s.path == "" {
 		return nil
 	}
-	if rules == nil {
-		rules = []Rule{}
-	}
+	rules = durableRules(rules)
 	dir := filepath.Dir(s.path)
 	if dir != "" && dir != "." {
 		if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -597,6 +602,21 @@ func (s *Store) persist(rules []Rule) error {
 	// The new file is already in place. A mode error must not roll memory back.
 	_ = os.Chmod(s.path, 0o600)
 	return nil
+}
+
+// durableRules drops temporary scenario rules so a later save cannot write them.
+func durableRules(rules []Rule) []Rule {
+	if len(rules) == 0 {
+		return []Rule{}
+	}
+	out := make([]Rule, 0, len(rules))
+	for _, rule := range rules {
+		if rule.Temporary {
+			continue
+		}
+		out = append(out, rule)
+	}
+	return out
 }
 
 func compactStoredBody(body json.RawMessage) (json.RawMessage, error) {

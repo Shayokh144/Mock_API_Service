@@ -51,9 +51,7 @@ func TestUpstreamDashboardCRUDSwitchAndHistory(t *testing.T) {
 		History:   log,
 	}))
 	defer proxySrv.Close()
-	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
-		return http.ErrUseLastResponse
-	}}
+	client := dashboardClient()
 
 	page := get(t, client, adminSrv.URL+"/_admin/upstreams")
 	if !strings.Contains(page, "No upstreams yet") {

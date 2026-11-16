@@ -1,7 +1,6 @@
 package admin
 
 import (
-	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
@@ -46,9 +45,7 @@ func TestDashboardSessionPickerIsReadOnly(t *testing.T) {
 
 	srv := httptest.NewServer(dashboard)
 	defer srv.Close()
-	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
-		return http.ErrUseLastResponse
-	}}
+	client := dashboardClient()
 	page := get(t, client, srv.URL+"/_admin?session="+info.ID)
 	if !strings.Contains(page, "Only test") || !strings.Contains(page, "read-only") || !strings.Contains(page, "login-tests") {
 		t.Fatalf("session rules page = %s", page)

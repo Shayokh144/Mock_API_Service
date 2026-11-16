@@ -11,6 +11,7 @@ import (
 
 	"github.com/Shayokh144/Mock_API_Service/internal/history"
 	"github.com/Shayokh144/Mock_API_Service/internal/rules"
+	"github.com/Shayokh144/Mock_API_Service/internal/upstreams"
 )
 
 func TestAdminRejectsForgedHost(t *testing.T) {
@@ -91,6 +92,83 @@ func TestAdminRejectsNonLoopbackOrigin(t *testing.T) {
 	}
 	if len(store.List()) != 0 {
 		t.Fatal("non-loopback origin saved a rule")
+	}
+}
+
+func TestDashboardWritesRejectCurlAndCrossOrigin(t *testing.T) {
+	dir := t.TempDir()
+	store, err := rules.Load(filepath.Join(dir, "rules.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ups := upstreams.NewMemory()
+	log := history.New(5)
+	log.Add(history.Entry{Method: http.MethodGet, Path: "/v1/secret", Status: 200, Source: history.SourceUpstream})
+	dashboard, err := New(store, log, ups)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dashboard.UseListenAddr("127.0.0.1:8081")
+	created, err := store.Create(rules.Draft{
+		Name:        "Kept",
+		Enabled:     true,
+		Method:      http.MethodGet,
+		PathPattern: "/v1/kept",
+		StatusCode:  200,
+		Body:        `{"ok":true}`,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ruleForm := url.Values{
+		"name": {"Nope"}, "enabled": {"on"}, "method": {"GET"},
+		"path_pattern": {"/v1/nope"}, "status_code": {"200"}, "body": {`{"ok":true}`},
+	}.Encode()
+	upstreamForm := url.Values{"name": {"evil"}, "base_url": {"https://evil.example"}}.Encode()
+	posts := []struct {
+		path string
+		body string
+	}{
+		{path: "/_admin/rules", body: ruleForm},
+		{path: "/_admin/rules/" + created.ID, body: ruleForm},
+		{path: "/_admin/rules/" + created.ID + "/toggle"},
+		{path: "/_admin/rules/" + created.ID + "/delete"},
+		{path: "/_admin/upstreams", body: upstreamForm},
+		{path: "/_admin/history/clear"},
+	}
+	for _, tc := range posts {
+		req := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:8081"+tc.path, strings.NewReader(tc.body))
+		req.Host = "127.0.0.1:8081"
+		if tc.body != "" {
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		}
+		rr := httptest.NewRecorder()
+		dashboard.ServeHTTP(rr, req)
+		if rr.Code != http.StatusForbidden {
+			t.Fatalf("POST %s status = %d body %s", tc.path, rr.Code, rr.Body.String())
+		}
+	}
+
+	cross := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:8081/_admin/upstreams", strings.NewReader(upstreamForm))
+	cross.Host = "127.0.0.1:8081"
+	cross.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	cross.Header.Set("Origin", "http://evil.example")
+	cross.Header.Set("Sec-Fetch-Site", "cross-site")
+	rr := httptest.NewRecorder()
+	dashboard.ServeHTTP(rr, cross)
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("cross-origin status = %d", rr.Code)
+	}
+
+	listed := store.List()
+	if len(listed) != 1 || listed[0].ID != created.ID || !listed[0].Enabled || listed[0].PathPattern != "/v1/kept" {
+		t.Fatalf("rules changed: %+v", listed)
+	}
+	if len(log.List()) != 1 {
+		t.Fatalf("history = %d", len(log.List()))
+	}
+	if len(ups.List()) != 0 {
+		t.Fatal("upstream was created")
 	}
 }
 

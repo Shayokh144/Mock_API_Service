@@ -30,10 +30,13 @@ func readUpTo(r io.Reader, max int) ([]byte, error) {
 
 type bodyCapture struct {
 	http.ResponseWriter
-	status    int
-	buf       bytes.Buffer
-	truncated bool
-	wrote     bool
+	status       int
+	buf          bytes.Buffer
+	truncated    bool
+	wrote        bool
+	previewLimit int
+	previewCut   bool
+	upgrade      bool
 }
 
 func (c *bodyCapture) WriteHeader(status int) {
@@ -49,18 +52,37 @@ func (c *bodyCapture) Write(p []byte) (int, error) {
 	if !c.wrote {
 		c.WriteHeader(http.StatusOK)
 	}
-	room := config.MaxBufferedBody - c.buf.Len()
+	limit := config.MaxBufferedBody
+	if c.previewLimit > 0 {
+		limit = c.previewLimit
+	}
+	room := limit - c.buf.Len()
 	if room > 0 {
 		if len(p) <= room {
 			_, _ = c.buf.Write(p)
 		} else {
 			_, _ = c.buf.Write(p[:room])
-			c.truncated = true
+			c.noteCut()
 		}
 	} else if len(p) > 0 {
-		c.truncated = true
+		c.noteCut()
 	}
 	return c.ResponseWriter.Write(p)
+}
+
+func (c *bodyCapture) noteCut() {
+	if c.previewLimit > 0 {
+		c.previewCut = true
+		return
+	}
+	c.truncated = true
+}
+
+// Flush pushes buffered bytes to the client. ReverseProxy uses it for streams.
+func (c *bodyCapture) Flush() {
+	if f, ok := c.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
 }
 
 func (c *bodyCapture) Hijack() (net.Conn, *bufio.ReadWriter, error) {
@@ -85,10 +107,17 @@ func (c *bodyCapture) note(status int, body []byte) {
 func (c *bodyCapture) snapshot() (int, http.Header, []byte, bool) {
 	status := c.status
 	if status == 0 {
-		status = http.StatusOK
+		if c.upgrade {
+			status = http.StatusSwitchingProtocols
+		} else {
+			status = http.StatusOK
+		}
 	}
 	header := c.Header().Clone()
 	body := append([]byte(nil), c.buf.Bytes()...)
+	if c.previewCut {
+		body = cutUTF8(body, len(body))
+	}
 	c.buf.Reset()
 	return status, header, body, c.truncated
 }

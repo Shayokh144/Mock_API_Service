@@ -45,9 +45,7 @@ func TestHistoryTextFilter(t *testing.T) {
 	}
 	srv := httptest.NewServer(dashboard)
 	defer srv.Close()
-	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
-		return http.ErrUseLastResponse
-	}}
+	client := dashboardClient()
 
 	page := get(t, client, srv.URL+"/_admin/history?q=user/me")
 	assertContains(t, page, "Filter: All. Text: user/me. Showing 2 of 4.")
@@ -133,9 +131,7 @@ func TestRulesUpstreamFilter(t *testing.T) {
 	}
 	srv := httptest.NewServer(dashboard)
 	defer srv.Close()
-	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
-		return http.ErrUseLastResponse
-	}}
+	client := dashboardClient()
 
 	named := get(t, client, srv.URL+"/_admin?upstream="+url.QueryEscape("OKYA_AUTH_DEV"))
 	assertContains(t, named, "Upstream: OKYA_AUTH_DEV. Showing 2 of 3.")
@@ -223,9 +219,7 @@ func TestRuleGroupsKeepOrderAndFilter(t *testing.T) {
 	}
 	srv := httptest.NewServer(dashboard)
 	defer srv.Close()
-	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
-		return http.ErrUseLastResponse
-	}}
+	client := dashboardClient()
 
 	page := get(t, client, srv.URL+"/_admin")
 	okyaAt := strings.Index(page, "<h2>OKYA_AUTH_DEV · /okya-auth · fallback</h2>")
