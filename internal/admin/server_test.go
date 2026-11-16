@@ -26,9 +26,7 @@ func TestRulesDashboard(t *testing.T) {
 	}
 	proxySrv := httptest.NewServer(dashboard)
 	defer proxySrv.Close()
-	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
-		return http.ErrUseLastResponse
-	}}
+	client := dashboardClient()
 
 	bad := url.Values{}
 	bad.Set("name", "Broken")
