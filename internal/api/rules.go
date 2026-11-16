@@ -28,29 +28,37 @@ type ruleBody struct {
 	RawResponse  string          `json:"raw_response"`
 	DelayMS      int             `json:"delay_ms"`
 	Priority     int             `json:"priority"`
+	Fault        string          `json:"fault"`
+	MaxUses      int             `json:"max_uses"`
+	Sequence     string          `json:"sequence"`
+	Responses    json.RawMessage `json:"responses"`
 	Enabled      *bool           `json:"enabled"`
 	FreshRequest bool            `json:"fresh_request"`
 	MockHeader   bool            `json:"mock_header"`
 }
 
 type ruleResponse struct {
-	ID           string            `json:"id"`
-	Name         string            `json:"name,omitempty"`
-	Description  string            `json:"description"`
-	Upstream     string            `json:"upstream"`
-	Method       string            `json:"method"`
-	Path         string            `json:"path"`
-	Query        []string          `json:"query_conditions"`
-	BodyMatch    []string          `json:"body_conditions"`
-	Status       int               `json:"status"`
-	Headers      map[string]string `json:"headers"`
-	Body         json.RawMessage   `json:"body"`
-	RawResponse  string            `json:"raw_response,omitempty"`
-	DelayMS      int               `json:"delay_ms"`
-	Priority     int               `json:"priority"`
-	Enabled      bool              `json:"enabled"`
-	FreshRequest bool              `json:"fresh_request"`
-	MockHeader   bool              `json:"mock_header,omitempty"`
+	ID           string               `json:"id"`
+	Name         string               `json:"name,omitempty"`
+	Description  string               `json:"description"`
+	Upstream     string               `json:"upstream"`
+	Method       string               `json:"method"`
+	Path         string               `json:"path"`
+	Query        []string             `json:"query_conditions"`
+	BodyMatch    []string             `json:"body_conditions"`
+	Status       int                  `json:"status"`
+	Headers      map[string]string    `json:"headers"`
+	Body         json.RawMessage      `json:"body"`
+	RawResponse  string               `json:"raw_response,omitempty"`
+	DelayMS      int                  `json:"delay_ms"`
+	Priority     int                  `json:"priority"`
+	Fault        string               `json:"fault,omitempty"`
+	MaxUses      int                  `json:"max_uses,omitempty"`
+	Sequence     string               `json:"sequence,omitempty"`
+	Responses    []rules.ResponseStep `json:"responses,omitempty"`
+	Enabled      bool                 `json:"enabled"`
+	FreshRequest bool                 `json:"fresh_request"`
+	MockHeader   bool                 `json:"mock_header,omitempty"`
 }
 
 func (s *Server) rulesRoute(w http.ResponseWriter, r *http.Request, sessionID, rest string) {
@@ -315,6 +323,13 @@ func (s *Server) draftFromJSON(w http.ResponseWriter, r *http.Request) (rules.Dr
 	if body.Enabled != nil {
 		enabled = *body.Enabled
 	}
+	var responses []rules.ResponseStep
+	if len(bytes.TrimSpace(body.Responses)) > 0 && string(bytes.TrimSpace(body.Responses)) != "null" {
+		if err := json.Unmarshal(body.Responses, &responses); err != nil {
+			writeError(w, http.StatusBadRequest, "bad_request", "responses must be a list")
+			return rules.Draft{}, errStop
+		}
+	}
 	return rules.Draft{
 		Name:         body.Description,
 		APIName:      body.Name,
@@ -327,6 +342,10 @@ func (s *Server) draftFromJSON(w http.ResponseWriter, r *http.Request) (rules.Dr
 		StatusCode:   body.Status,
 		DelayMS:      body.DelayMS,
 		Priority:     body.Priority,
+		Fault:        body.Fault,
+		MaxUses:      body.MaxUses,
+		Sequence:     body.Sequence,
+		Responses:    responses,
 		ResponseMode: mode,
 		RawResponse:  raw,
 		MockHeader:   body.MockHeader,
@@ -352,6 +371,10 @@ func draftFromRule(rule rules.Rule) rules.Draft {
 		StatusCode:   rule.StatusCode,
 		DelayMS:      rule.DelayMS,
 		Priority:     rule.Priority,
+		Fault:        rule.Fault,
+		MaxUses:      rule.MaxUses,
+		Responses:    rule.Responses,
+		Sequence:     rule.Sequence,
 		ResponseMode: rule.ResponseMode,
 		RawResponse:  rule.RawResponse,
 		MockHeader:   rule.MockHeader,
@@ -386,6 +409,10 @@ func toRuleResponse(rule rules.Rule, ups *upstreams.Store) ruleResponse {
 		RawResponse:  rule.RawResponse,
 		DelayMS:      rule.DelayMS,
 		Priority:     rule.Priority,
+		Fault:        rule.Fault,
+		MaxUses:      rule.MaxUses,
+		Sequence:     rule.Sequence,
+		Responses:    rule.Responses,
 		Enabled:      rule.Enabled,
 		FreshRequest: rule.FreshRequest,
 		MockHeader:   rule.MockHeader,

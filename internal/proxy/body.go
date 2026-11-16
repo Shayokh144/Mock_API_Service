@@ -38,6 +38,8 @@ type bodyCapture struct {
 	previewCut   bool
 	upgrade      bool
 	limit        int
+	fault        string
+	step         int
 }
 
 func (c *bodyCapture) WriteHeader(status int) {
@@ -115,9 +117,12 @@ func (c *bodyCapture) note(status int, body []byte) {
 func (c *bodyCapture) snapshot() (int, http.Header, []byte, bool) {
 	status := c.status
 	if status == 0 {
-		if c.upgrade {
+		switch {
+		case c.upgrade:
 			status = http.StatusSwitchingProtocols
-		} else {
+		case c.fault != "":
+			status = 0
+		default:
 			status = http.StatusOK
 		}
 	}

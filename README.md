@@ -328,6 +328,16 @@ Use a delay to try loading states, spinners, retry logic, and client timeouts wi
 
 The rules list shows `1500 ms`. A zero delay is left blank. History records the delay that was applied. The detail page shows it, and the list shows it when it is not zero. An older rules file with no `delay_ms` field loads as `0`.
 
+## Uses and response sequences
+
+`max_uses` is optional. Empty or `0` means the rule can match forever. A positive number is how many times it can be chosen in this process. The saved file keeps `max_uses` and does not keep the count. The count returns to full when the rule is edited, re-enabled, the session is reset, or the process restarts. The rules list shows `0 of 1 left` while a limit is in force. A test session counts separately from the default session.
+
+`responses` is an optional list. Each item can set `status_code`, `headers`, `body`, `delay_ms`, `raw_response`, and `fault`. A rule with no list uses its single status, headers, and body. `sequence` is `stick` (the default) or `loop`. Stick stays on the last item. Loop starts over. History records the step number, starting at 1. A rule can set both fields: the list chooses the response, and `max_uses` still stops the rule after that many matches.
+
+## Fault
+
+**Fault** is optional. Leave it at none for a normal response. `reset` closes the connection after the delay and sends no HTTP status line, so the client sees a connection error. `hang` writes nothing until the client disconnects or `UPSTREAM_TIMEOUT` elapses, then closes. The delay runs first. A fresh-request rule cannot also set a fault. History records source `fault`, the fault name, and the matched rule, with status 0. An older rules file with no `fault` field behaves as none.
+
 ## Fresh request
 
 Check **Fresh request** on a rule when you want the upstream response instead of the saved mock. The rule still matches the method and path. The proxy waits for **Delay (ms)**, then forwards the call and does not use the saved status or body.
@@ -513,6 +523,7 @@ Use this on a Mac after the automated tests pass. The implementation environment
 24. History **URL contains** keeps `?q=user/me` and combines with the source tabs and the upstream menu. The rules **Upstream** menu keeps `?upstream=OKYA_AUTH_DEV`, includes Any rules for a named upstream, and shows only Any rules when Any is selected.
 25. **Create rule** on a history row or its detail page opens the new-rule form filled from that call. Nothing is saved until Create rule is pressed. A missing history id leaves the form empty.
 26. The rules list groups rules by upstream, in Upstreams-page order, then Any, then unknown ids. A named filter shows that block and the Any block. Edit, enable, disable, and delete return to the same filter.
+27. A rule can set fault to reset or hang. Reset closes with no HTTP status. Hang waits until the client leaves or `UPSTREAM_TIMEOUT`. A delay runs first. Fresh request plus a fault is rejected. History shows source fault and the matched rule. An older rules file with no fault field still loads.
 
 ## Troubleshooting
 

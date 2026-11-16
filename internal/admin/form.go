@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"sort"
@@ -35,6 +36,10 @@ type formView struct {
 	StatusCode   string
 	DelayMS      string
 	Priority     string
+	Fault        string
+	MaxUses      string
+	Sequence     string
+	Responses    string
 	ResponseMode string
 	RawResponse  string
 	MockHeader   bool
@@ -60,6 +65,10 @@ func draftFromForm(r *http.Request) (rules.Draft, formView, error) {
 		StatusCode:   strings.TrimSpace(r.FormValue("status_code")),
 		DelayMS:      strings.TrimSpace(r.FormValue("delay_ms")),
 		Priority:     strings.TrimSpace(r.FormValue("priority")),
+		Fault:        strings.TrimSpace(r.FormValue("fault")),
+		MaxUses:      strings.TrimSpace(r.FormValue("max_uses")),
+		Sequence:     strings.TrimSpace(r.FormValue("sequence")),
+		Responses:    r.FormValue("responses"),
 		ResponseMode: r.FormValue("response_mode"),
 		RawResponse:  r.FormValue("raw_response"),
 		MockHeader:   r.FormValue("mock_header") == "on",
@@ -91,6 +100,14 @@ func draftFromForm(r *http.Request) (rules.Draft, formView, error) {
 	if err != nil {
 		return rules.Draft{}, view, err
 	}
+	maxUses, err := parseMaxUses(view.MaxUses)
+	if err != nil {
+		return rules.Draft{}, view, err
+	}
+	responses, err := parseResponseSteps(view.Responses)
+	if err != nil {
+		return rules.Draft{}, view, err
+	}
 	query, err := rules.ParseConditions(view.Query, "query")
 	if err != nil {
 		return rules.Draft{}, view, err
@@ -111,6 +128,10 @@ func draftFromForm(r *http.Request) (rules.Draft, formView, error) {
 		StatusCode:   status,
 		DelayMS:      delay,
 		Priority:     priority,
+		Fault:        view.Fault,
+		MaxUses:      maxUses,
+		Sequence:     view.Sequence,
+		Responses:    responses,
 		ResponseMode: view.ResponseMode,
 		RawResponse:  view.RawResponse,
 		MockHeader:   view.MockHeader && rawMode,
@@ -121,6 +142,51 @@ func draftFromForm(r *http.Request) (rules.Draft, formView, error) {
 
 func (formView) RawPlaceholder() string {
 	return "HTTP/1.1 401 Unauthorized\nContent-Type: application/json\n\n{\"error\":\"unauthorized\"}"
+}
+
+func usesLabel(store *rules.Store, rule rules.Rule) string {
+	if rule.MaxUses <= 0 || store == nil {
+		return ""
+	}
+	left, limited := store.UsesLeft(rule.ID)
+	if !limited {
+		return ""
+	}
+	return strconv.Itoa(left) + " of " + strconv.Itoa(rule.MaxUses) + " left"
+}
+
+func formatResponses(steps []rules.ResponseStep) string {
+	if len(steps) == 0 {
+		return ""
+	}
+	raw, err := json.MarshalIndent(steps, "", "  ")
+	if err != nil {
+		return ""
+	}
+	return string(raw)
+}
+
+func parseMaxUses(raw string) (int, error) {
+	if strings.TrimSpace(raw) == "" {
+		return 0, nil
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil || n < 0 {
+		return 0, fmt.Errorf("max_uses must be zero or greater")
+	}
+	return n, nil
+}
+
+func parseResponseSteps(raw string) ([]rules.ResponseStep, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+	var steps []rules.ResponseStep
+	if err := json.Unmarshal([]byte(raw), &steps); err != nil {
+		return nil, fmt.Errorf("responses must be a JSON list")
+	}
+	return steps, nil
 }
 
 func parsePriority(raw string) (int, error) {
@@ -212,6 +278,10 @@ func viewFromRule(rule rules.Rule, action, submit string) formView {
 		StatusCode:   strconv.Itoa(rule.StatusCode),
 		DelayMS:      strconv.Itoa(rule.DelayMS),
 		Priority:     strconv.Itoa(rule.Priority),
+		Fault:        rule.Fault,
+		MaxUses:      strconv.Itoa(rule.MaxUses),
+		Sequence:     rule.Sequence,
+		Responses:    formatResponses(rule.Responses),
 		ResponseMode: rule.ResponseMode,
 		RawResponse:  rule.RawResponse,
 		MockHeader:   rule.MockHeader,

@@ -24,22 +24,26 @@ type Document struct {
 
 // Rule is one scenario rule. The fields match the rules API.
 type Rule struct {
-	Name         string   `json:"name" yaml:"name"`
-	Description  string   `json:"description" yaml:"description"`
-	Upstream     string   `json:"upstream" yaml:"upstream"`
-	Method       string   `json:"method" yaml:"method"`
-	Path         string   `json:"path" yaml:"path"`
-	Query        []string `json:"query_conditions" yaml:"query_conditions"`
-	BodyMatch    []string `json:"body_conditions" yaml:"body_conditions"`
-	Status       int      `json:"status" yaml:"status"`
-	Headers      any      `json:"headers" yaml:"headers"`
-	Body         any      `json:"body" yaml:"body"`
-	RawResponse  string   `json:"raw_response" yaml:"raw_response"`
-	DelayMS      int      `json:"delay_ms" yaml:"delay_ms"`
-	Priority     int      `json:"priority" yaml:"priority"`
-	Enabled      *bool    `json:"enabled" yaml:"enabled"`
-	FreshRequest bool     `json:"fresh_request" yaml:"fresh_request"`
-	MockHeader   bool     `json:"mock_header" yaml:"mock_header"`
+	Name         string               `json:"name" yaml:"name"`
+	Description  string               `json:"description" yaml:"description"`
+	Upstream     string               `json:"upstream" yaml:"upstream"`
+	Method       string               `json:"method" yaml:"method"`
+	Path         string               `json:"path" yaml:"path"`
+	Query        []string             `json:"query_conditions" yaml:"query_conditions"`
+	BodyMatch    []string             `json:"body_conditions" yaml:"body_conditions"`
+	Status       int                  `json:"status" yaml:"status"`
+	Headers      any                  `json:"headers" yaml:"headers"`
+	Body         any                  `json:"body" yaml:"body"`
+	RawResponse  string               `json:"raw_response" yaml:"raw_response"`
+	DelayMS      int                  `json:"delay_ms" yaml:"delay_ms"`
+	Priority     int                  `json:"priority" yaml:"priority"`
+	Fault        string               `json:"fault" yaml:"fault"`
+	MaxUses      int                  `json:"max_uses" yaml:"max_uses"`
+	Sequence     string               `json:"sequence" yaml:"sequence"`
+	Responses    []rules.ResponseStep `json:"responses" yaml:"responses"`
+	Enabled      *bool                `json:"enabled" yaml:"enabled"`
+	FreshRequest bool                 `json:"fresh_request" yaml:"fresh_request"`
+	MockHeader   bool                 `json:"mock_header" yaml:"mock_header"`
 }
 
 // Parse reads a JSON or YAML scenario. format is "json" or "yaml".
@@ -152,6 +156,10 @@ func (d Document) Drafts(resolve func(string) (string, error)) ([]rules.Draft, e
 			StatusCode:   rule.Status,
 			DelayMS:      rule.DelayMS,
 			Priority:     rule.Priority,
+			Fault:        rule.Fault,
+			MaxUses:      rule.MaxUses,
+			Responses:    rule.Responses,
+			Sequence:     rule.Sequence,
 			ResponseMode: mode,
 			RawResponse:  raw,
 			MockHeader:   rule.MockHeader,
@@ -182,6 +190,10 @@ func FromRules(name, description string, list []rules.Rule, upstreamName func(id
 			Status:       rule.StatusCode,
 			DelayMS:      rule.DelayMS,
 			Priority:     rule.Priority,
+			Fault:        rule.Fault,
+			MaxUses:      rule.MaxUses,
+			Sequence:     rule.Sequence,
+			Responses:    rule.Responses,
 			Enabled:      &enabled,
 			FreshRequest: rule.FreshRequest,
 			MockHeader:   rule.MockHeader,

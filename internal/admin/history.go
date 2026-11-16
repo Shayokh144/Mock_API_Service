@@ -58,6 +58,8 @@ type historyRow struct {
 	When     string
 	RuleID   string
 	RuleName string
+	Fault    string
+	Step     int
 }
 
 type historyDetail struct {
@@ -431,6 +433,8 @@ func historyRowFrom(entry history.Entry) historyRow {
 		When:     formatHistoryTime(entry.StartedAt),
 		RuleID:   entry.RuleID,
 		RuleName: entry.RuleName,
+		Fault:    entry.Fault,
+		Step:     entry.Step,
 	}
 }
 

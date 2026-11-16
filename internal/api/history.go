@@ -53,6 +53,9 @@ func (s *Server) resetSession(w http.ResponseWriter, r *http.Request, id string)
 	}
 	clearRules := body.Rules == nil || *body.Rules
 	clearHistory := body.History == nil || *body.History
+	if info.Rules != nil {
+		info.Rules.ResetRuntime()
+	}
 	if clearRules && info.Rules != nil {
 		if err := info.Rules.Clear(); err != nil {
 			writeError(w, http.StatusInternalServerError, "internal", "could not reset rules")

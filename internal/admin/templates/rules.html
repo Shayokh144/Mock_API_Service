@@ -37,6 +37,8 @@
         <th scope="col">Status</th>
         <th scope="col">Priority</th>
         <th scope="col">Delay</th>
+        <th scope="col">Fault</th>
+        <th scope="col">Uses</th>
         <th scope="col">Mode</th>
         <th scope="col">Actions</th>
       </tr>
@@ -55,6 +57,8 @@
         <td>{{.Status}}</td>
         <td>{{.Priority}}</td>
         <td>{{.Delay}}</td>
+        <td>{{if .Fault}}{{.Fault}}{{else}}none{{end}}</td>
+        <td>{{if .Uses}}{{.Uses}}{{else}}unlimited{{end}}</td>
         <td>{{.Mode}}</td>
         <td>
           {{if not $.ReadOnly}}

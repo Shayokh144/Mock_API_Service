@@ -112,7 +112,13 @@ func (h *Handler) serveAPI(w http.ResponseWriter, r *http.Request) {
 	capw := &bodyCapture{ResponseWriter: w, limit: h.maxBody}
 	if h.rules != nil {
 		if rule, ok := h.rules.MatchHTTP(r.Method, forwarded, id, r.URL.RawQuery, r.Header, payload); ok {
+			capw.step = rule.AppliedStep
 			if err := h.pause(r.Context(), rule.DelayMS); err != nil {
+				return
+			}
+			if rule.Fault != "" {
+				h.applyFault(capw, r, rule.Fault)
+				h.record(started, r, reqHeaders, payload, capw, history.SourceFault, rule.ID, id, name, forwarded, rule.DelayMS)
 				return
 			}
 			if rule.FreshRequest {
@@ -144,6 +150,27 @@ func (h *Handler) serveAPI(w http.ResponseWriter, r *http.Request) {
 		source = history.SourceUpstreamError
 	}
 	h.record(started, r, reqHeaders, payload, capw, source, "", id, name, forwarded, 0)
+}
+
+func (h *Handler) applyFault(w *bodyCapture, r *http.Request, fault string) {
+	w.fault = fault
+	if fault == "hang" {
+		timer := time.NewTimer(h.timeout)
+		defer timer.Stop()
+		select {
+		case <-r.Context().Done():
+		case <-timer.C:
+		}
+	}
+	hj, ok := w.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return
+	}
+	conn, _, err := hj.Hijack()
+	if err != nil {
+		return
+	}
+	_ = conn.Close()
 }
 
 func (h *Handler) pause(ctx context.Context, delayMS int) error {
@@ -480,6 +507,8 @@ func (h *Handler) record(started time.Time, r *http.Request, reqHeaders http.Hea
 		Source:                source,
 		RuleID:                ruleID,
 		RuleName:              ruleName,
+		Fault:                 capw.fault,
+		Step:                  capw.step,
 		DelayMS:               delayMS,
 		UpstreamID:            upstreamID,
 		UpstreamName:          upstreamName,

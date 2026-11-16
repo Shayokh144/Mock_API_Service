@@ -28,11 +28,13 @@ var ErrNameTaken = errors.New("a rule with this name already exists")
 // Store is the in-memory rule collection. The mutex guards rules.
 // Match copies the winner and releases the lock before the caller writes a response.
 type Store struct {
-	mu    sync.RWMutex
-	rules []Rule
-	path  string
-	now   func() time.Time
-	newID func() (string, error)
+	mu        sync.RWMutex
+	rules     []Rule
+	path      string
+	now       func() time.Time
+	newID     func() (string, error)
+	remaining map[string]int
+	step      map[string]int
 }
 
 // NewMemory returns an empty store that does not touch the filesystem.
@@ -92,10 +94,12 @@ func Load(path string) (*Store, error) {
 
 func newStore(path string) *Store {
 	return &Store{
-		path:  path,
-		rules: []Rule{},
-		now:   time.Now,
-		newID: randomID,
+		path:      path,
+		rules:     []Rule{},
+		now:       time.Now,
+		newID:     randomID,
+		remaining: map[string]int{},
+		step:      map[string]int{},
 	}
 }
 
@@ -157,6 +161,7 @@ func (s *Store) Update(id string, d Draft) (Rule, error) {
 		return Rule{}, err
 	}
 	s.rules = next
+	s.resetRuntimeLocked(id)
 	return cloneRule(rule), nil
 }
 
@@ -214,6 +219,8 @@ func (s *Store) ApplyDrafts(drafts []Draft, replace, persist bool) (ApplyResult,
 	var next []Rule
 	var result ApplyResult
 	if replace {
+		s.remaining = map[string]int{}
+		s.step = map[string]int{}
 		next = make([]Rule, 0, len(prepared))
 		used := map[string]struct{}{}
 		for _, rule := range prepared {
@@ -267,6 +274,7 @@ func (s *Store) ApplyDrafts(drafts []Draft, replace, persist bool) (ApplyResult,
 			rule.ID = next[index].ID
 			rule.CreatedAt = next[index].CreatedAt
 			rule.UpdatedAt = now
+			s.resetRuntimeLocked(rule.ID)
 			rule.Temporary = !persist
 			next[index] = rule
 			result.Updated = append(result.Updated, rule.APIName)
@@ -322,6 +330,10 @@ func sameRule(old, next Rule) bool {
 		old.Priority == next.Priority &&
 		old.StatusCode == next.StatusCode &&
 		old.DelayMS == next.DelayMS &&
+		old.Fault == next.Fault &&
+		old.MaxUses == next.MaxUses &&
+		old.Sequence == next.Sequence &&
+		responsesEqual(old.Responses, next.Responses) &&
 		old.ResponseMode == next.ResponseMode &&
 		old.RawResponse == next.RawResponse &&
 		old.MockHeader == next.MockHeader &&
@@ -344,6 +356,15 @@ func headerEqual(a, b map[string]string) bool {
 
 func matchEqual(a, b MatchSpec) bool {
 	return conditionEqual(a.Query, b.Query) && conditionEqual(a.Body, b.Body)
+}
+
+func responsesEqual(a, b []ResponseStep) bool {
+	left, errA := json.Marshal(a)
+	right, errB := json.Marshal(b)
+	if errA != nil || errB != nil {
+		return false
+	}
+	return bytes.Equal(left, right)
 }
 
 func conditionEqual(a, b []Condition) bool {
@@ -372,6 +393,8 @@ func (s *Store) Clear() error {
 		return err
 	}
 	s.rules = nil
+	s.remaining = map[string]int{}
+	s.step = map[string]int{}
 	return nil
 }
 
@@ -462,8 +485,8 @@ func (s *Store) MatchHTTP(method, path, upstreamID, rawQuery string, header http
 }
 
 func (s *Store) match(method, path, upstreamID string, query url.Values, header http.Header, body []byte, useBody bool) (Rule, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	method = strings.ToUpper(method)
 	var (
 		winner  Rule
@@ -490,6 +513,9 @@ func (s *Store) match(method, path, upstreamID string, query url.Values, header 
 		if !matchPattern(rule.PathPattern, path) {
 			continue
 		}
+		if rule.MaxUses > 0 && s.usesLeftLocked(rule) <= 0 {
+			continue
+		}
 		if !queryMatches(rule.Match.Query, query) {
 			continue
 		}
@@ -510,7 +536,70 @@ func (s *Store) match(method, path, upstreamID string, query url.Values, header 
 	if !found {
 		return Rule{}, false
 	}
+	winner = s.consumeLocked(winner)
 	return cloneRule(winner), true
+}
+
+// ResetRuntime restores every rule's remaining uses and sequence index.
+func (s *Store) ResetRuntime() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.remaining = map[string]int{}
+	s.step = map[string]int{}
+}
+
+// UsesLeft reports how many times a limited rule can still match.
+// limited is false when the rule is missing or unlimited.
+func (s *Store) UsesLeft(id string) (left int, limited bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	index := s.index(id)
+	if index < 0 || s.rules[index].MaxUses <= 0 {
+		return 0, false
+	}
+	return s.usesLeftLocked(s.rules[index]), true
+}
+
+func (s *Store) resetRuntimeLocked(id string) {
+	delete(s.remaining, id)
+	delete(s.step, id)
+}
+
+func (s *Store) usesLeftLocked(rule Rule) int {
+	if n, ok := s.remaining[rule.ID]; ok {
+		return n
+	}
+	return rule.MaxUses
+}
+
+func (s *Store) consumeLocked(rule Rule) Rule {
+	if len(rule.Responses) > 0 {
+		idx := s.step[rule.ID]
+		if idx >= len(rule.Responses) {
+			idx = len(rule.Responses) - 1
+		}
+		step := rule.Responses[idx]
+		rule.StatusCode = step.StatusCode
+		rule.Headers = step.Headers
+		rule.Body = step.Body
+		rule.DelayMS = step.DelayMS
+		rule.ResponseMode = step.ResponseMode
+		rule.RawResponse = step.RawResponse
+		rule.MockHeader = step.MockHeader
+		rule.Fault = step.Fault
+		rule.AppliedStep = idx + 1
+		if strings.EqualFold(rule.Sequence, "loop") {
+			s.step[rule.ID] = (idx + 1) % len(rule.Responses)
+		} else if idx+1 < len(rule.Responses) {
+			s.step[rule.ID] = idx + 1
+		} else {
+			s.step[rule.ID] = idx
+		}
+	}
+	if rule.MaxUses > 0 {
+		s.remaining[rule.ID] = s.usesLeftLocked(rule) - 1
+	}
+	return rule
 }
 
 // DetachUpstream clears upstream id on every rule that used it.
@@ -651,6 +740,10 @@ func validateLoaded(rule Rule, allowWildcard bool) error {
 		Match:        rule.Match,
 		StatusCode:   rule.StatusCode,
 		DelayMS:      rule.DelayMS,
+		Fault:        rule.Fault,
+		MaxUses:      rule.MaxUses,
+		Responses:    rule.Responses,
+		Sequence:     rule.Sequence,
 		ResponseMode: rule.ResponseMode,
 		RawResponse:  rule.RawResponse,
 		MockHeader:   rule.MockHeader,

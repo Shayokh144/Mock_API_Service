@@ -114,6 +114,8 @@ type ruleRow struct {
 	Status     string
 	Delay      string
 	Priority   int
+	Fault      string
+	Uses       string
 	Mode       string
 	Upstream   string
 	UpstreamID string
@@ -264,6 +266,8 @@ func (s *Server) rulesPage(w http.ResponseWriter, r *http.Request, status int) {
 			Status:     strconv.Itoa(rule.StatusCode),
 			Delay:      delayLabel(rule.DelayMS),
 			Priority:   rule.Priority,
+			Fault:      rule.Fault,
+			Uses:       usesLabel(s.rules, rule),
 			Mode:       modeLabel(rule.ResponseMode),
 			Upstream:   s.upstreamLabel(rule.UpstreamID),
 			UpstreamID: rule.UpstreamID,
@@ -575,6 +579,10 @@ func (s *Server) toggleRule(w http.ResponseWriter, r *http.Request, id string) {
 		StatusCode:   rule.StatusCode,
 		DelayMS:      rule.DelayMS,
 		Priority:     rule.Priority,
+		Fault:        rule.Fault,
+		MaxUses:      rule.MaxUses,
+		Responses:    rule.Responses,
+		Sequence:     rule.Sequence,
 		ResponseMode: rule.ResponseMode,
 		RawResponse:  rule.RawResponse,
 		MockHeader:   rule.MockHeader,
