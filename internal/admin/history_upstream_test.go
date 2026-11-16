@@ -45,9 +45,7 @@ func TestHistoryUpstreamFilter(t *testing.T) {
 	}
 	srv := httptest.NewServer(dashboard)
 	defer srv.Close()
-	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
-		return http.ErrUseLastResponse
-	}}
+	client := dashboardClient()
 
 	page := get(t, client, srv.URL+"/_admin/history")
 	assertContains(t, page, "All upstreams")

@@ -36,7 +36,7 @@ The process reads environment variables. It also accepts `--scenario` and `--sce
 | `ADMIN_LISTEN_ADDR` | no | `127.0.0.1:8081` | Dashboard loopback address. Same host rules as `LISTEN_ADDR`. It must differ from the proxy address. |
 | `RULES_PATH` | no | `data/rules.json` | Rule file. A missing file means there are no rules. |
 | `HISTORY_LIMIT` | no | `500` | Newest history entries kept in memory. |
-| `UPSTREAM_TIMEOUT` | no | `30s` | Time allowed for one upstream call. |
+| `UPSTREAM_TIMEOUT` | no | `30s` | Time allowed for one upstream call. A WebSocket upgrade is not limited by this timeout. |
 
 ```sh
 export UPSTREAM_BASE_URL='https://upstream.example.com'
@@ -62,7 +62,7 @@ dashboard at http://localhost:8081/_admin
 
 Open [http://localhost:8081/_admin](http://localhost:8081/_admin). Stop the process with Ctrl+C.
 
-The dashboard is a separate listener so a mocked HTML response cannot share the dashboard origin. `http://localhost:8080/_admin` returns 404 and says the dashboard is not served on the proxy port. A dashboard request whose Host is not `localhost`, `127.0.0.1`, or `[::1]` on the admin port is rejected with 403. Both listeners set a 10 second read-header timeout.
+The dashboard is a separate listener so a mocked HTML response cannot share the dashboard origin. `http://localhost:8080/_admin` returns 404 and says the dashboard is not served on the proxy port. A dashboard request whose Host is not `localhost`, `127.0.0.1`, or `[::1]` on the admin port is rejected with 403. A state-changing dashboard request is accepted only from a browser on that admin origin: `Sec-Fetch-Site: same-origin`, or a loopback `Origin` on the same admin host and port. A request with neither, including a curl-style POST that sends no `Origin` and no `Sec-Fetch-Site`, is 403 and changes nothing. Scripts create and change rules through `/_api` with the bearer token. Both listeners set a 10 second read-header timeout.
 
 Rules are saved when you create, edit, enable, disable, or delete them. They are still there after a restart. History is memory only. A restart clears history and keeps rules.
 
@@ -85,6 +85,8 @@ Open [http://127.0.0.1:8081/_admin/upstreams](http://127.0.0.1:8081/_admin/upstr
 A named rule matches when the request resolves to that upstream, by its prefix or as the fallback. **Any upstream** matches for every resolved upstream, and also when none is resolved. Rules see the path after the prefix is removed. When both match the same path, the more specific pattern still wins. If the patterns tie, the named rule wins over Any.
 
 Passthrough uses the resolved upstream. Its base URL path is joined in front of the forwarded path.
+
+A WebSocket upgrade (`Connection: Upgrade` and an `Upgrade` header) is tunneled. The proxy does not buffer that response and does not apply `UPSTREAM_TIMEOUT` to the open socket. History records status 101 and does not store the messages. A path prefix is removed the same way as any other forwarded call.
 
 With no matching prefix and no fallback upstream, passthrough returns `503` and `{"error":"no upstream is configured; add one at /_admin"}`. A matching Any rule still returns the mock.
 
@@ -389,7 +391,7 @@ While the list is open, it asks for new rows about once a second and adds them a
 
 A fresh-request rule is a real server response, not a mock. Its source stays `upstream`, so **Real server** includes it. The source column says `upstream (fresh rule)` when a rule selected that response. A failed fresh request stays `upstream-error` and shows under All.
 
-Open a row to see headers and bodies. `Authorization` and `Cookie` values are hidden until you choose **Show value**. That control is a disclosure element, so the detail page still has no script. A preview longer than 64 KiB is marked truncated. The full body is still what the client and the upstream server exchanged, up to the 8 MiB buffer limit.
+Open a row to see headers and bodies. `Authorization` and `Cookie` values are hidden until you choose **Show value**. That control is a disclosure element, so the detail page still has no script. A preview longer than 64 KiB is marked truncated. For a buffered response, the full body is still what the client and the upstream server exchanged, up to the 8 MiB buffer limit. Server-sent events, chunked responses, and responses with no content length are streamed straight through and flushed as bytes arrive. History keeps the first 64 KiB of that stream and marks it truncated when the stream is longer. `UPSTREAM_TIMEOUT` applies until those response headers arrive, then the stream is not cut off by it. A mocked rule response is unchanged.
 
 History stores a decoded copy of the body when `Content-Encoding` is `gzip`, `deflate` (zlib or raw), `br`, or `identity`. Stacked encodings are undone from the outside in. The bytes and headers sent to the client stay unchanged. The decoded copy stops at 64 KiB. A corrupt or unknown encoding is a short note, not compressed bytes. A binary or non-UTF-8 body is a note with the size and content type. JSON is indented. Request bodies follow the same rules. Decoding happens when the row is recorded, so history keeps the preview text.
 
@@ -399,7 +401,7 @@ Delete one row from the list or the detail page. The list returns to the same fi
 
 ## Automation API
 
-The API listens only on the admin address, `http://127.0.0.1:8081` by default. The proxy port returns 404 for `/_api`.
+The API listens only on the admin address, `http://127.0.0.1:8081` by default. The proxy port returns 404 for `/_api`. Scripts that create, edit, or delete rules and upstreams use `/_api` with the bearer token. The dashboard forms are for a browser on the admin origin and do not accept a token.
 
 On the first start the process writes a 32-byte token to `data/admin.token` (or next to `RULES_PATH`). The directory is mode `0700` and the file is mode `0600`. Later starts reuse that file. The log prints the file path and never the token.
 

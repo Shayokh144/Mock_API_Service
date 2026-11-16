@@ -225,8 +225,10 @@ func TestHistoryTruncatesPreviewAndRejectsHugeBodies(t *testing.T) {
 		t.Fatalf("rejected response = %s headers=%v", rej.ResponseBody, rej.ResponseHeaders)
 	}
 
+	// A body this large is chunked, so the proxy streams it instead of rejecting it.
+	hugePayload := bytes.Repeat([]byte("c"), config.MaxBufferedBody+1)
 	hugeUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write(bytes.Repeat([]byte("c"), config.MaxBufferedBody+1))
+		_, _ = w.Write(hugePayload)
 	}))
 	defer hugeUpstream.Close()
 	hugeBase, err := url.Parse(hugeUpstream.URL)
@@ -239,13 +241,19 @@ func TestHistoryTruncatesPreviewAndRejectsHugeBodies(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	overBody, _ := io.ReadAll(over.Body)
+	overBody, err := io.ReadAll(over.Body)
 	over.Body.Close()
-	if over.StatusCode != http.StatusBadGateway || !strings.Contains(string(overBody), "upstream response too large") {
-		t.Fatalf("over status=%d body=%s", over.StatusCode, overBody)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if over.StatusCode != http.StatusOK || !bytes.Equal(overBody, hugePayload) {
+		t.Fatalf("over status=%d length=%d", over.StatusCode, len(overBody))
 	}
 	overEntry := log.List()[0]
-	if overEntry.Source != history.SourceUpstreamError || overEntry.ResponseHeaders.Get("X-Mock-Response") != "" {
-		t.Fatalf("over entry = %+v", overEntry)
+	if overEntry.Source != history.SourceUpstream || !overEntry.ResponseBodyTruncated || len(overEntry.ResponseBody) != config.HistoryBodyPreview {
+		t.Fatalf("over entry source=%s truncated=%v len=%d", overEntry.Source, overEntry.ResponseBodyTruncated, len(overEntry.ResponseBody))
+	}
+	if overEntry.ResponseBody != strings.Repeat("c", config.HistoryBodyPreview) {
+		t.Fatal("over history is not the first 64 KiB")
 	}
 }

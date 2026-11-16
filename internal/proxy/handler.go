@@ -8,11 +8,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Shayokh144/Mock_API_Service/internal/config"
@@ -290,8 +292,29 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, upstream *url.
 		incomingPath = r.URL.Path
 	}
 	incomingQuery := r.URL.RawQuery
-	ctx, cancel := context.WithTimeout(r.Context(), h.timeout)
-	defer cancel()
+	// A WebSocket (or other) upgrade must not be buffered, and the upstream
+	// timeout must not cancel the tunneled connection.
+	upgrade := isProtocolUpgrade(r.Header)
+	if capture, ok := w.(*bodyCapture); ok && upgrade {
+		capture.upgrade = true
+	}
+	ctx := r.Context()
+	var cancel context.CancelFunc
+	var gate sync.Mutex
+	streaming := false
+	var timer *time.Timer
+	if !upgrade {
+		ctx, cancel = context.WithCancel(r.Context())
+		defer cancel()
+		timer = time.AfterFunc(h.timeout, func() {
+			gate.Lock()
+			defer gate.Unlock()
+			if !streaming {
+				cancel()
+			}
+		})
+		defer timer.Stop()
+	}
 	outbound := r.WithContext(ctx)
 
 	failed := false
@@ -306,6 +329,21 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, upstream *url.
 		},
 		Transport: h.transport,
 		ModifyResponse: func(resp *http.Response) error {
+			if upgrade || resp.StatusCode == http.StatusSwitchingProtocols {
+				return nil
+			}
+			if isStreamResponse(resp) {
+				gate.Lock()
+				streaming = true
+				gate.Unlock()
+				if timer != nil {
+					timer.Stop()
+				}
+				if capture, ok := w.(*bodyCapture); ok {
+					capture.previewLimit = config.HistoryBodyPreview
+				}
+				return nil
+			}
 			body, err := readUpTo(resp.Body, config.MaxBufferedBody)
 			if resp.Body != nil {
 				_ = resp.Body.Close()
@@ -334,6 +372,41 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, upstream *url.
 	return failed
 }
 
+// isStreamResponse reports a body that should be forwarded as it arrives.
+// That is an event stream, a chunked body, or any response of unknown length.
+func isStreamResponse(resp *http.Response) bool {
+	if resp == nil {
+		return false
+	}
+	if media, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type")); err == nil && media == "text/event-stream" {
+		return true
+	}
+	if resp.ContentLength < 0 {
+		return true
+	}
+	for _, value := range resp.Header.Values("Transfer-Encoding") {
+		if strings.Contains(strings.ToLower(value), "chunked") {
+			return true
+		}
+	}
+	return false
+}
+
+// isProtocolUpgrade reports a Connection: Upgrade request with an Upgrade header.
+func isProtocolUpgrade(h http.Header) bool {
+	if strings.TrimSpace(h.Get("Upgrade")) == "" {
+		return false
+	}
+	for _, value := range h.Values("Connection") {
+		for _, part := range strings.Split(value, ",") {
+			if strings.EqualFold(strings.TrimSpace(part), "upgrade") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (h *Handler) record(started time.Time, r *http.Request, reqHeaders http.Header, payload []byte, capw *bodyCapture, source history.Source, ruleID, upstreamID, upstreamName, forwardedPath string, delayMS int) {
 	if h.history == nil {
 		return
@@ -341,11 +414,17 @@ func (h *Handler) record(started time.Time, r *http.Request, reqHeaders http.Hea
 	status, respHeaders, respRaw, respCut := capw.snapshot()
 	var respBody, respPlain string
 	var respTrunc, respDecoded bool
-	if respCut {
+	switch {
+	case capw.upgrade && status == http.StatusSwitchingProtocols && len(respRaw) == 0 && !respCut:
+		respBody = "protocol upgrade; messages were not captured"
+	case respCut:
 		respBody = fmt.Sprintf("body exceeds %d bytes and was not decoded", config.MaxBufferedBody)
 		respTrunc = true
-	} else {
+	default:
 		respBody, respPlain, respTrunc, respDecoded = historyCopy(respHeaders, respRaw)
+		if capw.previewCut {
+			respTrunc = true
+		}
 	}
 	reqBody, reqTrunc := displayBody(reqHeaders, payload)
 	h.history.Add(history.Entry{

@@ -25,9 +25,7 @@ func TestFreshRequestDashboardPersists(t *testing.T) {
 	}
 	srv := httptest.NewServer(dashboard)
 	defer srv.Close()
-	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
-		return http.ErrUseLastResponse
-	}}
+	client := dashboardClient()
 
 	created, err := client.PostForm(srv.URL+"/_admin/rules", url.Values{
 		"name":          {"Fresh"},
