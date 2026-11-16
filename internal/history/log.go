@@ -42,6 +42,7 @@ type Entry struct {
 	ResponseDecoded       bool
 	Source                Source
 	RuleID                string
+	RuleName              string
 	DelayMS               int
 	UpstreamID            string
 	UpstreamName          string

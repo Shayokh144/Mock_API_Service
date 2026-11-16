@@ -34,6 +34,7 @@ type formView struct {
 	BodyMatch    string
 	StatusCode   string
 	DelayMS      string
+	Priority     string
 	ResponseMode string
 	RawResponse  string
 	MockHeader   bool
@@ -58,6 +59,7 @@ func draftFromForm(r *http.Request) (rules.Draft, formView, error) {
 		BodyMatch:    r.FormValue("body_conditions"),
 		StatusCode:   strings.TrimSpace(r.FormValue("status_code")),
 		DelayMS:      strings.TrimSpace(r.FormValue("delay_ms")),
+		Priority:     strings.TrimSpace(r.FormValue("priority")),
 		ResponseMode: r.FormValue("response_mode"),
 		RawResponse:  r.FormValue("raw_response"),
 		MockHeader:   r.FormValue("mock_header") == "on",
@@ -85,6 +87,10 @@ func draftFromForm(r *http.Request) (rules.Draft, formView, error) {
 	if err != nil {
 		return rules.Draft{}, view, err
 	}
+	priority, err := parsePriority(view.Priority)
+	if err != nil {
+		return rules.Draft{}, view, err
+	}
 	query, err := rules.ParseConditions(view.Query, "query")
 	if err != nil {
 		return rules.Draft{}, view, err
@@ -104,6 +110,7 @@ func draftFromForm(r *http.Request) (rules.Draft, formView, error) {
 		Match:        rules.MatchSpec{Query: query, Body: bodyMatch},
 		StatusCode:   status,
 		DelayMS:      delay,
+		Priority:     priority,
 		ResponseMode: view.ResponseMode,
 		RawResponse:  view.RawResponse,
 		MockHeader:   view.MockHeader && rawMode,
@@ -114,6 +121,17 @@ func draftFromForm(r *http.Request) (rules.Draft, formView, error) {
 
 func (formView) RawPlaceholder() string {
 	return "HTTP/1.1 401 Unauthorized\nContent-Type: application/json\n\n{\"error\":\"unauthorized\"}"
+}
+
+func parsePriority(raw string) (int, error) {
+	if raw == "" {
+		return 0, nil
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0, fmt.Errorf("priority must be an integer")
+	}
+	return n, nil
 }
 
 func parseDelayMS(raw string) (int, error) {
@@ -193,6 +211,7 @@ func viewFromRule(rule rules.Rule, action, submit string) formView {
 		BodyMatch:    rules.FormatConditions(rule.Match.Body),
 		StatusCode:   strconv.Itoa(rule.StatusCode),
 		DelayMS:      strconv.Itoa(rule.DelayMS),
+		Priority:     strconv.Itoa(rule.Priority),
 		ResponseMode: rule.ResponseMode,
 		RawResponse:  rule.RawResponse,
 		MockHeader:   rule.MockHeader,

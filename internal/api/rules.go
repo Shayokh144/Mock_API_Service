@@ -27,6 +27,7 @@ type ruleBody struct {
 	Body         json.RawMessage `json:"body"`
 	RawResponse  string          `json:"raw_response"`
 	DelayMS      int             `json:"delay_ms"`
+	Priority     int             `json:"priority"`
 	Enabled      *bool           `json:"enabled"`
 	FreshRequest bool            `json:"fresh_request"`
 	MockHeader   bool            `json:"mock_header"`
@@ -46,6 +47,7 @@ type ruleResponse struct {
 	Body         json.RawMessage   `json:"body"`
 	RawResponse  string            `json:"raw_response,omitempty"`
 	DelayMS      int               `json:"delay_ms"`
+	Priority     int               `json:"priority"`
 	Enabled      bool              `json:"enabled"`
 	FreshRequest bool              `json:"fresh_request"`
 	MockHeader   bool              `json:"mock_header,omitempty"`
@@ -324,6 +326,7 @@ func (s *Server) draftFromJSON(w http.ResponseWriter, r *http.Request) (rules.Dr
 		Match:        rules.MatchSpec{Query: query, Body: matchBody},
 		StatusCode:   body.Status,
 		DelayMS:      body.DelayMS,
+		Priority:     body.Priority,
 		ResponseMode: mode,
 		RawResponse:  raw,
 		MockHeader:   body.MockHeader,
@@ -348,6 +351,7 @@ func draftFromRule(rule rules.Rule) rules.Draft {
 		Match:        rule.Match,
 		StatusCode:   rule.StatusCode,
 		DelayMS:      rule.DelayMS,
+		Priority:     rule.Priority,
 		ResponseMode: rule.ResponseMode,
 		RawResponse:  rule.RawResponse,
 		MockHeader:   rule.MockHeader,
@@ -381,6 +385,7 @@ func toRuleResponse(rule rules.Rule, ups *upstreams.Store) ruleResponse {
 		Body:         body,
 		RawResponse:  rule.RawResponse,
 		DelayMS:      rule.DelayMS,
+		Priority:     rule.Priority,
 		Enabled:      rule.Enabled,
 		FreshRequest: rule.FreshRequest,
 		MockHeader:   rule.MockHeader,

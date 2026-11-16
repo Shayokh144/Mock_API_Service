@@ -457,6 +457,12 @@ func (h *Handler) record(started time.Time, r *http.Request, reqHeaders http.Hea
 		}
 	}
 	reqBody, reqTrunc := displayBody(reqHeaders, payload)
+	ruleName := ""
+	if ruleID != "" && h.rules != nil {
+		if matched, ok := h.rules.Get(ruleID); ok {
+			ruleName = matched.Name
+		}
+	}
 	h.history.Add(history.Entry{
 		StartedAt:             started,
 		DurationMS:            int(time.Since(started).Milliseconds()),
@@ -473,6 +479,7 @@ func (h *Handler) record(started time.Time, r *http.Request, reqHeaders http.Hea
 		ResponseDecoded:       respDecoded,
 		Source:                source,
 		RuleID:                ruleID,
+		RuleName:              ruleName,
 		DelayMS:               delayMS,
 		UpstreamID:            upstreamID,
 		UpstreamName:          upstreamName,

@@ -36,6 +36,7 @@ type Rule struct {
 	Body         any      `json:"body" yaml:"body"`
 	RawResponse  string   `json:"raw_response" yaml:"raw_response"`
 	DelayMS      int      `json:"delay_ms" yaml:"delay_ms"`
+	Priority     int      `json:"priority" yaml:"priority"`
 	Enabled      *bool    `json:"enabled" yaml:"enabled"`
 	FreshRequest bool     `json:"fresh_request" yaml:"fresh_request"`
 	MockHeader   bool     `json:"mock_header" yaml:"mock_header"`
@@ -150,6 +151,7 @@ func (d Document) Drafts(resolve func(string) (string, error)) ([]rules.Draft, e
 			Match:        rules.MatchSpec{Query: query, Body: bodyMatch},
 			StatusCode:   rule.Status,
 			DelayMS:      rule.DelayMS,
+			Priority:     rule.Priority,
 			ResponseMode: mode,
 			RawResponse:  raw,
 			MockHeader:   rule.MockHeader,
@@ -179,6 +181,7 @@ func FromRules(name, description string, list []rules.Rule, upstreamName func(id
 			BodyMatch:    lines(rule.Match.Body),
 			Status:       rule.StatusCode,
 			DelayMS:      rule.DelayMS,
+			Priority:     rule.Priority,
 			Enabled:      &enabled,
 			FreshRequest: rule.FreshRequest,
 			MockHeader:   rule.MockHeader,

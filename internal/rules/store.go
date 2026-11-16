@@ -319,6 +319,7 @@ func sameRule(old, next Rule) bool {
 		old.UpstreamID == next.UpstreamID &&
 		old.Method == next.Method &&
 		old.PathPattern == next.PathPattern &&
+		old.Priority == next.Priority &&
 		old.StatusCode == next.StatusCode &&
 		old.DelayMS == next.DelayMS &&
 		old.ResponseMode == next.ResponseMode &&
@@ -501,7 +502,7 @@ func (s *Store) match(method, path, upstreamID string, query url.Values, header 
 				continue
 			}
 		}
-		if !found || better(rule, winner) {
+		if !found || rule.Priority > winner.Priority || (rule.Priority == winner.Priority && better(rule, winner)) {
 			winner = rule
 			found = true
 		}
@@ -646,6 +647,7 @@ func validateLoaded(rule Rule, allowWildcard bool) error {
 		UpstreamID:   rule.UpstreamID,
 		Method:       rule.Method,
 		PathPattern:  rule.PathPattern,
+		Priority:     rule.Priority,
 		Match:        rule.Match,
 		StatusCode:   rule.StatusCode,
 		DelayMS:      rule.DelayMS,

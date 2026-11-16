@@ -29,6 +29,7 @@ type Rule struct {
 	UpstreamID   string            `json:"upstream_id,omitempty"`
 	Method       string            `json:"method"`
 	PathPattern  string            `json:"path_pattern"`
+	Priority     int               `json:"priority,omitempty"`
 	Match        MatchSpec         `json:"match,omitempty"`
 	StatusCode   int               `json:"status_code"`
 	DelayMS      int               `json:"delay_ms,omitempty"`
@@ -53,6 +54,7 @@ type Draft struct {
 	UpstreamID   string
 	Method       string
 	PathPattern  string
+	Priority     int
 	Match        MatchSpec
 	StatusCode   int
 	DelayMS      int
@@ -128,6 +130,7 @@ func normalize(d Draft, allowWildcard bool) (Rule, error) {
 			UpstreamID:   upstreamID,
 			Method:       method,
 			PathPattern:  d.PathPattern,
+			Priority:     d.Priority,
 			Match:        match,
 			StatusCode:   parsed.Code,
 			DelayMS:      d.DelayMS,
@@ -156,6 +159,7 @@ func normalize(d Draft, allowWildcard bool) (Rule, error) {
 		UpstreamID:   upstreamID,
 		Method:       method,
 		PathPattern:  d.PathPattern,
+		Priority:     d.Priority,
 		Match:        match,
 		StatusCode:   d.StatusCode,
 		DelayMS:      d.DelayMS,

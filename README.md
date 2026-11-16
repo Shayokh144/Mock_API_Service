@@ -83,7 +83,7 @@ Open [http://127.0.0.1:8081/_admin/upstreams](http://127.0.0.1:8081/_admin/upstr
 6. Add another, then choose **Set as fallback**. That upstream handles requests that match no prefix. Do not restart the proxy. Prefixed upstreams keep serving at the same time.
 7. On **New rule** or **Edit**, choose that upstream, or **Any upstream**.
 
-A named rule matches when the request resolves to that upstream, by its prefix or as the fallback. **Any upstream** matches for every resolved upstream, and also when none is resolved. Rules see the path after the prefix is removed. When both match the same path, the more specific pattern still wins. If the patterns tie, the named rule wins over Any.
+A named rule matches when the request resolves to that upstream, by its prefix or as the fallback. **Any upstream** matches for every resolved upstream, and also when none is resolved. Rules see the path after the prefix is removed. When both match the same path, the more specific pattern still wins. If the patterns tie, the named rule wins over Any. A rule can set `priority`. A higher number wins before that path order, including a wildcard against an exact path. Missing priority is 0. Negative numbers are allowed. Equal priorities, including every rule left at 0, keep the existing order.
 
 Passthrough uses the resolved upstream. Its base URL path is joined in front of the forwarded path.
 

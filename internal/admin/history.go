@@ -56,6 +56,8 @@ type historyRow struct {
 	Upstream string
 	Delay    string
 	When     string
+	RuleID   string
+	RuleName string
 }
 
 type historyDetail struct {
@@ -182,6 +184,8 @@ func (s *Server) historyFeed(w http.ResponseWriter, r *http.Request) {
 			Upstream: row.Upstream,
 			Delay:    row.Delay,
 			When:     row.When,
+			RuleID:   row.RuleID,
+			RuleName: row.RuleName,
 		})
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
@@ -425,6 +429,8 @@ func historyRowFrom(entry history.Entry) historyRow {
 		Upstream: entry.UpstreamName,
 		Delay:    delayLabel(entry.DelayMS),
 		When:     formatHistoryTime(entry.StartedAt),
+		RuleID:   entry.RuleID,
+		RuleName: entry.RuleName,
 	}
 }
 
@@ -466,6 +472,8 @@ type historyFeedRow struct {
 	Upstream string `json:"upstream"`
 	Delay    string `json:"delay"`
 	When     string `json:"when"`
+	RuleID   string `json:"rule_id"`
+	RuleName string `json:"rule_name"`
 }
 
 func headerLines(header map[string][]string) []headerLine {

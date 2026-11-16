@@ -33,6 +33,9 @@
   <label for="body_conditions">Body conditions</label>
   <textarea id="body_conditions" name="body_conditions">{{.Form.BodyMatch}}</textarea>
   <p class="hint">Optional. One condition per line, for a form body or a JSON body. grant_type=refresh_token matches a form field. user.role=admin matches a JSON path. Numbers and booleans match their text, so active=true matches true. A body over 1 MiB does not match. Every line must match.</p>
+  <label for="priority">Priority</label>
+  <input id="priority" name="priority" type="number" step="1" value="{{.Form.Priority}}">
+  <p class="hint">Optional. Higher numbers win before the usual path and condition order. Leave it empty for 0. Negative numbers are allowed. Equal priorities use the existing order.</p>
   <label for="delay_ms">Delay (ms)</label>
   <input id="delay_ms" name="delay_ms" type="number" min="0" max="60000" step="1" value="{{.Form.DelayMS}}">
   <p class="hint">Optional. Wait this many milliseconds before the response is written. Use it to try loading states, spinners, and client timeouts. 0 means no wait. The maximum is 60000.</p>
