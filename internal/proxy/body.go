@@ -34,6 +34,7 @@ type bodyCapture struct {
 	buf       bytes.Buffer
 	truncated bool
 	wrote     bool
+	upgrade   bool
 }
 
 func (c *bodyCapture) WriteHeader(status int) {
@@ -85,7 +86,11 @@ func (c *bodyCapture) note(status int, body []byte) {
 func (c *bodyCapture) snapshot() (int, http.Header, []byte, bool) {
 	status := c.status
 	if status == 0 {
-		status = http.StatusOK
+		if c.upgrade {
+			status = http.StatusSwitchingProtocols
+		} else {
+			status = http.StatusOK
+		}
 	}
 	header := c.Header().Clone()
 	body := append([]byte(nil), c.buf.Bytes()...)
