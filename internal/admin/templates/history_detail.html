@@ -11,8 +11,11 @@
   <dt>Source</dt><dd>{{.Source}}</dd>
   <dt>Upstream</dt><dd>{{if .Upstream}}{{.Upstream}}{{else}}none{{end}}</dd>
   <dt>Timestamp</dt><dd>{{.When}}</dd>
+  <dt>Rule</dt><dd>{{if .RuleID}}{{if .RuleName}}{{.RuleName}}{{else}}unnamed{{end}}{{else}}none{{end}}</dd>
   <dt>Rule id</dt><dd>{{if .RuleID}}{{.RuleID}}{{else}}none{{end}}</dd>
   <dt>Delay</dt><dd>{{if .Delay}}{{.Delay}}{{else}}0 ms{{end}}</dd>
+  <dt>Fault</dt><dd>{{if .Fault}}{{.Fault}}{{else}}none{{end}}</dd>
+  <dt>Step</dt><dd>{{if .Step}}{{.Step}}{{else}}none{{end}}</dd>
 </dl>
 <h2>Request headers</h2>
 {{if .RequestHeaders}}

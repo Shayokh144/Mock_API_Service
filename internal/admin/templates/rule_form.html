@@ -30,9 +30,33 @@
   <label for="query_conditions">Query conditions</label>
   <textarea id="query_conditions" name="query_conditions">{{.Form.Query}}</textarea>
   <p class="hint">Optional. One condition per line. refresh_token means that query key is present. page=2 means that exact value. Every line must match.</p>
+  <label for="header_conditions">Header conditions</label>
+  <textarea id="header_conditions" name="header_conditions">{{.Form.HeaderMatch}}</textarea>
+  <p class="hint">Optional. One condition per line. Authorization means the header is present. Authorization:absent means it is missing or empty. Accept-Language:prefix=th matches a prefix. X-Request-Id:contains=okya matches text inside the value. user.email:regex=@okya\.test$ uses a regular expression. Header names ignore case. ** in a path is only a whole trailing segment and matches the rest of the path.</p>
   <label for="body_conditions">Body conditions</label>
   <textarea id="body_conditions" name="body_conditions">{{.Form.BodyMatch}}</textarea>
   <p class="hint">Optional. One condition per line, for a form body or a JSON body. grant_type=refresh_token matches a form field. user.role=admin matches a JSON path. Numbers and booleans match their text, so active=true matches true. A body over 1 MiB does not match. Every line must match.</p>
+  <label for="priority">Priority</label>
+  <input id="priority" name="priority" type="number" step="1" value="{{.Form.Priority}}">
+  <p class="hint">Optional. Higher numbers win before the usual path and condition order. Leave it empty for 0. Negative numbers are allowed. Equal priorities use the existing order.</p>
+  <label for="max_uses">Max uses</label>
+  <input id="max_uses" name="max_uses" type="number" min="0" step="1" value="{{.Form.MaxUses}}">
+  <p class="hint">Optional. Leave empty or 0 for unlimited. A positive number is how many times this rule can match in this process. The count is not saved. Edit, re-enable, session reset, or a restart restores it.</p>
+  <label for="sequence">Response sequence</label>
+  <select id="sequence" name="sequence">
+    <option value="stick" {{if ne .Form.Sequence "loop"}}selected{{end}}>stick on last</option>
+    <option value="loop" {{if eq .Form.Sequence "loop"}}selected{{end}}>loop</option>
+  </select>
+  <label for="responses">Responses</label>
+  <textarea id="responses" name="responses">{{.Form.Responses}}</textarea>
+  <p class="hint">Optional JSON list. Each item can set status_code, headers, body, delay_ms, raw_response, and fault. Empty means the single status, headers, and body above are used. stick stays on the last item. loop starts over. max_uses still caps how many times the rule matches.</p>
+  <label for="fault">Fault</label>
+  <select id="fault" name="fault">
+    <option value="" {{if not .Form.Fault}}selected{{end}}>none</option>
+    <option value="reset" {{if eq .Form.Fault "reset"}}selected{{end}}>reset</option>
+    <option value="hang" {{if eq .Form.Fault "hang"}}selected{{end}}>hang</option>
+  </select>
+  <p class="hint">Optional. reset closes the connection with no HTTP response. hang writes nothing until the client disconnects or UPSTREAM_TIMEOUT elapses, then closes. A delay runs first. A fresh request cannot also set a fault.</p>
   <label for="delay_ms">Delay (ms)</label>
   <input id="delay_ms" name="delay_ms" type="number" min="0" max="60000" step="1" value="{{.Form.DelayMS}}">
   <p class="hint">Optional. Wait this many milliseconds before the response is written. Use it to try loading states, spinners, and client timeouts. 0 means no wait. The maximum is 60000.</p>

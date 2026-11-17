@@ -29,9 +29,15 @@ type Rule struct {
 	UpstreamID   string            `json:"upstream_id,omitempty"`
 	Method       string            `json:"method"`
 	PathPattern  string            `json:"path_pattern"`
+	Priority     int               `json:"priority,omitempty"`
 	Match        MatchSpec         `json:"match,omitempty"`
 	StatusCode   int               `json:"status_code"`
 	DelayMS      int               `json:"delay_ms,omitempty"`
+	Fault        string            `json:"fault,omitempty"`
+	MaxUses      int               `json:"max_uses,omitempty"`
+	Responses    []ResponseStep    `json:"responses,omitempty"`
+	Sequence     string            `json:"sequence,omitempty"`
+	AppliedStep  int               `json:"-"`
 	ResponseMode string            `json:"response_mode,omitempty"`
 	RawResponse  string            `json:"raw_response,omitempty"`
 	MockHeader   bool              `json:"mock_header,omitempty"`
@@ -39,6 +45,9 @@ type Rule struct {
 	Body         json.RawMessage   `json:"body"`
 	CreatedAt    timeValue         `json:"created_at"`
 	UpdatedAt    timeValue         `json:"updated_at"`
+	// Temporary marks a rule loaded from --scenario without --scenario-persist.
+	// It is never serialized and is left out of every save.
+	Temporary bool `json:"-"`
 }
 
 // Draft is the input for creating or updating a rule.
@@ -50,9 +59,14 @@ type Draft struct {
 	UpstreamID   string
 	Method       string
 	PathPattern  string
+	Priority     int
 	Match        MatchSpec
 	StatusCode   int
 	DelayMS      int
+	Fault        string
+	MaxUses      int
+	Responses    []ResponseStep
+	Sequence     string
 	ResponseMode string
 	RawResponse  string
 	MockHeader   bool
@@ -101,6 +115,30 @@ func normalize(d Draft, allowWildcard bool) (Rule, error) {
 	if d.DelayMS < 0 || d.DelayMS > maxDelayMS {
 		return Rule{}, fmt.Errorf("delay_ms must be from 0 through %d", maxDelayMS)
 	}
+	fault, err := normalizeFault(d.Fault)
+	if err != nil {
+		return Rule{}, err
+	}
+	if d.FreshRequest && fault != "" {
+		return Rule{}, fmt.Errorf("a fresh request cannot also reset or hang")
+	}
+	if d.MaxUses < 0 {
+		return Rule{}, fmt.Errorf("max_uses must be zero or greater")
+	}
+	responses, err := normalizeResponses(d.Responses)
+	if err != nil {
+		return Rule{}, err
+	}
+	sequence := strings.ToLower(strings.TrimSpace(d.Sequence))
+	if sequence == "" {
+		sequence = "stick"
+	}
+	if sequence != "stick" && sequence != "loop" {
+		return Rule{}, fmt.Errorf("sequence must be stick or loop")
+	}
+	if len(responses) == 0 {
+		sequence = ""
+	}
 	mode, err := responseMode(d.ResponseMode)
 	if err != nil {
 		return Rule{}, err
@@ -125,9 +163,14 @@ func normalize(d Draft, allowWildcard bool) (Rule, error) {
 			UpstreamID:   upstreamID,
 			Method:       method,
 			PathPattern:  d.PathPattern,
+			Priority:     d.Priority,
 			Match:        match,
 			StatusCode:   parsed.Code,
 			DelayMS:      d.DelayMS,
+			Fault:        fault,
+			MaxUses:      d.MaxUses,
+			Responses:    responses,
+			Sequence:     sequence,
 			ResponseMode: ModeRaw,
 			RawResponse:  d.RawResponse,
 			MockHeader:   d.MockHeader,
@@ -153,12 +196,88 @@ func normalize(d Draft, allowWildcard bool) (Rule, error) {
 		UpstreamID:   upstreamID,
 		Method:       method,
 		PathPattern:  d.PathPattern,
+		Priority:     d.Priority,
 		Match:        match,
 		StatusCode:   d.StatusCode,
 		DelayMS:      d.DelayMS,
+		Fault:        fault,
+		MaxUses:      d.MaxUses,
+		Responses:    responses,
+		Sequence:     sequence,
 		Headers:      headers,
 		Body:         body,
 	}, nil
+}
+
+// ResponseStep is one entry in a rule's response sequence.
+type ResponseStep struct {
+	StatusCode   int               `json:"status_code" yaml:"status_code"`
+	Headers      map[string]string `json:"headers,omitempty" yaml:"headers,omitempty"`
+	Body         json.RawMessage   `json:"body,omitempty" yaml:"body,omitempty"`
+	DelayMS      int               `json:"delay_ms,omitempty" yaml:"delay_ms,omitempty"`
+	ResponseMode string            `json:"response_mode,omitempty" yaml:"response_mode,omitempty"`
+	RawResponse  string            `json:"raw_response,omitempty" yaml:"raw_response,omitempty"`
+	MockHeader   bool              `json:"mock_header,omitempty" yaml:"mock_header,omitempty"`
+	Fault        string            `json:"fault,omitempty" yaml:"fault,omitempty"`
+}
+
+func normalizeResponses(steps []ResponseStep) ([]ResponseStep, error) {
+	if len(steps) == 0 {
+		return nil, nil
+	}
+	out := make([]ResponseStep, len(steps))
+	for i, step := range steps {
+		fault, err := normalizeFault(step.Fault)
+		if err != nil {
+			return nil, fmt.Errorf("responses[%d]: %w", i, err)
+		}
+		if step.DelayMS < 0 || step.DelayMS > maxDelayMS {
+			return nil, fmt.Errorf("responses[%d]: delay_ms must be from 0 through %d", i, maxDelayMS)
+		}
+		mode, err := responseMode(step.ResponseMode)
+		if err != nil {
+			return nil, fmt.Errorf("responses[%d]: %w", i, err)
+		}
+		next := ResponseStep{DelayMS: step.DelayMS, Fault: fault, ResponseMode: mode}
+		if mode == ModeRaw {
+			parsed, err := ParseRawResponse(step.RawResponse)
+			if err != nil {
+				return nil, fmt.Errorf("responses[%d]: %w", i, err)
+			}
+			next.StatusCode = parsed.Code
+			next.RawResponse = step.RawResponse
+			next.MockHeader = step.MockHeader
+			next.Headers = map[string]string{}
+		} else if fault == "" {
+			if step.StatusCode < 100 || step.StatusCode > 599 {
+				return nil, fmt.Errorf("responses[%d]: status_code must be from 100 through 599", i)
+			}
+			headers, err := normalizeHeaders(step.Headers)
+			if err != nil {
+				return nil, fmt.Errorf("responses[%d]: %w", i, err)
+			}
+			body, err := normalizeBody(string(step.Body))
+			if err != nil {
+				return nil, fmt.Errorf("responses[%d]: %w", i, err)
+			}
+			next.StatusCode = step.StatusCode
+			next.Headers = headers
+			next.Body = body
+		}
+		out[i] = next
+	}
+	return out, nil
+}
+
+func normalizeFault(raw string) (string, error) {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "", "none":
+		return "", nil
+	case "reset", "hang":
+		return strings.ToLower(strings.TrimSpace(raw)), nil
+	default:
+		return "", fmt.Errorf("fault must be reset or hang")
+	}
 }
 
 func normalizeUpstreamID(raw string) (string, error) {
@@ -202,11 +321,23 @@ func validatePattern(pattern string, allowWildcard bool) error {
 			}
 			return fmt.Errorf("path pattern has an empty segment")
 		}
-		if seg == "*" {
+		if seg == "*" || seg == "**" {
 			if !allowWildcard {
 				return fmt.Errorf("path pattern must be an exact path")
 			}
+			if seg == "**" && i != len(parts)-1 {
+				return fmt.Errorf("** is only allowed as the last path segment")
+			}
 			continue
+		}
+		stars := 0
+		for _, part := range parts[1:] {
+			if part == "**" {
+				stars++
+			}
+		}
+		if stars > 1 {
+			return fmt.Errorf("path pattern can use ** only once")
 		}
 		if strings.ContainsAny(seg, "*?") {
 			return fmt.Errorf("path pattern must use * only as a whole segment")

@@ -44,8 +44,7 @@ func (s *Server) resetSession(w http.ResponseWriter, r *http.Request, id string)
 		writeError(w, http.StatusNotFound, "not_found", "session not found")
 		return
 	}
-	if id == sessions.DefaultID && r.URL.Query().Get("confirm") != sessions.DefaultID {
-		writeError(w, http.StatusConflict, "conflict", "reset of the default session needs ?confirm=default")
+	if !requireDefaultConfirm(w, r, id) {
 		return
 	}
 	var body resetBody
@@ -54,6 +53,9 @@ func (s *Server) resetSession(w http.ResponseWriter, r *http.Request, id string)
 	}
 	clearRules := body.Rules == nil || *body.Rules
 	clearHistory := body.History == nil || *body.History
+	if info.Rules != nil {
+		info.Rules.ResetRuntime()
+	}
 	if clearRules && info.Rules != nil {
 		if err := info.Rules.Clear(); err != nil {
 			writeError(w, http.StatusInternalServerError, "internal", "could not reset rules")

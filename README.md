@@ -27,7 +27,7 @@ Run commands from the repository root. The default rules file is `data/rules.jso
 
 ## Configuration
 
-The process reads only environment variables. It does not take flags, and it does not store upstream credentials.
+The process reads environment variables. It also accepts `--scenario` and `--scenario-persist`, described under Scenarios. It does not store upstream credentials.
 
 | Variable | Required | Default | Meaning |
 | --- | --- | --- | --- |
@@ -36,7 +36,8 @@ The process reads only environment variables. It does not take flags, and it doe
 | `ADMIN_LISTEN_ADDR` | no | `127.0.0.1:8081` | Dashboard loopback address. Same host rules as `LISTEN_ADDR`. It must differ from the proxy address. |
 | `RULES_PATH` | no | `data/rules.json` | Rule file. A missing file means there are no rules. |
 | `HISTORY_LIMIT` | no | `500` | Newest history entries kept in memory. |
-| `UPSTREAM_TIMEOUT` | no | `30s` | Time allowed for one upstream call. A WebSocket upgrade is not limited by this timeout. |
+| `UPSTREAM_TIMEOUT` | no | `30s` | Time allowed for the upstream to send response headers. When it expires the proxy returns `504` with `{"error":"upstream timed out"}`. A WebSocket upgrade is not limited by this timeout. A stream that has already started is not cut off. |
+| `MAX_BODY_BYTES` | no | `8388608` | Largest request body and fully buffered upstream response. A request over the cap is `413`. A known-length upstream response over the cap is `502` with `{"error":"upstream response too large"}`. Zero, a negative value, or a non-integer fails startup. Rule bodies and body-condition matching stay at 1 MiB. |
 
 ```sh
 export UPSTREAM_BASE_URL='https://upstream.example.com'
@@ -82,9 +83,11 @@ Open [http://127.0.0.1:8081/_admin/upstreams](http://127.0.0.1:8081/_admin/upstr
 6. Add another, then choose **Set as fallback**. That upstream handles requests that match no prefix. Do not restart the proxy. Prefixed upstreams keep serving at the same time.
 7. On **New rule** or **Edit**, choose that upstream, or **Any upstream**.
 
-A named rule matches when the request resolves to that upstream, by its prefix or as the fallback. **Any upstream** matches for every resolved upstream, and also when none is resolved. Rules see the path after the prefix is removed. When both match the same path, the more specific pattern still wins. If the patterns tie, the named rule wins over Any.
+A named rule matches when the request resolves to that upstream, by its prefix or as the fallback. **Any upstream** matches for every resolved upstream, and also when none is resolved. Rules see the path after the prefix is removed. When both match the same path, the more specific pattern still wins. If the patterns tie, the named rule wins over Any. A rule can set `priority`. A higher number wins before that path order, including a wildcard against an exact path. Missing priority is 0. Negative numbers are allowed. Equal priorities, including every rule left at 0, keep the existing order.
 
 Passthrough uses the resolved upstream. Its base URL path is joined in front of the forwarded path.
+
+An absolute `Location` or `Content-Location` that uses the matched upstream's scheme and host is rewritten to this proxy: the request's Host on that session port, plus the upstream's path prefix. Relative URLs and URLs for any other host stay as the upstream sent them. On `Set-Cookie`, a `Domain` that matches the upstream host is dropped, `Secure` is dropped because the proxy is plain HTTP, and `Path` is prefixed when that upstream has a path prefix. A mocked rule response keeps the headers the rule saved. The default session and test sessions both do this.
 
 A WebSocket upgrade (`Connection: Upgrade` and an `Upgrade` header) is tunneled. The proxy does not buffer that response and does not apply `UPSTREAM_TIMEOUT` to the open socket. History records status 101 and does not store the messages. A path prefix is removed the same way as any other forwarded call.
 
@@ -291,7 +294,9 @@ An empty body is the right shape for `204`. Invalid JSON is rejected and the rul
 
 A path pattern still ignores the query string. Add **Query conditions** or **Body conditions** when calls that share one path should do different things. Each box takes one condition per line. `key=value` is an exact match. A bare `key` means that key is present, with any value. Every line must match. Keys are case-sensitive. The order of the lines does not matter.
 
-Query conditions read the URL query. Body conditions read a form body (`application/x-www-form-urlencoded`) or a JSON body. JSON can use a top-level key or a dot path such as `user.role=admin`. Numbers and booleans match their text, so `active=true` matches `true` and `count=1` matches `1`. The proxy reads the body once, up to 1 MiB, and puts the original bytes back. Passthrough and Fresh request forward those original bytes, including a gzip body. A body over 1 MiB, or one that cannot be decoded, does not satisfy body conditions. The request can still be forwarded when it is under the 8 MiB proxy limit.
+Header conditions read request headers. The name is case-insensitive. A bare name means the header is present. `Authorization:absent` means it is missing or empty. `Accept-Language:prefix=th`, `X-Request-Id:contains=okya`, and `user.email:regex=@okya\.test$` are the other operators. The same operators work on query and body lines. `page=2` stays an exact match. A path may end with `**`, which is one whole segment and matches the rest of the path, including nothing. `id*` is still rejected. A JSON condition can index an array, so `items.0.qty` reads the first item. An old rules file with no header conditions and no operator still matches exactly as before.
+
+Query conditions read the URL query. Body conditions read a form body (`application/x-www-form-urlencoded`) or a JSON body. JSON can use a top-level key or a dot path such as `user.role=admin`. Numbers and booleans match their text, so `active=true` matches `true` and `count=1` matches `1`. The proxy reads the body once, up to 1 MiB, and puts the original bytes back. Passthrough and Fresh request forward those original bytes, including a gzip body. A body over 1 MiB, or one that cannot be decoded, does not satisfy body conditions. The request can still be forwarded when it is under `MAX_BODY_BYTES` (8 MiB unless you set that variable).
 
 A rule with more conditions wins over an otherwise equal rule with fewer. Two rules may share a method and path when their conditions differ. An older rules file has no `match` field and keeps matching only on method and path.
 
@@ -324,6 +329,16 @@ The wait applies to a saved mock and to a Fresh request rule. A fresh rule waits
 Use a delay to try loading states, spinners, retry logic, and client timeouts without a slow server.
 
 The rules list shows `1500 ms`. A zero delay is left blank. History records the delay that was applied. The detail page shows it, and the list shows it when it is not zero. An older rules file with no `delay_ms` field loads as `0`.
+
+## Uses and response sequences
+
+`max_uses` is optional. Empty or `0` means the rule can match forever. A positive number is how many times it can be chosen in this process. The saved file keeps `max_uses` and does not keep the count. The count returns to full when the rule is edited, re-enabled, the session is reset, or the process restarts. The rules list shows `0 of 1 left` while a limit is in force. A test session counts separately from the default session.
+
+`responses` is an optional list. Each item can set `status_code`, `headers`, `body`, `delay_ms`, `raw_response`, and `fault`. A rule with no list uses its single status, headers, and body. `sequence` is `stick` (the default) or `loop`. Stick stays on the last item. Loop starts over. History records the step number, starting at 1. A rule can set both fields: the list chooses the response, and `max_uses` still stops the rule after that many matches.
+
+## Fault
+
+**Fault** is optional. Leave it at none for a normal response. `reset` closes the connection after the delay and sends no HTTP status line, so the client sees a connection error. `hang` writes nothing until the client disconnects or `UPSTREAM_TIMEOUT` elapses, then closes. The delay runs first. A fresh-request rule cannot also set a fault. History records source `fault`, the fault name, and the matched rule, with status 0. An older rules file with no `fault` field behaves as none.
 
 ## Fresh request
 
@@ -391,7 +406,7 @@ While the list is open, it asks for new rows about once a second and adds them a
 
 A fresh-request rule is a real server response, not a mock. Its source stays `upstream`, so **Real server** includes it. The source column says `upstream (fresh rule)` when a rule selected that response. A failed fresh request stays `upstream-error` and shows under All.
 
-Open a row to see headers and bodies. `Authorization` and `Cookie` values are hidden until you choose **Show value**. That control is a disclosure element, so the detail page still has no script. A preview longer than 64 KiB is marked truncated. The full body is still what the client and the upstream server exchanged, up to the 8 MiB buffer limit.
+Open a row to see headers and bodies. `Authorization` and `Cookie` values are hidden until you choose **Show value**. That control is a disclosure element, so the detail page still has no script. A preview longer than 64 KiB is marked truncated. For a buffered response, the full body is still what the client and the upstream server exchanged, up to `MAX_BODY_BYTES` (8 MiB by default). Server-sent events, chunked responses, and responses with no content length are streamed straight through and flushed as bytes arrive. History keeps the first 64 KiB of that stream and marks it truncated when the stream is longer. `UPSTREAM_TIMEOUT` applies until those response headers arrive, then the stream is not cut off by it. A mocked rule response is unchanged.
 
 History stores a decoded copy of the body when `Content-Encoding` is `gzip`, `deflate` (zlib or raw), `br`, or `identity`. Stacked encodings are undone from the outside in. The bytes and headers sent to the client stay unchanged. The decoded copy stops at 64 KiB. A corrupt or unknown encoding is a short note, not compressed bytes. A binary or non-UTF-8 body is a note with the size and content type. JSON is indented. Request bodies follow the same rules. Decoding happens when the row is recorded, so history keeps the preview text.
 
@@ -440,11 +455,11 @@ flutter run --dart-define=API_BASE_URL=http://10.0.2.2:PORT
 
 ## Rules API
 
-Rules live under `/_api/sessions/{id}/rules`. `id` can be `default`. The JSON uses the same checks as the dashboard form. `description` is the label shown as Name in the dashboard. `name` is an optional stable slug, stored as `api_name` so older `rules.json` files keep their labels. It matches `[a-z0-9][a-z0-9._-]{0,63}` and is unique in the session. `PUT /_api/sessions/{id}/rules/by-name/{name}` creates the rule or replaces it. The same path accepts GET, DELETE, and POST `enable` or `disable`. A colliding `name` on create is 409.
+Rules live under `/_api/sessions/{id}/rules`. `id` can be `default`. Every write to `default` — create, update, delete, enable, disable, a named upsert, scenario load, and reset — needs `?confirm=default`. Without that query the response is 409 and nothing changes. Test sessions do not need the flag. GET does not need it. `DELETE /_api/sessions/default` stays 409 because that session cannot be deleted, whether or not the flag is set. Dashboard form posts do not use this flag. The JSON uses the same checks as the dashboard form. `description` is the label shown as Name in the dashboard. `name` is an optional stable slug, stored as `api_name` so older `rules.json` files keep their labels. It matches `[a-z0-9][a-z0-9._-]{0,63}` and is unique in the session. `PUT /_api/sessions/{id}/rules/by-name/{name}` creates the rule or replaces it. The same path accepts GET, DELETE, and POST `enable` or `disable`. A colliding `name` on create is 409.
 
 ## Reset and history
 
-`POST /_api/sessions/{id}/reset` clears that session's rules and history. The body `{"rules":true,"history":true}` can leave one of them out; a missing field means true. Resetting `default` needs `?confirm=default`, or the response is 409.
+`POST /_api/sessions/{id}/reset` clears that session's rules and history. The body `{"rules":true,"history":true}` can leave one of them out; a missing field means true. Resetting `default` needs `?confirm=default`, the same flag as every other write to that session, or the response is 409.
 
 `GET /_api/sessions/{id}/history` returns the newest entries. Filters are `method`, `path` (contains), `path_exact`, `upstream`, `status`, `mocked`, `rule_name`, `rule_id`, `since` (an RFC3339 time or an entry id), and `limit` (default 100, maximum 500). `Authorization` and `Cookie` are masked unless `reveal=1`. A body over the capture cap sets `truncated`. `DELETE /_api/sessions/{id}/history` clears history only.
 
@@ -452,7 +467,7 @@ Rules live under `/_api/sessions/{id}/rules`. `id` can be `default`. The JSON us
 
 A scenario is a YAML or JSON file with `version: 1`, a name, a description, and rules. Each rule needs a stable `name` and uses the same fields as the rules API.
 
-`POST /_api/sessions/{id}/scenarios/load` reads the scenario from the body. `Content-Type` is `application/json` or `application/yaml`. `?mode=replace` is the default and replaces the session's rules. `?mode=merge` updates rules by name and leaves the others. A bad file changes nothing. The response lists `created`, `updated`, and `unchanged` names. The API does not accept a file path.
+`POST /_api/sessions/{id}/scenarios/load` reads the scenario from the body. Loading into `default` also needs `?confirm=default`. `Content-Type` is `application/json` or `application/yaml`. `?mode=replace` is the default and replaces the session's rules. `?mode=merge` updates rules by name and leaves the others. A bad file changes nothing. The response lists `created`, `updated`, and `unchanged` names. The API does not accept a file path.
 
 `POST /_api/sessions` can include a `scenario` object so the new session starts with those rules. `GET /_api/sessions/{id}/scenario?format=yaml` exports the current rules. The rules page also has an Export as scenario link.
 
@@ -460,7 +475,7 @@ A scenario is a YAML or JSON file with `version: 1`, a name, a description, and 
 go run ./cmd/mockproxy --scenario scenarios/okya-auth-refresh-failure.yaml
 ```
 
-That merges the file into the default session and does not write `data/rules.json`. Add `--scenario-persist` to save it. Examples live in `scenarios/`. They use dummy data only. `upstream` is an upstream name or `Any`. `query_conditions` and `body_conditions` are `key=value` strings. `headers` is an object or a list of `Name: value` strings. `body` is JSON. A `raw_response` string switches the rule to raw mode. `GET` accepts `?upstream=` with the same meaning as the dashboard filter. A session holds at most 500 rules. Edits to `default` are written to `data/rules.json`. Test-session rules stay in memory.
+That merges the file into the default session. Without `--scenario-persist`, those rules are temporary. They stay in memory and are left out of every save of `data/rules.json`, including a later save of an unrelated rule. Editing a temporary rule in the dashboard keeps it temporary, so that edit is not written either. Add `--scenario-persist` to save the scenario rules into `data/rules.json`. Examples live in `scenarios/`. They use dummy data only. `upstream` is an upstream name or `Any`. `query_conditions` and `body_conditions` are `key=value` strings. `headers` is an object or a list of `Name: value` strings. `body` is JSON. A `raw_response` string switches the rule to raw mode. `GET` accepts `?upstream=` with the same meaning as the dashboard filter. A session holds at most 500 rules. Edits to `default` are written to `data/rules.json`, except temporary scenario rules. Test-session rules stay in memory.
 
 Errors use one shape and do not include the token:
 
@@ -510,6 +525,7 @@ Use this on a Mac after the automated tests pass. The implementation environment
 24. History **URL contains** keeps `?q=user/me` and combines with the source tabs and the upstream menu. The rules **Upstream** menu keeps `?upstream=OKYA_AUTH_DEV`, includes Any rules for a named upstream, and shows only Any rules when Any is selected.
 25. **Create rule** on a history row or its detail page opens the new-rule form filled from that call. Nothing is saved until Create rule is pressed. A missing history id leaves the form empty.
 26. The rules list groups rules by upstream, in Upstreams-page order, then Any, then unknown ids. A named filter shows that block and the Any block. Edit, enable, disable, and delete return to the same filter.
+27. A rule can set fault to reset or hang. Reset closes with no HTTP status. Hang waits until the client leaves or `UPSTREAM_TIMEOUT`. A delay runs first. Fresh request plus a fault is rejected. History shows source fault and the matched rule. An older rules file with no fault field still loads.
 
 ## Troubleshooting
 
@@ -535,10 +551,11 @@ Use this on a Mac after the automated tests pass. The implementation environment
 | Limit | Result |
 | --- | --- |
 | Mock JSON body over 1 MiB | The dashboard refuses the rule. |
-| Request body over 8 MiB | `413`. The request is not forwarded. |
-| Request body over 1 MiB | Body conditions do not match. The request is still forwarded when it is under 8 MiB. |
-| Upstream response over 8 MiB | `502` with `{"error":"upstream response too large"}`. |
-| Upstream timeout or connection failure | `502` with `{"error":"upstream unavailable"}`. |
+| Request body over `MAX_BODY_BYTES` (8 MiB by default) | `413`. The request is not forwarded. |
+| Request body over 1 MiB | Body conditions do not match. The request is still forwarded when it is under `MAX_BODY_BYTES`. |
+| Buffered upstream response over `MAX_BODY_BYTES` | `502` with `{"error":"upstream response too large"}`. Chunked and unknown-length bodies are streamed instead. |
+| Upstream does not send headers before `UPSTREAM_TIMEOUT` | `504` with `{"error":"upstream timed out"}`. |
+| Upstream connection failure | `502` with `{"error":"upstream unavailable"}`. |
 | History preview | First 64 KiB, with a truncated flag. |
 | History rows | `HISTORY_LIMIT`, then the oldest row is dropped. |
 

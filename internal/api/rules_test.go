@@ -116,7 +116,7 @@ func TestRuleCRUDIsolationAndPersistence(t *testing.T) {
 		t.Fatal("test session wrote rules.json")
 	}
 
-	persisted := apiJSON(t, srv, http.MethodPost, "/_api/sessions/default/rules", token, `{"description":"kept","method":"GET","path":"/v1/kept","status":200,"body":{"n":1}}`)
+	persisted := apiJSON(t, srv, http.MethodPost, "/_api/sessions/default/rules?confirm=default", token, `{"description":"kept","method":"GET","path":"/v1/kept","status":200,"body":{"n":1}}`)
 	if persisted.Code != http.StatusCreated {
 		t.Fatalf("default create = %d %s", persisted.Code, persisted.Body)
 	}

@@ -37,6 +37,7 @@ type Config struct {
 	TokenPath       string
 	HistoryLimit    int
 	UpstreamTimeout time.Duration
+	MaxBufferedBody int
 }
 
 // Load reads configuration from getenv. Empty optional variables use defaults.
@@ -69,6 +70,10 @@ func Load(getenv func(string) string) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	maxBody, err := parseMaxBody(getenv("MAX_BODY_BYTES"))
+	if err != nil {
+		return Config{}, err
+	}
 
 	rulesPath := getenv("RULES_PATH")
 	if strings.TrimSpace(rulesPath) == "" {
@@ -84,6 +89,7 @@ func Load(getenv func(string) string) (Config, error) {
 		TokenPath:       TokenPath(rulesPath),
 		HistoryLimit:    historyLimit,
 		UpstreamTimeout: timeout,
+		MaxBufferedBody: maxBody,
 	}, nil
 }
 
@@ -207,4 +213,16 @@ func parseTimeout(raw string) (time.Duration, error) {
 		return 0, fmt.Errorf("UPSTREAM_TIMEOUT must be greater than zero")
 	}
 	return d, nil
+}
+
+func parseMaxBody(raw string) (int, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return MaxBufferedBody, nil
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n < 1 {
+		return 0, fmt.Errorf("MAX_BODY_BYTES must be a positive integer")
+	}
+	return n, nil
 }

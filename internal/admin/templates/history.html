@@ -44,6 +44,7 @@
       <th scope="col">Source</th>
       <th scope="col">Upstream</th>
       <th scope="col">Delay</th>
+      <th scope="col">Rule</th>
       <th scope="col">Timestamp</th>
       <th scope="col">Actions</th>
     </tr>
@@ -57,6 +58,7 @@
       <td>{{.Source}}</td>
       <td>{{.Upstream}}</td>
       <td>{{.Delay}}</td>
+      <td>{{if .RuleID}}{{if .RuleName}}{{.RuleName}}{{else}}unnamed{{end}} ({{.RuleID}}){{else}}none{{end}}</td>
       <td>{{.When}}</td>
       <td>
         {{if not $.ReadOnly}}

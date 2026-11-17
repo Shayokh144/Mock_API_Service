@@ -8,11 +8,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Shayokh144/Mock_API_Service/internal/config"
@@ -33,6 +36,9 @@ type Options struct {
 	Transport http.RoundTripper
 	Rules     *rules.Store
 	History   *history.Log
+	// MaxBody is the proxy buffer for request bodies and fully buffered upstream
+	// responses. Zero uses config.MaxBufferedBody. It does not change rule bodies.
+	MaxBody int
 }
 
 // Handler is the local proxy. /_admin is never forwarded.
@@ -43,6 +49,7 @@ type Handler struct {
 	transport http.RoundTripper
 	rules     *rules.Store
 	history   *history.Log
+	maxBody   int
 	wait      func(context.Context, time.Duration) error
 }
 
@@ -52,6 +59,10 @@ func New(opts Options) *Handler {
 	if timeout <= 0 {
 		timeout = config.DefaultUpstreamTimeout
 	}
+	maxBody := opts.MaxBody
+	if maxBody <= 0 {
+		maxBody = config.MaxBufferedBody
+	}
 	return &Handler{
 		upstream:  opts.Upstream,
 		upstreams: opts.Upstreams,
@@ -59,6 +70,7 @@ func New(opts Options) *Handler {
 		transport: opts.Transport,
 		rules:     opts.Rules,
 		history:   opts.History,
+		maxBody:   maxBody,
 	}
 }
 
@@ -78,7 +90,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) serveAPI(w http.ResponseWriter, r *http.Request) {
 	started := time.Now().UTC()
 	reqHeaders := r.Header.Clone()
-	payload, err := readUpTo(r.Body, config.MaxBufferedBody)
+	payload, err := readUpTo(r.Body, h.maxBody)
 	if r.Body != nil {
 		_ = r.Body.Close()
 	}
@@ -97,10 +109,17 @@ func (h *Handler) serveAPI(w http.ResponseWriter, r *http.Request) {
 	}
 
 	name, id, forwarded, dest, hasTarget := h.resolve(r.URL.Path)
-	capw := &bodyCapture{ResponseWriter: w}
+	capw := &bodyCapture{ResponseWriter: w, limit: h.maxBody}
 	if h.rules != nil {
 		if rule, ok := h.rules.MatchHTTP(r.Method, forwarded, id, r.URL.RawQuery, r.Header, payload); ok {
+			capw.step = rule.AppliedStep
 			if err := h.pause(r.Context(), rule.DelayMS); err != nil {
+				return
+			}
+			if rule.Fault != "" {
+				h.waitFault(capw, r, rule.Fault)
+				h.record(started, r, reqHeaders, payload, capw, history.SourceFault, rule.ID, id, name, forwarded, rule.DelayMS)
+				h.closeFault(capw)
 				return
 			}
 			if rule.FreshRequest {
@@ -134,6 +153,31 @@ func (h *Handler) serveAPI(w http.ResponseWriter, r *http.Request) {
 	h.record(started, r, reqHeaders, payload, capw, source, "", id, name, forwarded, 0)
 }
 
+func (h *Handler) waitFault(w *bodyCapture, r *http.Request, fault string) {
+	w.fault = fault
+	if fault != "hang" {
+		return
+	}
+	timer := time.NewTimer(h.timeout)
+	defer timer.Stop()
+	select {
+	case <-r.Context().Done():
+	case <-timer.C:
+	}
+}
+
+func (h *Handler) closeFault(w *bodyCapture) {
+	hj, ok := w.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return
+	}
+	conn, _, err := hj.Hijack()
+	if err != nil {
+		return
+	}
+	_ = conn.Close()
+}
+
 func (h *Handler) pause(ctx context.Context, delayMS int) error {
 	if delayMS <= 0 {
 		return nil
@@ -162,7 +206,7 @@ func (h *Handler) unavailable(w *bodyCapture, started time.Time, r *http.Request
 }
 
 func (h *Handler) finish(w http.ResponseWriter, r *http.Request, started time.Time, reqHeaders http.Header, payload []byte, source history.Source, ruleID, upstreamID, upstreamName string, status int, reason string) {
-	capw := &bodyCapture{ResponseWriter: w}
+	capw := &bodyCapture{ResponseWriter: w, limit: h.maxBody}
 	writeJSONError(capw, status, reason)
 	h.record(started, r, reqHeaders, payload, capw, source, ruleID, upstreamID, upstreamName, r.URL.Path, 0)
 }
@@ -290,6 +334,7 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, upstream *url.
 		incomingPath = r.URL.Path
 	}
 	incomingQuery := r.URL.RawQuery
+	prefix := h.routePrefix(r.URL.Path)
 	// A WebSocket (or other) upgrade must not be buffered, and the upstream
 	// timeout must not cancel the tunneled connection.
 	upgrade := isProtocolUpgrade(r.Header)
@@ -297,10 +342,23 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, upstream *url.
 		capture.upgrade = true
 	}
 	ctx := r.Context()
+	var cancel context.CancelFunc
+	var gate sync.Mutex
+	streaming := false
+	var timer *time.Timer
 	if !upgrade {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(r.Context(), h.timeout)
-		defer cancel()
+		var stop context.CancelCauseFunc
+		ctx, stop = context.WithCancelCause(r.Context())
+		defer stop(nil)
+		cancel = func() { stop(context.DeadlineExceeded) }
+		timer = time.AfterFunc(h.timeout, func() {
+			gate.Lock()
+			defer gate.Unlock()
+			if !streaming {
+				cancel()
+			}
+		})
+		defer timer.Stop()
 	}
 	outbound := r.WithContext(ctx)
 
@@ -316,10 +374,23 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, upstream *url.
 		},
 		Transport: h.transport,
 		ModifyResponse: func(resp *http.Response) error {
+			rewriteUpstreamResponse(resp, r.Host, upstream, prefix)
 			if upgrade || resp.StatusCode == http.StatusSwitchingProtocols {
 				return nil
 			}
-			body, err := readUpTo(resp.Body, config.MaxBufferedBody)
+			if isStreamResponse(resp) {
+				gate.Lock()
+				streaming = true
+				gate.Unlock()
+				if timer != nil {
+					timer.Stop()
+				}
+				if capture, ok := w.(*bodyCapture); ok {
+					capture.previewLimit = config.HistoryBodyPreview
+				}
+				return nil
+			}
+			body, err := readUpTo(resp.Body, h.maxBody)
 			if resp.Body != nil {
 				_ = resp.Body.Close()
 			}
@@ -336,15 +407,51 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, upstream *url.
 		},
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
 			failed = true
+			status := http.StatusBadGateway
 			reason := "upstream unavailable"
-			if errors.Is(err, errResponseTooLarge) {
+			switch {
+			case errors.Is(err, errResponseTooLarge):
 				reason = "upstream response too large"
+			case upstreamTimedOut(r, err):
+				status = http.StatusGatewayTimeout
+				reason = "upstream timed out"
 			}
-			writeJSONError(w, http.StatusBadGateway, reason)
+			writeJSONError(w, status, reason)
 		},
 	}
 	reverse.ServeHTTP(w, outbound)
 	return failed
+}
+
+func (h *Handler) routePrefix(path string) string {
+	if h.upstreams == nil {
+		return ""
+	}
+	route, ok := h.upstreams.Route(path)
+	if !ok {
+		return ""
+	}
+	return route.Upstream.Prefix
+}
+
+// isStreamResponse reports a body that should be forwarded as it arrives.
+// That is an event stream, a chunked body, or any response of unknown length.
+func isStreamResponse(resp *http.Response) bool {
+	if resp == nil {
+		return false
+	}
+	if media, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type")); err == nil && media == "text/event-stream" {
+		return true
+	}
+	if resp.ContentLength < 0 {
+		return true
+	}
+	for _, value := range resp.Header.Values("Transfer-Encoding") {
+		if strings.Contains(strings.ToLower(value), "chunked") {
+			return true
+		}
+	}
+	return false
 }
 
 // isProtocolUpgrade reports a Connection: Upgrade request with an Upgrade header.
@@ -373,12 +480,21 @@ func (h *Handler) record(started time.Time, r *http.Request, reqHeaders http.Hea
 	case capw.upgrade && status == http.StatusSwitchingProtocols && len(respRaw) == 0 && !respCut:
 		respBody = "protocol upgrade; messages were not captured"
 	case respCut:
-		respBody = fmt.Sprintf("body exceeds %d bytes and was not decoded", config.MaxBufferedBody)
+		respBody = fmt.Sprintf("body exceeds %d bytes and was not decoded", h.maxBody)
 		respTrunc = true
 	default:
 		respBody, respPlain, respTrunc, respDecoded = historyCopy(respHeaders, respRaw)
+		if capw.previewCut {
+			respTrunc = true
+		}
 	}
 	reqBody, reqTrunc := displayBody(reqHeaders, payload)
+	ruleName := ""
+	if ruleID != "" && h.rules != nil {
+		if matched, ok := h.rules.Get(ruleID); ok {
+			ruleName = matched.Name
+		}
+	}
 	h.history.Add(history.Entry{
 		StartedAt:             started,
 		DurationMS:            int(time.Since(started).Milliseconds()),
@@ -395,12 +511,23 @@ func (h *Handler) record(started time.Time, r *http.Request, reqHeaders http.Hea
 		ResponseDecoded:       respDecoded,
 		Source:                source,
 		RuleID:                ruleID,
+		RuleName:              ruleName,
+		Fault:                 capw.fault,
+		Step:                  capw.step,
 		DelayMS:               delayMS,
 		UpstreamID:            upstreamID,
 		UpstreamName:          upstreamName,
 		RequestBodyTruncated:  reqTrunc,
 		ResponseBodyTruncated: respTrunc,
 	})
+}
+
+func upstreamTimedOut(r *http.Request, err error) bool {
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(context.Cause(r.Context()), context.DeadlineExceeded) {
+		return true
+	}
+	var netErr net.Error
+	return errors.As(err, &netErr) && netErr.Timeout()
 }
 
 func writeJSONError(w http.ResponseWriter, status int, reason string) {

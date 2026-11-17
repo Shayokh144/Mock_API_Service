@@ -57,6 +57,9 @@ func (s *Server) loadScenario(w http.ResponseWriter, r *http.Request, id string)
 		writeError(w, http.StatusNotFound, "not_found", "session not found")
 		return
 	}
+	if !requireDefaultConfirm(w, r, id) {
+		return
+	}
 	format, ok := scenarioContentType(r.Header.Get("Content-Type"))
 	if !ok {
 		writeError(w, http.StatusUnsupportedMediaType, "unsupported_media_type", "Content-Type must be application/json or application/yaml")

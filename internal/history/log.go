@@ -19,6 +19,7 @@ const (
 	SourceUpstream      Source = "upstream"
 	SourceUpstreamError Source = "upstream-error"
 	SourceRejected      Source = "rejected"
+	SourceFault         Source = "fault"
 )
 
 // UpstreamAny is the stored id for a mock whose rule is not linked to an upstream.
@@ -42,6 +43,9 @@ type Entry struct {
 	ResponseDecoded       bool
 	Source                Source
 	RuleID                string
+	RuleName              string
+	Fault                 string
+	Step                  int
 	DelayMS               int
 	UpstreamID            string
 	UpstreamName          string

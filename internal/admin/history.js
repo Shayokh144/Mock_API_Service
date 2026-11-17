@@ -94,6 +94,13 @@
     }
   }
 
+  function ruleText(entry) {
+    if (!entry.rule_id) {
+      return "none";
+    }
+    return (entry.rule_name || "unnamed") + " (" + entry.rule_id + ")";
+  }
+
   function cell(text) {
     var td = document.createElement("td");
     td.textContent = text;
@@ -110,7 +117,7 @@
     table.appendChild(caption);
     var head = document.createElement("thead");
     var headRow = document.createElement("tr");
-    ["Method", "URL", "Status", "Source", "Upstream", "Delay", "Timestamp", "Actions"].forEach(function (label) {
+    ["Method", "URL", "Status", "Source", "Upstream", "Delay", "Rule", "Timestamp", "Actions"].forEach(function (label) {
       var th = document.createElement("th");
       th.scope = "col";
       th.textContent = label;
@@ -145,6 +152,7 @@
     tr.appendChild(cell(entry.source));
     tr.appendChild(cell(entry.upstream || ""));
     tr.appendChild(cell(entry.delay || ""));
+    tr.appendChild(cell(ruleText(entry)));
     tr.appendChild(cell(entry.when));
     var action = document.createElement("td");
     var actions = document.createElement("div");
