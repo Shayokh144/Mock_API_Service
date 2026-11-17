@@ -62,7 +62,7 @@ dashboard at http://localhost:8081/_admin
 
 Open [http://localhost:8081/_admin](http://localhost:8081/_admin). Stop the process with Ctrl+C.
 
-The dashboard is a separate listener so a mocked HTML response cannot share the dashboard origin. `http://localhost:8080/_admin` returns 404 and says the dashboard is not served on the proxy port. A dashboard request whose Host is not `localhost`, `127.0.0.1`, or `[::1]` on the admin port is rejected with 403. Both listeners set a 10 second read-header timeout.
+The dashboard is a separate listener so a mocked HTML response cannot share the dashboard origin. `http://localhost:8080/_admin` returns 404 and says the dashboard is not served on the proxy port. A dashboard request whose Host is not `localhost`, `127.0.0.1`, or `[::1]` on the admin port is rejected with 403. A state-changing dashboard request is accepted only from a browser on that admin origin: `Sec-Fetch-Site: same-origin`, or a loopback `Origin` on the same admin host and port. A request with neither, including a curl-style POST that sends no `Origin` and no `Sec-Fetch-Site`, is 403 and changes nothing. Scripts create and change rules through `/_api` with the bearer token. Both listeners set a 10 second read-header timeout.
 
 Rules are saved when you create, edit, enable, disable, or delete them. They are still there after a restart. History is memory only. A restart clears history and keeps rules.
 
@@ -399,7 +399,7 @@ Delete one row from the list or the detail page. The list returns to the same fi
 
 ## Automation API
 
-The API listens only on the admin address, `http://127.0.0.1:8081` by default. The proxy port returns 404 for `/_api`.
+The API listens only on the admin address, `http://127.0.0.1:8081` by default. The proxy port returns 404 for `/_api`. Scripts that create, edit, or delete rules and upstreams use `/_api` with the bearer token. The dashboard forms are for a browser on the admin origin and do not accept a token.
 
 On the first start the process writes a 32-byte token to `data/admin.token` (or next to `RULES_PATH`). The directory is mode `0700` and the file is mode `0600`. Later starts reuse that file. The log prints the file path and never the token.
 
