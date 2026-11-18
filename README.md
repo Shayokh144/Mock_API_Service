@@ -70,7 +70,7 @@ Rules are saved when you create, edit, enable, disable, or delete them. They are
 
 `data/rules.json` and `data/upstreams.json` are ignored by git. `data/.gitkeep` stays in the repository.
 
-If `UPSTREAM_BASE_URL` is unset and no upstream is saved, the process still listens. The log adds `no upstream configured; add one at the dashboard`.
+If `UPSTREAM_BASE_URL` is unset and no upstream is saved, the process still listens. After the upstream file is loaded, the log adds `no upstream configured; add one at the dashboard`. When upstreams are saved, that line lists their prefixes in file order, for example `3 upstreams loaded: /okya, /okya-auth, /easyhotel`. One upstream uses the singular: `1 upstream loaded: /app`.
 
 ## Upstreams
 

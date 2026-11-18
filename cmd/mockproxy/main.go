@@ -81,6 +81,7 @@ func run(getenv func(string) string, stderr io.Writer, listen func(string, http.
 			return err
 		}
 	}
+	logger.Println(upstreamStatus(ups))
 	if err := loadStartupScenario(stderr, store, ups); err != nil {
 		fmt.Fprintln(stderr, err.Error())
 		return err
@@ -121,6 +122,22 @@ func run(getenv func(string) string, stderr io.Writer, listen func(string, http.
 		MaxBody:   cfg.MaxBufferedBody,
 	})
 	return listenBoth(listen, cfg.AdminListenAddr, adminHandler, cfg.ListenAddr, handler)
+}
+
+func upstreamStatus(store *upstreams.Store) string {
+	items := store.List()
+	if len(items) == 0 {
+		return "no upstream configured; add one at the dashboard"
+	}
+	prefixes := make([]string, len(items))
+	for i, item := range items {
+		prefixes[i] = item.Prefix
+	}
+	noun := "upstreams"
+	if len(items) == 1 {
+		noun = "upstream"
+	}
+	return fmt.Sprintf("%d %s loaded: %s", len(items), noun, strings.Join(prefixes, ", "))
 }
 
 func loadStartupScenario(stderr io.Writer, store *rules.Store, ups *upstreams.Store) error {

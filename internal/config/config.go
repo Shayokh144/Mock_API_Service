@@ -117,16 +117,12 @@ func TokenPath(rulesPath string) string {
 
 // StartupLines are the human-readable lines printed before the process listens.
 func StartupLines(cfg Config) []string {
-	lines := []string{
+	return []string{
 		"listening on " + cfg.ListenAddr,
 		"admin listening on " + cfg.AdminListenAddr,
 		"dashboard at " + DashboardURL(cfg.AdminListenAddr),
 		"admin token file " + cfg.TokenPath,
 	}
-	if cfg.Upstream == nil {
-		lines = append(lines, "no upstream configured; add one at the dashboard")
-	}
-	return lines
 }
 
 // DashboardURL is the local browser URL for the resolved listen address.

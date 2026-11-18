@@ -133,8 +133,13 @@ func TestLoadAllowsMissingUpstream(t *testing.T) {
 		t.Fatalf("upstream = %s", cfg.Upstream)
 	}
 	lines := StartupLines(cfg)
-	if len(lines) != 5 || !strings.Contains(lines[4], "no upstream configured") {
+	if len(lines) != 4 {
 		t.Fatalf("lines = %#v", lines)
+	}
+	for _, line := range lines {
+		if strings.Contains(line, "upstream") {
+			t.Fatalf("startup line mentions upstreams before they are loaded: %q", line)
+		}
 	}
 }
 
