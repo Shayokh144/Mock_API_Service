@@ -34,11 +34,11 @@ func TestSwitchingUpstreamChangesTheNextRequest(t *testing.T) {
 	defer develop.Close()
 
 	ups := upstreams.NewMemory()
-	stagingUp, err := ups.Create("staging", staging.URL+"/api", "")
+	stagingUp, err := ups.Create("staging", staging.URL+"/api", "/staging")
 	if err != nil {
 		t.Fatal(err)
 	}
-	developUp, err := ups.Create("develop", develop.URL, "")
+	developUp, err := ups.Create("develop", develop.URL, "/develop")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,27 +61,24 @@ func TestSwitchingUpstreamChangesTheNextRequest(t *testing.T) {
 	proxySrv := httptest.NewServer(handler)
 	defer proxySrv.Close()
 
-	if body := getBody(t, proxySrv.URL+"/v1/health"); body != "staging" {
+	if body := getBody(t, proxySrv.URL+"/staging/v1/health"); body != "staging" {
 		t.Fatalf("first body = %s", body)
 	}
 	if stagingHits.Load() != 1 || developHits.Load() != 0 {
 		t.Fatalf("hits staging=%d develop=%d", stagingHits.Load(), developHits.Load())
 	}
-	mockBody := getBody(t, proxySrv.URL+"/v1/profile")
+	mockBody := getBody(t, proxySrv.URL+"/staging/v1/profile")
 	if mockBody != `{"from":"staging-rule"}` {
 		t.Fatalf("mock body = %s", mockBody)
 	}
 
-	if err := ups.Activate(developUp.ID); err != nil {
-		t.Fatal(err)
-	}
-	if body := getBody(t, proxySrv.URL+"/v1/health"); body != "develop" {
-		t.Fatalf("switched body = %s", body)
+	if body := getBody(t, proxySrv.URL+"/develop/v1/health"); body != "develop" {
+		t.Fatalf("develop body = %s", body)
 	}
 	if developHits.Load() != 1 {
 		t.Fatalf("develop hits = %d", developHits.Load())
 	}
-	anyBody := getBody(t, proxySrv.URL+"/v1/profile")
+	anyBody := getBody(t, proxySrv.URL+"/develop/v1/profile")
 	if anyBody != `{"from":"any"}` {
 		t.Fatalf("any body = %s", anyBody)
 	}
@@ -118,11 +115,11 @@ func TestNoUpstreamReturnsDashboardHint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resp.StatusCode != http.StatusServiceUnavailable || !strings.Contains(string(body), noUpstreamMessage) {
+	if resp.StatusCode != http.StatusNotFound || !strings.Contains(string(body), noUpstreamMessage) {
 		t.Fatalf("status=%d body=%s", resp.StatusCode, body)
 	}
 	entries := log.List()
-	if len(entries) != 1 || entries[0].UpstreamName != "none" || entries[0].UpstreamID != "" || entries[0].Source != history.SourceUpstreamError {
+	if len(entries) != 1 || entries[0].UpstreamName != "" || entries[0].UpstreamID != "" || entries[0].Source != history.SourceRejected {
 		t.Fatalf("entry = %+v", entries)
 	}
 }

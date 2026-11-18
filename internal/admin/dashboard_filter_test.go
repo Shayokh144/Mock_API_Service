@@ -24,11 +24,11 @@ func TestHistoryTextFilter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	okya, err := ups.Create("OKYA_AUTH_DEV", "http://127.0.0.1:9", "")
+	okya, err := ups.Create("OKYA_AUTH_DEV", "http://127.0.0.1:9", "/okya-auth")
 	if err != nil {
 		t.Fatal(err)
 	}
-	other, err := ups.Create("develop", "http://127.0.0.1:9", "")
+	other, err := ups.Create("develop", "http://127.0.0.1:9", "/develop")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,11 +108,11 @@ func TestRulesUpstreamFilter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	okya, err := ups.Create("OKYA_AUTH_DEV", "http://127.0.0.1:9", "")
+	okya, err := ups.Create("OKYA_AUTH_DEV", "http://127.0.0.1:9", "/okya-auth")
 	if err != nil {
 		t.Fatal(err)
 	}
-	other, err := ups.Create("develop", "http://127.0.0.1:9", "")
+	other, err := ups.Create("develop", "http://127.0.0.1:9", "/develop")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -159,8 +159,8 @@ func TestRulesUpstreamFilter(t *testing.T) {
 	if strings.Contains(unknown, "upstream=missing") || strings.Contains(unknown, `value="missing"`) {
 		t.Fatal("unknown upstream filter was kept")
 	}
-	okyaAt := strings.Index(unknown, "<h2>OKYA_AUTH_DEV · fallback</h2>")
-	developAt := strings.Index(unknown, "<h2>develop</h2>")
+	okyaAt := strings.Index(unknown, "<h2>OKYA_AUTH_DEV · /okya-auth</h2>")
+	developAt := strings.Index(unknown, "<h2>develop · /develop</h2>")
 	anyAt := strings.Index(unknown, "<h2>Any upstream</h2>")
 	if okyaAt < 0 || developAt < okyaAt || anyAt < developAt {
 		t.Fatalf("blocks are not in upstream order:\n%s", unknown)
@@ -169,10 +169,10 @@ func TestRulesUpstreamFilter(t *testing.T) {
 		t.Fatal("grouped tables still have an Upstream column")
 	}
 
-	assertContains(t, named, "<h2>OKYA_AUTH_DEV · fallback</h2>")
+	assertContains(t, named, "<h2>OKYA_AUTH_DEV · /okya-auth</h2>")
 	assertContains(t, named, "<h2>Any upstream</h2>")
 	assertContains(t, named, "1 rule")
-	if strings.Contains(named, "<h2>develop</h2>") {
+	if strings.Contains(named, "<h2>develop · /develop</h2>") {
 		t.Fatal("empty develop block was shown")
 	}
 }
@@ -191,7 +191,7 @@ func TestRuleGroupsKeepOrderAndFilter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ups.Create("unused", "http://127.0.0.1:9", ""); err != nil {
+	if _, err := ups.Create("unused", "http://127.0.0.1:9", "/unused"); err != nil {
 		t.Fatal(err)
 	}
 	gone := "0123456789abcdef"
@@ -222,7 +222,7 @@ func TestRuleGroupsKeepOrderAndFilter(t *testing.T) {
 	client := dashboardClient()
 
 	page := get(t, client, srv.URL+"/_admin")
-	okyaAt := strings.Index(page, "<h2>OKYA_AUTH_DEV · /okya-auth · fallback</h2>")
+	okyaAt := strings.Index(page, "<h2>OKYA_AUTH_DEV · /okya-auth</h2>")
 	unknownAt := strings.Index(page, "<h2>Unknown upstream: "+gone+"</h2>")
 	anyAt := strings.Index(page, "<h2>Any upstream</h2>")
 	if okyaAt < 0 || unknownAt < okyaAt || anyAt < unknownAt {

@@ -27,8 +27,6 @@ func (s *Server) upstreamRoute(w http.ResponseWriter, r *http.Request, rest stri
 	switch {
 	case action == "edit" && r.Method == http.MethodGet:
 		s.editUpstream(w, r, id, upstreamForm{}, "")
-	case action == "activate" && r.Method == http.MethodPost:
-		s.activateUpstream(w, r, id)
 	case action == "delete" && r.Method == http.MethodPost:
 		s.deleteUpstream(w, r, id)
 	case action == "" && r.Method == http.MethodPost:
@@ -40,19 +38,14 @@ func (s *Server) upstreamRoute(w http.ResponseWriter, r *http.Request, rest stri
 
 func (s *Server) upstreamsPage(w http.ResponseWriter, r *http.Request, status int, message string) {
 	rows := []upstreamRow{}
-	activeID := ""
 	port := s.appPort(r)
 	if s.upstreams != nil {
-		if active, ok := s.upstreams.Active(); ok {
-			activeID = active.ID
-		}
 		for _, item := range s.upstreams.List() {
 			localURL, androidURL := "", ""
 			if item.Prefix != "" {
 				localURL = "http://127.0.0.1:" + port + item.Prefix
 				androidURL = "http://10.0.2.2:" + port + item.Prefix
 			}
-			fallback := item.ID == activeID
 			rows = append(rows, upstreamRow{
 				ID:         item.ID,
 				Name:       item.Name,
@@ -60,31 +53,14 @@ func (s *Server) upstreamsPage(w http.ResponseWriter, r *http.Request, status in
 				Prefix:     item.Prefix,
 				LocalURL:   localURL,
 				AndroidURL: androidURL,
-				Routing:    routingStatus(item.Prefix, fallback),
-				Active:     fallback,
 			})
 		}
 	}
 	s.render(w, r, "upstreams", page{
-		Title:          "Upstreams",
-		Upstreams:      rows,
-		ActiveUpstream: s.activeUpstreamName(),
-		Error:          message,
+		Title:     "Upstreams",
+		Upstreams: rows,
+		Error:     message,
 	}, status)
-}
-
-func routingStatus(prefix string, fallback bool) string {
-	if prefix != "" {
-		status := "Always on via " + prefix
-		if fallback {
-			status += " and fallback"
-		}
-		return status
-	}
-	if fallback {
-		return "Fallback"
-	}
-	return "Not used"
 }
 
 func (s *Server) appPort(r *http.Request) string {
@@ -172,22 +148,6 @@ func (s *Server) updateUpstream(w http.ResponseWriter, r *http.Request, id strin
 	http.Redirect(w, r, "/_admin/upstreams", http.StatusSeeOther)
 }
 
-func (s *Server) activateUpstream(w http.ResponseWriter, r *http.Request, id string) {
-	if !sameOrigin(r) {
-		http.Error(w, "cross-origin form posts are not allowed", http.StatusForbidden)
-		return
-	}
-	if s.upstreams == nil {
-		http.NotFound(w, r)
-		return
-	}
-	if err := s.upstreams.Activate(id); err != nil {
-		http.NotFound(w, r)
-		return
-	}
-	http.Redirect(w, r, "/_admin/upstreams", http.StatusSeeOther)
-}
-
 func (s *Server) deleteUpstream(w http.ResponseWriter, r *http.Request, id string) {
 	if !sameOrigin(r) {
 		http.Error(w, "cross-origin form posts are not allowed", http.StatusForbidden)
@@ -199,10 +159,6 @@ func (s *Server) deleteUpstream(w http.ResponseWriter, r *http.Request, id strin
 	}
 	if _, ok := s.upstreams.Get(id); !ok {
 		http.NotFound(w, r)
-		return
-	}
-	if active, ok := s.upstreams.Active(); ok && active.ID == id {
-		s.upstreamsPage(w, r, http.StatusBadRequest, upstreams.ErrActive.Error())
 		return
 	}
 	if err := s.rules.DetachUpstream(id); err != nil {
@@ -281,15 +237,4 @@ func (s *Server) upstreamLabel(id string) string {
 		}
 	}
 	return "missing"
-}
-
-func (s *Server) activeUpstreamName() string {
-	if s.upstreams == nil {
-		return ""
-	}
-	item, ok := s.upstreams.Active()
-	if !ok {
-		return ""
-	}
-	return item.Name
 }

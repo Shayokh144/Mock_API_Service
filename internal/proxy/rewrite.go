@@ -29,7 +29,7 @@ func rewriteHeaderURL(header http.Header, name, proxyHost string, upstream *url.
 	next := make([]string, len(values))
 	changed := false
 	for i, value := range values {
-		rewritten, ok := rewriteAbsoluteURL(value, proxyHost, upstream, prefix)
+		rewritten, ok := rewriteLocation(value, proxyHost, upstream, prefix)
 		next[i] = rewritten
 		if ok {
 			changed = true
@@ -42,6 +42,30 @@ func rewriteHeaderURL(header http.Header, name, proxyHost string, upstream *url.
 	for _, value := range next {
 		header.Add(name, value)
 	}
+}
+
+func rewriteLocation(raw, proxyHost string, upstream *url.URL, prefix string) (string, bool) {
+	if rewritten, ok := rewriteRootRelative(strings.TrimSpace(raw), prefix); ok {
+		return rewritten, true
+	}
+	return rewriteAbsoluteURL(raw, proxyHost, upstream, prefix)
+}
+
+func rewriteRootRelative(raw, prefix string) (string, bool) {
+	if prefix == "" || raw == "" || !strings.HasPrefix(raw, "/") || strings.HasPrefix(raw, "//") {
+		return raw, false
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.IsAbs() || parsed.Host != "" {
+		return raw, false
+	}
+	parsed.Path = joinRedirectPath(prefix, parsed.Path)
+	parsed.RawPath = ""
+	rewritten := parsed.String()
+	if rewritten == raw {
+		return raw, false
+	}
+	return rewritten, true
 }
 
 func rewriteAbsoluteURL(raw, proxyHost string, upstream *url.URL, prefix string) (string, bool) {

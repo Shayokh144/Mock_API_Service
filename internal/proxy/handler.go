@@ -24,7 +24,7 @@ import (
 	"github.com/Shayokh144/Mock_API_Service/internal/upstreams"
 )
 
-const noUpstreamMessage = "no upstream is configured; add one at /_admin"
+const noUpstreamMessage = "no upstream matches this path"
 
 var errResponseTooLarge = errors.New("upstream response too large")
 
@@ -108,7 +108,7 @@ func (h *Handler) serveAPI(w http.ResponseWriter, r *http.Request) {
 		return io.NopCloser(bytes.NewReader(payload)), nil
 	}
 
-	name, id, forwarded, dest, hasTarget := h.resolve(r.URL.Path)
+	name, id, forwarded, prefix, viaReferer, dest, hasTarget := h.resolve(r)
 	capw := &bodyCapture{ResponseWriter: w, limit: h.maxBody}
 	if h.rules != nil {
 		if rule, ok := h.rules.MatchHTTP(r.Method, forwarded, id, r.URL.RawQuery, r.Header, payload); ok {
@@ -118,39 +118,39 @@ func (h *Handler) serveAPI(w http.ResponseWriter, r *http.Request) {
 			}
 			if rule.Fault != "" {
 				h.waitFault(capw, r, rule.Fault)
-				h.record(started, r, reqHeaders, payload, capw, history.SourceFault, rule.ID, id, name, forwarded, rule.DelayMS)
+				h.record(started, r, reqHeaders, payload, capw, history.SourceFault, rule.ID, id, name, forwarded, rule.DelayMS, viaReferer)
 				h.closeFault(capw)
 				return
 			}
 			if rule.FreshRequest {
 				if !hasTarget {
-					h.unavailable(capw, started, r, reqHeaders, payload, rule.ID, forwarded, rule.DelayMS)
+					h.rejectUnmatched(capw, started, r, reqHeaders, payload, rule.ID, forwarded, rule.DelayMS)
 					return
 				}
 				prepareFreshRequest(r.Header)
-				failed := h.forward(capw, r, dest, forwarded)
+				failed := h.forward(capw, r, dest, forwarded, prefix)
 				source := history.SourceUpstream
 				if failed {
 					source = history.SourceUpstreamError
 				}
-				h.record(started, r, reqHeaders, payload, capw, source, rule.ID, id, name, forwarded, rule.DelayMS)
+				h.record(started, r, reqHeaders, payload, capw, source, rule.ID, id, name, forwarded, rule.DelayMS, viaReferer)
 				return
 			}
 			writeMock(capw, rule)
-			h.record(started, r, reqHeaders, payload, capw, history.SourceMock, rule.ID, id, name, forwarded, rule.DelayMS)
+			h.record(started, r, reqHeaders, payload, capw, history.SourceMock, rule.ID, id, name, forwarded, rule.DelayMS, viaReferer)
 			return
 		}
 	}
 	if !hasTarget {
-		h.unavailable(capw, started, r, reqHeaders, payload, "", forwarded, 0)
+		h.rejectUnmatched(capw, started, r, reqHeaders, payload, "", forwarded, 0)
 		return
 	}
-	failed := h.forward(capw, r, dest, forwarded)
+	failed := h.forward(capw, r, dest, forwarded, prefix)
 	source := history.SourceUpstream
 	if failed {
 		source = history.SourceUpstreamError
 	}
-	h.record(started, r, reqHeaders, payload, capw, source, "", id, name, forwarded, 0)
+	h.record(started, r, reqHeaders, payload, capw, source, "", id, name, forwarded, 0, viaReferer)
 }
 
 func (h *Handler) waitFault(w *bodyCapture, r *http.Request, fault string) {
@@ -200,36 +200,40 @@ func sleepContext(ctx context.Context, d time.Duration) error {
 	}
 }
 
-func (h *Handler) unavailable(w *bodyCapture, started time.Time, r *http.Request, reqHeaders http.Header, payload []byte, ruleID, forwarded string, delayMS int) {
-	writeJSONError(w, http.StatusServiceUnavailable, noUpstreamMessage)
-	h.record(started, r, reqHeaders, payload, w, history.SourceUpstreamError, ruleID, "", "none", forwarded, delayMS)
+func (h *Handler) rejectUnmatched(w *bodyCapture, started time.Time, r *http.Request, reqHeaders http.Header, payload []byte, ruleID, forwarded string, delayMS int) {
+	writeJSONError(w, http.StatusNotFound, noUpstreamMessage)
+	h.record(started, r, reqHeaders, payload, w, history.SourceRejected, ruleID, "", "", forwarded, delayMS, false)
 }
 
 func (h *Handler) finish(w http.ResponseWriter, r *http.Request, started time.Time, reqHeaders http.Header, payload []byte, source history.Source, ruleID, upstreamID, upstreamName string, status int, reason string) {
 	capw := &bodyCapture{ResponseWriter: w, limit: h.maxBody}
 	writeJSONError(capw, status, reason)
-	h.record(started, r, reqHeaders, payload, capw, source, ruleID, upstreamID, upstreamName, r.URL.Path, 0)
+	h.record(started, r, reqHeaders, payload, capw, source, ruleID, upstreamID, upstreamName, r.URL.Path, 0, false)
 }
 
-func (h *Handler) resolve(path string) (name, id, forwarded string, dest *url.URL, ok bool) {
+func (h *Handler) resolve(r *http.Request) (name, id, forwarded, prefix string, viaReferer bool, dest *url.URL, ok bool) {
+	path := r.URL.Path
 	if path == "" {
 		path = "/"
 	}
 	if h.upstreams != nil {
 		route, found := h.upstreams.Route(path)
 		if !found {
-			return "none", "", path, nil, false
+			route, found = h.upstreams.MatchReferer(path, r.Referer())
+		}
+		if !found {
+			return "", "", path, "", false, nil, false
 		}
 		parsed, err := url.Parse(route.Upstream.BaseURL)
 		if err != nil || parsed.Host == "" {
-			return "none", route.Upstream.ID, route.ForwardedPath, nil, false
+			return route.Upstream.Name, route.Upstream.ID, route.ForwardedPath, route.Upstream.Prefix, route.ViaReferer, nil, false
 		}
-		return route.Upstream.Name, route.Upstream.ID, route.ForwardedPath, parsed, true
+		return route.Upstream.Name, route.Upstream.ID, route.ForwardedPath, route.Upstream.Prefix, route.ViaReferer, parsed, true
 	}
 	if h.upstream != nil {
-		return "", "", path, h.upstream, true
+		return "", "", path, "", false, h.upstream, true
 	}
-	return "none", "", path, nil, false
+	return "", "", path, "", false, nil, false
 }
 
 func writeMock(w http.ResponseWriter, rule rules.Rule) {
@@ -328,13 +332,12 @@ func isAPI(path string) bool {
 	return path == "/_api" || strings.HasPrefix(path, "/_api/")
 }
 
-func (h *Handler) forward(w http.ResponseWriter, r *http.Request, upstream *url.URL, forwardedPath string) bool {
+func (h *Handler) forward(w http.ResponseWriter, r *http.Request, upstream *url.URL, forwardedPath, prefix string) bool {
 	incomingPath := forwardedPath
 	if incomingPath == "" {
 		incomingPath = r.URL.Path
 	}
 	incomingQuery := r.URL.RawQuery
-	prefix := h.routePrefix(r.URL.Path)
 	// A WebSocket (or other) upgrade must not be buffered, and the upstream
 	// timeout must not cancel the tunneled connection.
 	upgrade := isProtocolUpgrade(r.Header)
@@ -423,17 +426,6 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, upstream *url.
 	return failed
 }
 
-func (h *Handler) routePrefix(path string) string {
-	if h.upstreams == nil {
-		return ""
-	}
-	route, ok := h.upstreams.Route(path)
-	if !ok {
-		return ""
-	}
-	return route.Upstream.Prefix
-}
-
 // isStreamResponse reports a body that should be forwarded as it arrives.
 // That is an event stream, a chunked body, or any response of unknown length.
 func isStreamResponse(resp *http.Response) bool {
@@ -469,7 +461,7 @@ func isProtocolUpgrade(h http.Header) bool {
 	return false
 }
 
-func (h *Handler) record(started time.Time, r *http.Request, reqHeaders http.Header, payload []byte, capw *bodyCapture, source history.Source, ruleID, upstreamID, upstreamName, forwardedPath string, delayMS int) {
+func (h *Handler) record(started time.Time, r *http.Request, reqHeaders http.Header, payload []byte, capw *bodyCapture, source history.Source, ruleID, upstreamID, upstreamName, forwardedPath string, delayMS int, viaReferer bool) {
 	if h.history == nil {
 		return
 	}
@@ -517,6 +509,7 @@ func (h *Handler) record(started time.Time, r *http.Request, reqHeaders http.Hea
 		DelayMS:               delayMS,
 		UpstreamID:            upstreamID,
 		UpstreamName:          upstreamName,
+		ViaReferer:            viaReferer && upstreamName != "",
 		RequestBodyTruncated:  reqTrunc,
 		ResponseBodyTruncated: respTrunc,
 	})

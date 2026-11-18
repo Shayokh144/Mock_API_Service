@@ -72,8 +72,11 @@ func run(getenv func(string) string, stderr io.Writer, listen func(string, http.
 		fmt.Fprintln(stderr, err.Error())
 		return err
 	}
+	for _, assigned := range ups.AssignedPrefixes() {
+		logger.Println(upstreams.PrefixWarning(assigned.Name, assigned.Prefix, cfg.ListenAddr))
+	}
 	if cfg.Upstream != nil {
-		if err := ups.Seed(cfg.Upstream.String()); err != nil {
+		if err := ups.Seed(cfg.Upstream.String(), cfg.UpstreamPrefix); err != nil {
 			fmt.Fprintln(stderr, err.Error())
 			return err
 		}

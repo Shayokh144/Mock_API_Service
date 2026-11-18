@@ -170,7 +170,7 @@ func TestRunSeedsUpstreamOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(raw), "https://staging.example.com/v1") || !strings.Contains(string(raw), "staging.example.com") {
+	if !strings.Contains(string(raw), "https://staging.example.com/v1") || !strings.Contains(string(raw), "staging.example.com") || !strings.Contains(string(raw), `"/app"`) {
 		t.Fatalf("file = %s", raw)
 	}
 	getenv = func(key string) string {
@@ -192,6 +192,74 @@ func TestRunSeedsUpstreamOnce(t *testing.T) {
 	}
 	if string(again) != string(raw) {
 		t.Fatalf("seed replaced the file:\n%s", again)
+	}
+}
+
+func TestRunAssignsEmptyPrefixAndWarns(t *testing.T) {
+	dir := t.TempDir()
+	rulesPath := filepath.Join(dir, "rules.json")
+	raw := []byte(`{
+	  "active_id": "0123456789abcdef",
+	  "upstreams": [
+	    {
+	      "id": "0123456789abcdef",
+	      "name": "EasyHotel_STAGING",
+	      "base_url": "https://easy.example",
+	      "created_at": "2026-11-05T05:00:00Z",
+	      "updated_at": "2026-11-05T05:00:00Z"
+	    }
+	  ]
+	}`)
+	if err := os.WriteFile(filepath.Join(dir, "upstreams.json"), raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stderr bytes.Buffer
+	err := run(func(key string) string {
+		if key == "RULES_PATH" {
+			return rulesPath
+		}
+		return ""
+	}, &stderr, func(string, http.Handler) error { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "warning: upstream EasyHotel_STAGING had no prefix; assigned /easyhotel-staging. App base URL is http://127.0.0.1:8080/easyhotel-staging"
+	if !strings.Contains(stderr.String(), want) {
+		t.Fatalf("stderr = %q", stderr.String())
+	}
+	saved, err := os.ReadFile(filepath.Join(dir, "upstreams.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(saved), `"/easyhotel-staging"`) || strings.Contains(string(saved), "active_id") {
+		t.Fatalf("file = %s", saved)
+	}
+}
+
+func TestRunSeedsCustomPrefix(t *testing.T) {
+	dir := t.TempDir()
+	var stderr bytes.Buffer
+	err := run(func(key string) string {
+		switch key {
+		case "UPSTREAM_BASE_URL":
+			return "https://easy.example"
+		case "UPSTREAM_PREFIX":
+			return "/easyhotel"
+		case "RULES_PATH":
+			return filepath.Join(dir, "rules.json")
+		default:
+			return ""
+		}
+	}, &stderr, func(string, http.Handler) error { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved, err := os.ReadFile(filepath.Join(dir, "upstreams.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(saved), `"/easyhotel"`) {
+		t.Fatalf("file = %s", saved)
 	}
 }
 

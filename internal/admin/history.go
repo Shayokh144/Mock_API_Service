@@ -428,7 +428,7 @@ func historyRowFrom(entry history.Entry) historyRow {
 		URL:      historyTarget(entry),
 		Status:   entry.Status,
 		Source:   historySourceLabel(entry),
-		Upstream: entry.UpstreamName,
+		Upstream: entry.UpstreamLabel(),
 		Delay:    delayLabel(entry.DelayMS),
 		When:     formatHistoryTime(entry.StartedAt),
 		RuleID:   entry.RuleID,

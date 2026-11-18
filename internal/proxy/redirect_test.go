@@ -71,7 +71,7 @@ func TestUpstreamRedirectAndCookieRewrite(t *testing.T) {
 		t.Fatalf("third-party Location = %s", other.Header.Get("Location"))
 	}
 	rel := getNoRedirect(t, client, proxySrv.URL+"/okya/rel")
-	if rel.Header.Get("Location") != "/next" {
+	if rel.Header.Get("Location") != "/okya/next" {
 		t.Fatalf("relative Location = %s", rel.Header.Get("Location"))
 	}
 	plain := getNoRedirect(t, client, proxySrv.URL+"/okya/plain")
@@ -91,6 +91,33 @@ func TestUpstreamRedirectAndCookieRewrite(t *testing.T) {
 	cdn := found["cdn"]
 	if cdn == nil || cdn.Domain != "cdn.example" || cdn.Secure || cdn.Path != "/okya/assets" || cdn.Value != "xyz" {
 		t.Fatalf("cdn cookie = %+v", cdn)
+	}
+}
+
+func TestRootRelativeLocationKeepsPrefix(t *testing.T) {
+	upstream, err := url.Parse("https://okya.example")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, ok := rewriteLocation("/login", "127.0.0.1:8080", upstream, "/okya-auth")
+	if !ok || got != "/okya-auth/login" {
+		t.Fatalf("location = %q ok=%v", got, ok)
+	}
+	got, ok = rewriteLocation("/login?next=/home", "127.0.0.1:8080", upstream, "/okya-auth")
+	if !ok || got != "/okya-auth/login?next=/home" {
+		t.Fatalf("query = %q ok=%v", got, ok)
+	}
+	got, ok = rewriteLocation("/okya-auth/login", "127.0.0.1:8080", upstream, "/okya-auth")
+	if ok || got != "/okya-auth/login" {
+		t.Fatalf("already prefixed = %q ok=%v", got, ok)
+	}
+	got, ok = rewriteLocation("next", "127.0.0.1:8080", upstream, "/okya-auth")
+	if ok || got != "next" {
+		t.Fatalf("relative = %q ok=%v", got, ok)
+	}
+	got, ok = rewriteLocation("//cdn.example/login", "127.0.0.1:8080", upstream, "/okya-auth")
+	if ok || got != "//cdn.example/login" {
+		t.Fatalf("protocol-relative = %q ok=%v", got, ok)
 	}
 }
 

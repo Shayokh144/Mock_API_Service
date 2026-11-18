@@ -1,10 +1,9 @@
 {{define "upstreams"}}
 {{template "head" .}}
 {{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{end}}
-{{if .ActiveUpstream}}<p>Fallback upstream: {{.ActiveUpstream}}. Requests with no matching prefix go here.</p>{{else}}<p>No fallback upstream. Requests with no prefix return an error until you add one.</p>{{end}}
+<p>Each upstream has its own prefix. A request uses the prefix on its path. A request with no prefix uses the Referer path when that matches a prefix. Otherwise the proxy returns 404.</p>
 <p><a class="button" href="/_admin/upstreams/new">New upstream</a></p>
 {{if .Upstreams}}
-<p>Upstreams with a prefix all work at the same time. The fallback only handles requests with no prefix.</p>
 <table>
   <caption>Saved upstreams</caption>
   <thead>
@@ -12,7 +11,6 @@
       <th scope="col">Name</th>
       <th scope="col">Prefix</th>
       <th scope="col">Base URL</th>
-      <th scope="col">Fallback</th>
       <th scope="col">Actions</th>
     </tr>
   </thead>
@@ -21,22 +19,14 @@
     <tr>
       <td>{{.Name}}</td>
       <td>
-        {{if .Prefix}}
         <code>{{.Prefix}}</code>
         <div>App: <code>{{.LocalURL}}</code></div>
         <div>Android emulator: <code>{{.AndroidURL}}</code></div>
-        {{else}}—{{end}}
       </td>
       <td><code>{{.BaseURL}}</code></td>
-      <td>{{.Routing}}</td>
       <td>
         <div class="actions">
           <a href="/_admin/upstreams/{{.ID}}/edit">Edit</a>
-          {{if not .Active}}
-          <form class="inline" method="post" action="/_admin/upstreams/{{.ID}}/activate">
-            <button type="submit">Set as fallback</button>
-          </form>
-          {{end}}
           <form class="inline" method="post" action="/_admin/upstreams/{{.ID}}/delete">
             <button class="danger" type="submit">Delete</button>
           </form>
@@ -46,7 +36,7 @@
     {{end}}
   </tbody>
 </table>
-<p class="hint">Deleting an upstream sets rules that named it to Any upstream. The fallback upstream stays until you set another one.</p>
+<p class="hint">Deleting an upstream sets rules that named it to Any upstream.</p>
 {{else}}
 <p>No upstreams yet.</p>
 {{end}}

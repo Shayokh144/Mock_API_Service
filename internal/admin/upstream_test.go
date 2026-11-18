@@ -97,7 +97,7 @@ func TestUpstreamDashboardCRUDSwitchAndHistory(t *testing.T) {
 	}
 
 	created, err := client.PostForm(adminSrv.URL+"/_admin/upstreams", url.Values{
-		"name": {"staging"}, "base_url": {stagingSrv.URL + "/api"},
+		"name": {"staging"}, "base_url": {stagingSrv.URL + "/api"}, "prefix": {"/staging"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -107,7 +107,7 @@ func TestUpstreamDashboardCRUDSwitchAndHistory(t *testing.T) {
 	}
 	created.Body.Close()
 	developResp, err := client.PostForm(adminSrv.URL+"/_admin/upstreams", url.Values{
-		"name": {"develop"}, "base_url": {developSrv.URL},
+		"name": {"develop"}, "base_url": {developSrv.URL}, "prefix": {"/develop"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -121,7 +121,7 @@ func TestUpstreamDashboardCRUDSwitchAndHistory(t *testing.T) {
 	staging := list[0]
 	develop := list[1]
 	shown := get(t, client, adminSrv.URL+"/_admin/upstreams")
-	if !strings.Contains(shown, "Fallback upstream: staging") || !strings.Contains(shown, developSrv.URL) || !strings.Contains(shown, "Set as fallback") {
+	if !strings.Contains(shown, "/staging") || !strings.Contains(shown, developSrv.URL) || strings.Contains(shown, "Set as fallback") {
 		t.Fatalf("list page = %s", shown)
 	}
 
@@ -145,7 +145,7 @@ func TestUpstreamDashboardCRUDSwitchAndHistory(t *testing.T) {
 		t.Fatalf("rules page = %s", rulesPage)
 	}
 
-	pass, err := http.Get(proxySrv.URL + "/v1/health")
+	pass, err := http.Get(proxySrv.URL + "/staging/v1/health")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,7 +153,7 @@ func TestUpstreamDashboardCRUDSwitchAndHistory(t *testing.T) {
 	if passBody != "staging-real" || gotPath != "/api/v1/health" {
 		t.Fatalf("passthrough body=%s path=%s", passBody, gotPath)
 	}
-	mock, err := http.Get(proxySrv.URL + "/v1/profile")
+	mock, err := http.Get(proxySrv.URL + "/staging/v1/profile")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,21 +162,13 @@ func TestUpstreamDashboardCRUDSwitchAndHistory(t *testing.T) {
 		t.Fatalf("mock status=%d body=%s", mock.StatusCode, mockBody)
 	}
 
-	use, err := client.PostForm(adminSrv.URL+"/_admin/upstreams/"+develop.ID+"/activate", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	use.Body.Close()
-	if active, _ := ups.Active(); active.ID != develop.ID {
-		t.Fatalf("active = %+v", active)
-	}
-	miss, err := http.Get(proxySrv.URL + "/v1/profile")
+	miss, err := http.Get(proxySrv.URL + "/develop/v1/profile")
 	if err != nil {
 		t.Fatal(err)
 	}
 	missBody := readAll(t, miss)
 	if strings.Contains(missBody, "mocked") || missBody != "develop-real" {
-		t.Fatalf("staging rule matched while develop was active: %d %s", miss.StatusCode, missBody)
+		t.Fatalf("staging rule matched a develop request: %d %s", miss.StatusCode, missBody)
 	}
 
 	historyPage := get(t, client, adminSrv.URL+"/_admin/history")
@@ -198,13 +190,13 @@ func TestUpstreamDashboardCRUDSwitchAndHistory(t *testing.T) {
 		t.Fatalf("detail = %s", detail)
 	}
 
-	blocked, err := client.PostForm(adminSrv.URL+"/_admin/upstreams/"+develop.ID+"/delete", nil)
+	removed, err := client.PostForm(adminSrv.URL+"/_admin/upstreams/"+develop.ID+"/delete", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	blockedBody := readAll(t, blocked)
-	if blocked.StatusCode != http.StatusBadRequest || !strings.Contains(blockedBody, "set another as fallback first") {
-		t.Fatalf("delete active status=%d body=%s", blocked.StatusCode, blockedBody)
+	removed.Body.Close()
+	if removed.StatusCode != http.StatusSeeOther {
+		t.Fatalf("delete develop status = %d", removed.StatusCode)
 	}
 	deleted, err := client.PostForm(adminSrv.URL+"/_admin/upstreams/"+staging.ID+"/delete", nil)
 	if err != nil {
