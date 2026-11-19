@@ -56,6 +56,10 @@
     if (groupOff()) {
       kept.set("group", "0");
     }
+    var open = openKeys();
+    for (var o = 0; o < open.length; o++) {
+      kept.append("open", open[o]);
+    }
     var encoded = kept.toString();
     if (!encoded) {
       return "";
@@ -114,9 +118,14 @@
       if (groupOff()) {
         kept.set("group", "0");
       }
+      var open = openKeys();
+      for (var o = 0; o < open.length; o++) {
+        kept.append("open", open[o]);
+      }
       var href = kept.toString();
       links[i].setAttribute("href", "/_admin/history" + (href ? "?" + href : ""));
     }
+    refreshToggleLinks();
     var clearHref = "/_admin/history/clear" + filterQuery();
     var clearLink = document.getElementById("history-clear");
     if (clearLink) {
@@ -157,6 +166,7 @@
       return rows;
     }
     var table = document.createElement("table");
+    table.className = "history";
     var caption = document.createElement("caption");
     caption.textContent = "Recorded requests";
     table.appendChild(caption);
@@ -231,28 +241,36 @@
     tr.className = "history-group";
     tr.setAttribute("data-kind", "group");
     tr.setAttribute("data-group", entry.group_key || "");
-    var td = document.createElement("td");
-    td.colSpan = 9;
-    var details = document.createElement("details");
-    var groupSummary = document.createElement("summary");
-    groupSummary.appendChild(field("method", entry.method || ""));
-    groupSummary.appendChild(field("path", entry.path || ""));
-    groupSummary.appendChild(field("upstream", entry.upstream || ""));
-    groupSummary.appendChild(field("when", entry.when || ""));
-    groupSummary.appendChild(field("count", ""));
-    groupSummary.appendChild(field("status", ""));
-    groupSummary.appendChild(field("sources", ""));
-    details.appendChild(groupSummary);
-    var table = document.createElement("table");
-    var head = document.createElement("thead");
-    head.appendChild(headerRow());
-    table.appendChild(head);
-    var body = document.createElement("tbody");
-    table.appendChild(body);
-    details.appendChild(table);
-    td.appendChild(details);
-    tr.appendChild(td);
+    tr.setAttribute("data-open", "0");
+    tr.appendChild(cell(entry.method || ""));
+    var urlCell = document.createElement("td");
+    var link = document.createElement("a");
+    link.className = "history-toggle";
+    link.href = "/_admin/history";
+    link.setAttribute("aria-expanded", "false");
+    link.appendChild(field("arrow", "\u25b6"));
+    var path = field("path", entry.path || "");
+    path.className = "history-path";
+    link.appendChild(path);
+    var count = field("count", "");
+    count.className = "history-count";
+    link.appendChild(count);
+    urlCell.appendChild(link);
+    tr.appendChild(urlCell);
+    tr.appendChild(namedCell("status", ""));
+    tr.appendChild(namedCell("sources", ""));
+    tr.appendChild(namedCell("upstream", entry.upstream || ""));
+    tr.appendChild(namedCell("delay", ""));
+    tr.appendChild(namedCell("rule", ""));
+    tr.appendChild(namedCell("when", entry.when || ""));
+    tr.appendChild(cell(""));
     return tr;
+  }
+
+  function namedCell(name, text) {
+    var td = cell(text);
+    td.setAttribute("data-field", name);
+    return td;
   }
 
   function setField(group, name, text) {
@@ -265,15 +283,26 @@
     }
   }
 
-  function visibleMembers(group) {
-    var members = group.querySelectorAll("tr[data-id]");
-    var visible = [];
+  function membersOf(group) {
+    var key = group.getAttribute("data-group");
+    var list = [];
+    var child = group.nextElementSibling;
+    while (child && child.getAttribute("data-kind") !== "group" && child.getAttribute("data-group") === key) {
+      list.push(child);
+      child = child.nextElementSibling;
+    }
+    return list;
+  }
+
+  function matchedMembers(group) {
+    var members = membersOf(group);
+    var matched = [];
     for (var i = 0; i < members.length; i++) {
-      if (!members[i].hidden) {
-        visible.push(members[i]);
+      if (members[i].getAttribute("data-match") !== "0") {
+        matched.push(members[i]);
       }
     }
-    return visible;
+    return matched;
   }
 
   function statusText(rowsInGroup) {
@@ -316,29 +345,111 @@
     return parts.join(", ");
   }
 
+  function setLines(group, name, lines) {
+    var nodes = group.querySelectorAll("[data-field]");
+    var cell = null;
+    for (var i = 0; i < nodes.length; i++) {
+      if (nodes[i].getAttribute("data-field") === name) {
+        cell = nodes[i];
+        break;
+      }
+    }
+    if (!cell) {
+      return;
+    }
+    while (cell.firstChild) {
+      cell.removeChild(cell.firstChild);
+    }
+    for (var n = 0; n < lines.length; n++) {
+      if (n) {
+        cell.appendChild(document.createElement("br"));
+      }
+      cell.appendChild(document.createTextNode(lines[n]));
+    }
+  }
+
+  function sharedColumn(rowsInGroup, index) {
+    if (!rowsInGroup.length) {
+      return "";
+    }
+    var cells = rowsInGroup[0].querySelectorAll("td");
+    var first = cells[index] ? cells[index].textContent : "";
+    for (var i = 1; i < rowsInGroup.length; i++) {
+      var next = rowsInGroup[i].querySelectorAll("td");
+      var text = next[index] ? next[index].textContent : "";
+      if (text !== first) {
+        return "";
+      }
+    }
+    if (index === 6 && first === "none") {
+      return "";
+    }
+    return first;
+  }
+
   function refreshSummary(group, members) {
     if (!members) {
-      members = visibleMembers(group);
+      members = matchedMembers(group);
     }
     if (!members.length) {
       return;
     }
     var count = members.length;
     setField(group, "count", count === 1 ? "1 request" : count + " requests");
-    setField(group, "status", statusText(members));
-    setField(group, "sources", sourceText(members));
+    setLines(group, "status", statusText(members).split(", "));
+    setLines(group, "sources", sourceText(members).split(", "));
     var first = members[0].querySelectorAll("td");
     setField(group, "when", first[7] ? first[7].textContent : "");
     setField(group, "upstream", first[4] ? first[4].textContent : "");
+    setField(group, "delay", sharedColumn(members, 5));
+    setField(group, "rule", sharedColumn(members, 6));
   }
 
-  function findDirect(body, key) {
+  function paintChildren(group) {
+    var open = group.getAttribute("data-open") === "1";
+    var members = membersOf(group);
+    for (var i = 0; i < members.length; i++) {
+      var match = members[i].getAttribute("data-match") !== "0";
+      members[i].hidden = !(open && match);
+    }
+  }
+
+  function findSummary(body, key) {
     for (var i = 0; i < body.children.length; i++) {
-      if (body.children[i].getAttribute("data-group") === key) {
-        return body.children[i];
+      var node = body.children[i];
+      if (node.getAttribute("data-kind") === "group" && node.getAttribute("data-group") === key) {
+        return node;
       }
     }
     return null;
+  }
+
+  function findSingle(body, key) {
+    for (var i = 0; i < body.children.length; i++) {
+      var node = body.children[i];
+      if (node.getAttribute("data-kind") !== "group" && node.getAttribute("data-id") && node.getAttribute("data-group") === key && node.className.indexOf("history-child") === -1) {
+        return node;
+      }
+    }
+    return null;
+  }
+
+  function moveGroupToTop(summary) {
+    var body = summary.parentNode;
+    if (!body || body.firstChild === summary) {
+      return;
+    }
+    var key = summary.getAttribute("data-group");
+    var nodes = [summary];
+    var child = summary.nextElementSibling;
+    while (child && child.getAttribute("data-kind") !== "group" && child.getAttribute("data-group") === key) {
+      nodes.push(child);
+      child = child.nextElementSibling;
+    }
+    var anchor = body.firstChild;
+    for (var i = 0; i < nodes.length; i++) {
+      body.insertBefore(nodes[i], anchor);
+    }
   }
 
   function place(body, entry, query) {
@@ -348,27 +459,29 @@
       return;
     }
     var key = entry.group_key || "";
-    var existing = key ? findDirect(body, key) : null;
-    if (!existing) {
-      body.insertBefore(row, body.firstChild || null);
+    var summary = key ? findSummary(body, key) : null;
+    if (summary) {
+      row.className = "history-child";
+      row.hidden = summary.getAttribute("data-open") !== "1";
+      body.insertBefore(row, summary.nextSibling);
+      refreshSummary(summary, membersOf(summary));
+      moveGroupToTop(summary);
       return;
     }
-    if (existing.getAttribute("data-kind") !== "group") {
+    var single = key ? findSingle(body, key) : null;
+    if (single) {
       var created = buildGroup(entry);
-      var createdBody = created.querySelector("tbody");
-      body.replaceChild(created, existing);
-      createdBody.appendChild(row);
-      createdBody.appendChild(existing);
-      refreshSummary(created);
-      body.insertBefore(created, body.firstChild || null);
+      row.className = "history-child";
+      row.hidden = true;
+      single.className = "history-child";
+      single.hidden = true;
+      body.insertBefore(created, single);
+      body.insertBefore(row, single);
+      refreshSummary(created, membersOf(created));
+      moveGroupToTop(created);
       return;
     }
-    var inner = existing.querySelector("tbody");
-    if (inner) {
-      inner.insertBefore(row, inner.firstChild || null);
-    }
-    refreshSummary(existing);
-    body.insertBefore(existing, body.firstChild || null);
+    body.insertBefore(row, body.firstChild || null);
   }
 
   function knownIds(body) {
@@ -407,21 +520,23 @@
     var needle = text.toLowerCase();
     var list = rows.querySelectorAll("tr[data-id]");
     for (var i = 0; i < list.length; i++) {
-      list[i].hidden = !rowMatches(list[i], needle);
+      list[i].setAttribute("data-match", rowMatches(list[i], needle) ? "1" : "0");
     }
     var shown = 0;
     var groups = 0;
     for (var n = 0; n < rows.children.length; n++) {
       var child = rows.children[n];
       if (child.getAttribute("data-kind") === "group") {
-        var members = visibleMembers(child);
+        var members = matchedMembers(child);
         child.hidden = members.length === 0;
+        paintChildren(child);
         if (members.length) {
           refreshSummary(child, members);
           groups++;
           shown += members.length;
         }
-      } else if (child.getAttribute("data-id")) {
+      } else if (child.getAttribute("data-id") && child.className.indexOf("history-child") === -1) {
+        child.hidden = child.getAttribute("data-match") === "0";
         if (!child.hidden) {
           shown++;
           groups++;
@@ -429,6 +544,85 @@
       }
     }
     return { shown: shown, groups: groups };
+  }
+
+  function openKeys() {
+    var keys = [];
+    if (!rows) {
+      return keys;
+    }
+    var groups = rows.querySelectorAll('tr[data-kind="group"]');
+    for (var i = 0; i < groups.length; i++) {
+      if (groups[i].getAttribute("data-open") === "1") {
+        keys.push(groups[i].getAttribute("data-group") || "");
+      }
+    }
+    return keys;
+  }
+
+  function pageQuery(open) {
+    var params = new URLSearchParams(window.location.search);
+    var kept = new URLSearchParams();
+    var text = currentText();
+    var source = params.get("source");
+    var upstream = params.get("upstream");
+    var session = params.get("session");
+    if (text) {
+      kept.set("q", text);
+    }
+    if (session && session !== "default") {
+      kept.set("session", session);
+    }
+    if (source) {
+      kept.set("source", source);
+    }
+    if (upstream) {
+      kept.set("upstream", upstream);
+    }
+    if (groupOff()) {
+      kept.set("group", "0");
+    }
+    for (var i = 0; i < open.length; i++) {
+      if (open[i]) {
+        kept.append("open", open[i]);
+      }
+    }
+    var encoded = kept.toString();
+    return encoded ? "?" + encoded : "";
+  }
+
+  function refreshToggleLinks() {
+    if (!rows) {
+      return;
+    }
+    var current = openKeys();
+    var groups = rows.querySelectorAll('tr[data-kind="group"]');
+    for (var i = 0; i < groups.length; i++) {
+      var key = groups[i].getAttribute("data-group") || "";
+      var next = [];
+      for (var n = 0; n < current.length; n++) {
+        if (current[n] !== key) {
+          next.push(current[n]);
+        }
+      }
+      if (groups[i].getAttribute("data-open") !== "1") {
+        next.push(key);
+      }
+      var link = groups[i].querySelector("a.history-toggle");
+      if (link) {
+        link.setAttribute("href", "/_admin/history" + pageQuery(next));
+      }
+    }
+  }
+
+  function groupFrom(node) {
+    while (node && node !== document) {
+      if (node.getAttribute && node.getAttribute("data-kind") === "group") {
+        return node;
+      }
+      node = node.parentNode;
+    }
+    return null;
   }
 
   function writeSummary(label, text, shown, total, groups) {
@@ -496,6 +690,26 @@
       tick();
     });
   }
+
+  document.addEventListener("click", function (event) {
+    if (!rows || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+      return;
+    }
+    var group = groupFrom(event.target);
+    if (!group || !rows.contains(group)) {
+      return;
+    }
+    event.preventDefault();
+    var open = group.getAttribute("data-open") !== "1";
+    group.setAttribute("data-open", open ? "1" : "0");
+    setField(group, "arrow", open ? "\u25bc" : "\u25b6");
+    var link = group.querySelector("a.history-toggle");
+    if (link) {
+      link.setAttribute("aria-expanded", open ? "true" : "false");
+    }
+    paintChildren(group);
+    syncAddress();
+  });
 
   if (groupSelect) {
     groupSelect.addEventListener("change", function () {

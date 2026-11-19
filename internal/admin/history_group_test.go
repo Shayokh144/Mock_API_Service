@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"html"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
@@ -15,10 +16,10 @@ import (
 func TestGroupHistoryKeyOrderAndSummary(t *testing.T) {
 	start := time.Date(2026, 11, 19, 12, 0, 0, 0, time.UTC)
 	entries := []history.Entry{
-		{ID: "older", StartedAt: start, Method: "GET", Path: "/v1/items", RawQuery: "a=1", Status: 304, Source: history.SourceMock, UpstreamID: "u1", UpstreamName: "OKYA"},
+		{ID: "older", StartedAt: start, Method: "GET", Path: "/v1/items", RawQuery: "a=1", Status: 304, Source: history.SourceMock, UpstreamID: "u1", UpstreamName: "OKYA", DelayMS: 1500, RuleID: "abc", RuleName: "Saved"},
 		{ID: "other-path", StartedAt: start.Add(time.Second), Method: "GET", Path: "/v1/users/111", Status: 200, Source: history.SourceUpstream, UpstreamID: "u1", UpstreamName: "OKYA"},
 		{ID: "uuid", StartedAt: start.Add(2 * time.Second), Method: "GET", Path: "/v1/users/222", Status: 200, Source: history.SourceUpstream, UpstreamID: "u1", UpstreamName: "OKYA"},
-		{ID: "newer", StartedAt: start.Add(3 * time.Second), Method: "GET", Path: "/v1/items", RawQuery: "b=2", Status: 200, Source: history.SourceUpstream, UpstreamID: "u1", UpstreamName: "OKYA", ViaReferer: true},
+		{ID: "newer", StartedAt: start.Add(3 * time.Second), Method: "GET", Path: "/v1/items", RawQuery: "b=2", Status: 200, Source: history.SourceUpstream, UpstreamID: "u1", UpstreamName: "OKYA", ViaReferer: true, DelayMS: 1500, RuleID: "abc", RuleName: "Saved"},
 		{ID: "other-upstream", StartedAt: start.Add(4 * time.Second), Method: "GET", Path: "/v1/items", Status: 201, Source: history.SourceMock, UpstreamID: "u2", UpstreamName: "Other"},
 		{ID: "rejected-new", StartedAt: start.Add(5 * time.Second), Method: "GET", Path: "/v1/missing", Status: 0, Source: history.SourceRejected},
 		{ID: "rejected-old", StartedAt: start.Add(-time.Second), Method: "GET", Path: "/v1/missing", Status: 0, Source: history.SourceRejected},
@@ -60,8 +61,11 @@ func TestGroupHistoryKeyOrderAndSummary(t *testing.T) {
 	if items.Upstream != "OKYA (via Referer)" || items.Path != "/v1/items" {
 		t.Fatalf("collapsed item = %s %s", items.Upstream, items.Path)
 	}
-	if items.StatusSummary != "200 ×1, 304 ×1" || items.Sources != "upstream, mock" {
+	if items.StatusSummary != "200 ×1, 304 ×1" || items.Sources != "upstream (fresh rule), mock" {
 		t.Fatalf("item summary status=%s sources=%s", items.StatusSummary, items.Sources)
+	}
+	if items.Delay != "1500 ms" || items.Rule != "Saved (abc)" || len(items.StatusLines) != 2 {
+		t.Fatalf("shared summary delay=%q rule=%q lines=%v", items.Delay, items.Rule, items.StatusLines)
 	}
 	if groups[len(groups)-1].Path != "/v1/users/111" {
 		t.Fatalf("oldest group = %+v", groups[len(groups)-1])
@@ -84,10 +88,10 @@ func TestHistoryPageGroupsAfterFiltersAndToggle(t *testing.T) {
 	}
 	log := history.New(20)
 	start := time.Date(2026, 11, 19, 12, 0, 0, 0, time.UTC)
-	older := log.Add(history.Entry{StartedAt: start, Method: "GET", Path: "/v1/items", RawQuery: "a=1", Status: 304, Source: history.SourceMock, UpstreamID: okya.ID, UpstreamName: okya.Name, RuleID: "aaaaaaaaaaaaaaaa", RuleName: "Saved"})
+	older := log.Add(history.Entry{StartedAt: start, Method: "GET", Path: "/v1/items", RawQuery: "a=1", Status: 304, Source: history.SourceMock, UpstreamID: okya.ID, UpstreamName: okya.Name, RuleID: "aaaaaaaaaaaaaaaa", RuleName: "Saved", DelayMS: 1500})
 	other := log.Add(history.Entry{StartedAt: start.Add(time.Second), Method: "GET", Path: "/v1/users/111", Status: 200, Source: history.SourceUpstream, UpstreamID: okya.ID, UpstreamName: okya.Name})
-	newer := log.Add(history.Entry{StartedAt: start.Add(2 * time.Second), Method: "GET", Path: "/v1/items", RawQuery: "b=2", Status: 200, Source: history.SourceUpstream, UpstreamID: okya.ID, UpstreamName: okya.Name})
-	log.Add(history.Entry{StartedAt: start.Add(3 * time.Second), Method: "GET", Path: "/v1/items", Status: 500, Source: history.SourceMock, UpstreamID: okya.ID, UpstreamName: okya.Name})
+	newer := log.Add(history.Entry{StartedAt: start.Add(2 * time.Second), Method: "GET", Path: "/v1/items", RawQuery: "b=2", Status: 200, Source: history.SourceUpstream, UpstreamID: okya.ID, UpstreamName: okya.Name, DelayMS: 1500})
+	log.Add(history.Entry{StartedAt: start.Add(3 * time.Second), Method: "GET", Path: "/v1/items", Status: 500, Source: history.SourceMock, UpstreamID: okya.ID, UpstreamName: okya.Name, DelayMS: 1500})
 
 	dashboard, err := New(store, log, ups)
 	if err != nil {
@@ -101,31 +105,69 @@ func TestHistoryPageGroupsAfterFiltersAndToggle(t *testing.T) {
 	assertContains(t, page, "Filter: All. Showing 4 of 4 requests in 2 groups.")
 	assertContains(t, page, `id="history-group"`)
 	assertContains(t, page, `<option value="1" selected>On</option>`)
-	assertContains(t, page, "<details>")
-	assertContains(t, page, "<summary>")
-	assertContains(t, page, "3 requests")
-	assertContains(t, page, "200 ×1, 304 ×1, 500 ×1")
-	assertContains(t, page, "mock, upstream")
+	assertContains(t, page, "history-toggle")
+	assertContains(t, page, "history-count")
 	assertContains(t, page, "/v1/items?b=2")
 	assertContains(t, page, "/v1/items?a=1")
 	assertContains(t, page, "Create rule")
 	assertContains(t, page, "/delete")
 	assertContains(t, page, `data-id="`+newer.ID+`"`)
 	assertContains(t, page, `data-id="`+older.ID+`"`)
+	assertContains(t, page, `class="history-child"`)
+	if strings.Contains(page, "<details>") || strings.Contains(page, `colspan="9"`) {
+		t.Fatalf("group summary is not a table row:\n%s", page)
+	}
 	if strings.Contains(page, `href="/_admin/history?group=0"`) {
 		t.Fatalf("default links turned grouping off:\n%s", page)
 	}
-	itemsAt := strings.Index(page, `data-field="path">/v1/items`)
-	usersAt := strings.Index(page, "/v1/users/111")
-	if itemsAt < 0 || usersAt < 0 || itemsAt > usersAt {
+	cells := historyGroupCells(t, page)
+	if len(cells) != 9 {
+		t.Fatalf("group cells = %d\n%s", len(cells), page)
+	}
+	for i, want := range []string{"GET", "▶", "200 ×1", "mock", "OKYA", "1500 ms", "", formatHistoryTime(start.Add(3 * time.Second)), ""} {
+		if want != "" && !strings.Contains(html.UnescapeString(cells[i]), want) {
+			t.Fatalf("cell %d = %q, want %q", i, cells[i], want)
+		}
+	}
+	if !strings.Contains(cells[1], `data-field="path">/v1/items</span>`) || !strings.Contains(cells[1], "3 requests") {
+		t.Fatalf("url cell = %s", cells[1])
+	}
+	if !strings.Contains(cells[2], "<br>") || !strings.Contains(cells[2], "304 ×1") || !strings.Contains(cells[2], "500 ×1") {
+		t.Fatalf("status cell = %s", cells[2])
+	}
+	if !strings.Contains(cells[3], "<br>") || !strings.Contains(cells[3], "upstream") {
+		t.Fatalf("source cell = %s", cells[3])
+	}
+	if strings.Contains(cells[6], "Saved") || strings.Contains(cells[8], "Delete") {
+		t.Fatalf("rule/actions cells = %q %q", cells[6], cells[8])
+	}
+	if strings.Index(page, `data-field="path">/v1/items`) > strings.Index(page, "/v1/users/111") {
 		t.Fatalf("group order put the older path first:\n%s", page)
 	}
-	if strings.Count(page, "<details>") != 1 {
+	if strings.Count(page, `class="history-group"`) != 1 {
 		t.Fatalf("single requests were wrapped:\n%s", page)
 	}
-	if strings.Contains(page, "/v1/users/111?") {
-		t.Fatal("a different path was pulled into the items group")
+	if !strings.Contains(page, `class="history-child" data-id="`+newer.ID+`" data-group="`) || !strings.Contains(page, " hidden>") {
+		t.Fatalf("closed children are visible:\n%s", page)
 	}
+
+	opened := get(t, client, srv.URL+historyTogglePath(t, page))
+	if strings.Contains(opened, `class="history-child" data-id="`+newer.ID+`" data-group="`) && strings.Contains(opened, `data-id="`+newer.ID+`" data-group="`) {
+		child := opened[strings.Index(opened, `class="history-child"`):]
+		end := strings.Index(child, ">")
+		if strings.Contains(child[:end], "hidden") {
+			openAt := strings.Index(opened, `data-open=`)
+			snippet := ""
+			if openAt >= 0 {
+				snippet = opened[openAt : openAt+80]
+			}
+			t.Fatalf("open link left the child hidden: %s\npath %s\n%s", child[:end], historyTogglePath(t, page), snippet)
+		}
+	} else {
+		t.Fatalf("opened page lost the child row:\n%s", opened)
+	}
+	assertContains(t, opened, "▼")
+	assertContains(t, opened, `aria-expanded="true"`)
 
 	filtered := get(t, client, srv.URL+"/_admin/history?source=upstream")
 	assertContains(t, filtered, "Filter: Real server. Showing 2 of 4 requests in 2 groups.")
@@ -160,7 +202,7 @@ func TestHistoryPageGroupsAfterFiltersAndToggle(t *testing.T) {
 	}
 
 	script := readBody(t, mustGet(t, srv.URL+"/_admin/history.js"))
-	for _, want := range []string{`data-kind`, `group_key`, `params.get("group")`, `history-group`, `createElement("details")`} {
+	for _, want := range []string{`data-kind`, `group_key`, `params.get("group")`, `history-group`, `history-toggle`, `data-open`} {
 		if !strings.Contains(script, want) {
 			t.Fatalf("history.js missing %q", want)
 		}
@@ -168,4 +210,48 @@ func TestHistoryPageGroupsAfterFiltersAndToggle(t *testing.T) {
 	if strings.Contains(script, "innerHTML") {
 		t.Fatal("history.js inserts html")
 	}
+}
+
+func historyGroupCells(t *testing.T, page string) []string {
+	t.Helper()
+	start := strings.Index(page, `<tr class="history-group"`)
+	if start < 0 {
+		t.Fatalf("no group row:\n%s", page)
+	}
+	row := page[start:]
+	end := strings.Index(row, "</tr>")
+	if end < 0 {
+		t.Fatal("group row did not end")
+	}
+	row = row[:end]
+	var cells []string
+	for {
+		td := strings.Index(row, "<td")
+		if td < 0 {
+			break
+		}
+		row = row[td:]
+		close := strings.Index(row, "</td>")
+		if close < 0 {
+			t.Fatal("cell did not end")
+		}
+		cells = append(cells, row[:close])
+		row = row[close+5:]
+	}
+	return cells
+}
+
+func historyTogglePath(t *testing.T, page string) string {
+	t.Helper()
+	const marker = `class="history-toggle" href="`
+	start := strings.Index(page, marker)
+	if start < 0 {
+		t.Fatalf("no toggle link:\n%s", page)
+	}
+	rest := page[start+len(marker):]
+	end := strings.Index(rest, `"`)
+	if end < 0 {
+		t.Fatal("toggle href did not end")
+	}
+	return html.UnescapeString(rest[:end])
 }

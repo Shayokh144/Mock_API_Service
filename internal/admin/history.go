@@ -72,6 +72,8 @@ type historyLine struct {
 	FilterQuery template.URL
 	ReadOnly    bool
 	GroupKey    string
+	Child       bool
+	Hidden      bool
 }
 
 // historyGroup is one collapsed set of requests, or a single request when Rows has one entry.
@@ -83,8 +85,14 @@ type historyGroup struct {
 	When          string
 	CountLabel    string
 	StatusSummary string
+	StatusLines   []string
 	Sources       string
+	SourceLines   []string
+	Delay         string
+	Rule          string
 	Rows          []historyLine
+	Open          bool
+	ToggleQuery   template.URL
 	newest        time.Time
 }
 
@@ -291,14 +299,16 @@ func (s *Server) historyView(r *http.Request) ([]history.Entry, historyPageData)
 		shown = filterHistoryText(shown, text)
 	}
 	data.Shown = len(shown)
-	data.SourceAll = template.URL(historyQueryString("", upstreamKey, text, sessionID, data.Grouped))
-	data.SourceMock = template.URL(historyQueryString(string(history.SourceMock), upstreamKey, text, sessionID, data.Grouped))
-	data.SourceReal = template.URL(historyQueryString(string(history.SourceUpstream), upstreamKey, text, sessionID, data.Grouped))
-	data.FilterQuery = template.URL(historyQueryString(sourceKey, upstreamKey, text, sessionID, data.Grouped))
+	openKeys := historyOpenKeys(r)
+	data.SourceAll = template.URL(historyQueryString("", upstreamKey, text, sessionID, data.Grouped, openKeys))
+	data.SourceMock = template.URL(historyQueryString(string(history.SourceMock), upstreamKey, text, sessionID, data.Grouped, openKeys))
+	data.SourceReal = template.URL(historyQueryString(string(history.SourceUpstream), upstreamKey, text, sessionID, data.Grouped, openKeys))
+	data.FilterQuery = template.URL(historyQueryString(sourceKey, upstreamKey, text, sessionID, data.Grouped, openKeys))
 	data.UpstreamChoices = s.upstreamFilterChoices(entries, upstreamKey)
 	data.Entries = historyLines(shown, data.FilterQuery, data.ReadOnly)
 	if data.Grouped {
 		data.Groups = groupHistory(shown, data.Entries)
+		markGroupOpen(data.Groups, openKeys, sourceKey, upstreamKey, text, sessionID, data.Grouped)
 		data.GroupCount = len(data.Groups)
 	}
 	data.Summary = historySummary(data.FilterLabel, data.Text, data.Shown, data.Total, data.GroupCount, data.Grouped)
@@ -325,14 +335,31 @@ func historyReturnPath(r *http.Request) string {
 	if raw := strings.TrimSpace(r.URL.Query().Get("session")); raw != "" && raw != sessions.DefaultID {
 		sessionID = raw
 	}
-	query := historyQueryString(sourceKey, upstreamKey, normalizeHistoryText(r.URL.Query().Get("q")), sessionID, historyGrouped(r))
+	query := historyQueryString(sourceKey, upstreamKey, normalizeHistoryText(r.URL.Query().Get("q")), sessionID, historyGrouped(r), historyOpenKeys(r))
 	if query == "" {
 		return "/_admin/history"
 	}
 	return "/_admin/history" + query
 }
 
-func historyQueryString(source, upstream, text, sessionID string, grouped bool) string {
+func historyOpenKeys(r *http.Request) []string {
+	if r == nil || r.URL == nil {
+		return nil
+	}
+	seen := map[string]bool{}
+	var keys []string
+	for _, raw := range r.URL.Query()["open"] {
+		key := strings.TrimSpace(raw)
+		if key == "" || seen[key] {
+			continue
+		}
+		seen[key] = true
+		keys = append(keys, key)
+	}
+	return keys
+}
+
+func historyQueryString(source, upstream, text, sessionID string, grouped bool, open []string) string {
 	values := url.Values{}
 	if text != "" {
 		values.Set("q", text)
@@ -348,6 +375,11 @@ func historyQueryString(source, upstream, text, sessionID string, grouped bool) 
 	}
 	if !grouped {
 		values.Set("group", "0")
+	}
+	for _, key := range open {
+		if key != "" {
+			values.Add("open", key)
+		}
 	}
 	encoded := values.Encode()
 	if encoded == "" {

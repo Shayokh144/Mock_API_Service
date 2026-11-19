@@ -63,6 +63,8 @@ func groupHistory(entries []history.Entry, lines []historyLine) []historyGroup {
 			sources[i] = item.line.Source
 		}
 		first := pairs[0]
+		summary := statusSummary(statuses)
+		sourceSummary := distinctLabels(sources)
 		groups = append(groups, historyGroup{
 			Key:           key,
 			Method:        first.entry.Method,
@@ -70,8 +72,12 @@ func groupHistory(entries []history.Entry, lines []historyLine) []historyGroup {
 			Upstream:      first.entry.UpstreamLabel(),
 			When:          first.line.When,
 			CountLabel:    requestCountLabel(len(rows)),
-			StatusSummary: statusSummary(statuses),
-			Sources:       distinctLabels(sources),
+			StatusSummary: summary,
+			StatusLines:   splitSummary(summary),
+			Sources:       sourceSummary,
+			SourceLines:   splitSummary(sourceSummary),
+			Delay:         sharedText(delayValues(rows)),
+			Rule:          sharedText(ruleValues(rows)),
 			Rows:          rows,
 			newest:        first.entry.StartedAt,
 		})
@@ -80,6 +86,90 @@ func groupHistory(entries []history.Entry, lines []historyLine) []historyGroup {
 		return groups[i].newest.After(groups[j].newest)
 	})
 	return groups
+}
+
+func markGroupOpen(groups []historyGroup, open []string, source, upstream, text, sessionID string, grouped bool) {
+	selected := map[string]bool{}
+	for _, key := range open {
+		selected[key] = true
+	}
+	for i := range groups {
+		groups[i].Open = selected[groups[i].Key]
+		groups[i].ToggleQuery = template.URL(historyQueryString(source, upstream, text, sessionID, grouped, toggleOpenKeys(open, groups[i].Key, groups[i].Open)))
+		for j := range groups[i].Rows {
+			groups[i].Rows[j].Child = true
+			groups[i].Rows[j].Hidden = !groups[i].Open
+		}
+	}
+}
+
+func toggleOpenKeys(open []string, key string, currentlyOpen bool) []string {
+	next := make([]string, 0, len(open)+1)
+	if currentlyOpen {
+		for _, item := range open {
+			if item != key {
+				next = append(next, item)
+			}
+		}
+		return next
+	}
+	next = append(next, open...)
+	for _, item := range open {
+		if item == key {
+			return next
+		}
+	}
+	return append(next, key)
+}
+
+func splitSummary(summary string) []string {
+	if summary == "" {
+		return nil
+	}
+	return strings.Split(summary, ", ")
+}
+
+func delayValues(rows []historyLine) []string {
+	out := make([]string, len(rows))
+	for i, row := range rows {
+		out[i] = row.Delay
+	}
+	return out
+}
+
+func ruleValues(rows []historyLine) []string {
+	out := make([]string, len(rows))
+	for i, row := range rows {
+		out[i] = ruleCell(row)
+	}
+	return out
+}
+
+func ruleCell(row historyLine) string {
+	if row.RuleID == "" {
+		return "none"
+	}
+	name := row.RuleName
+	if name == "" {
+		name = "unnamed"
+	}
+	return name + " (" + row.RuleID + ")"
+}
+
+func sharedText(values []string) string {
+	if len(values) == 0 {
+		return ""
+	}
+	first := values[0]
+	for _, value := range values[1:] {
+		if value != first {
+			return ""
+		}
+	}
+	if first == "none" {
+		return ""
+	}
+	return first
 }
 
 func requestCountLabel(n int) string {
