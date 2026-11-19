@@ -75,7 +75,7 @@ func TestHistoryUpstreamFilter(t *testing.T) {
 	assertContains(t, onlyStaging, "source=mock&amp;upstream="+staging.ID)
 
 	combined := get(t, client, srv.URL+"/_admin/history?source=mock&upstream="+staging.ID)
-	assertContains(t, combined, "Filter: Mocked. Showing 1 of 4.")
+	assertContains(t, combined, "Filter: Mocked. Showing 1 of 4 requests in 1 group.")
 	assertContains(t, combined, "/v1/staging-mock")
 	if strings.Contains(combined, "/v1/staging-pass") || strings.Contains(combined, "/v1/any-mock") {
 		t.Fatalf("combined filter showed the wrong rows:\n%s", combined)
@@ -90,7 +90,7 @@ func TestHistoryUpstreamFilter(t *testing.T) {
 	}
 
 	bad := get(t, client, srv.URL+"/_admin/history?upstream=nope")
-	assertContains(t, bad, "Filter: All. Showing 4 of 4.")
+	assertContains(t, bad, "Filter: All. Showing 4 of 4 requests in 4 groups.")
 	assertContains(t, bad, "Upstream: All upstreams.")
 	assertContains(t, bad, "/v1/develop-pass")
 	if strings.Contains(bad, "upstream=nope") {
@@ -132,7 +132,7 @@ func TestHistoryUpstreamFilter(t *testing.T) {
 	}
 
 	missing := get(t, client, srv.URL+"/_admin/history?upstream=0011223344556677")
-	assertContains(t, missing, "Filter: All. Showing 0 of 4.")
+	assertContains(t, missing, "Filter: All. Showing 0 of 4 requests in 0 groups.")
 	assertContains(t, missing, "No entries for this filter.")
 	assertContains(t, missing, "Deleted upstream")
 

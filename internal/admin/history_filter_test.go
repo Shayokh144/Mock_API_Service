@@ -53,7 +53,7 @@ func TestHistorySourceFilter(t *testing.T) {
 	client := dashboardClient()
 
 	all := get(t, client, srv.URL+"/_admin/history")
-	assertContains(t, all, "Filter: All. Showing 6 of 6.")
+	assertContains(t, all, "Filter: All. Showing 6 of 6 requests in 6 groups.")
 	assertContains(t, all, `aria-current="page">All`)
 	assertContains(t, all, "upstream (fresh rule)")
 	if strings.Contains(all, "<script>") || strings.Contains(all, "onclick=") {
@@ -62,7 +62,7 @@ func TestHistorySourceFilter(t *testing.T) {
 	assertContains(t, all, `<script src="/_admin/history.js"></script>`)
 
 	mocked := get(t, client, srv.URL+"/_admin/history?source=mock")
-	assertContains(t, mocked, "Filter: Mocked. Showing 2 of 6.")
+	assertContains(t, mocked, "Filter: Mocked. Showing 2 of 6 requests in 2 groups.")
 	assertContains(t, mocked, `aria-current="page">Mocked`)
 	assertContains(t, mocked, "/v1/mock-a")
 	assertContains(t, mocked, "/v1/mock-b")
@@ -78,7 +78,7 @@ func TestHistorySourceFilter(t *testing.T) {
 	assertContains(t, mocked, `class="danger" type="submit">Clear all`)
 
 	real := get(t, client, srv.URL+"/_admin/history?source=upstream")
-	assertContains(t, real, "Filter: Real server. Showing 2 of 6.")
+	assertContains(t, real, "Filter: Real server. Showing 2 of 6 requests in 2 groups.")
 	assertContains(t, real, `aria-current="page">Real server`)
 	assertContains(t, real, "/v1/fresh")
 	assertContains(t, real, "upstream (fresh rule)")
@@ -88,7 +88,7 @@ func TestHistorySourceFilter(t *testing.T) {
 	}
 
 	invalid := get(t, client, srv.URL+"/_admin/history?source=nope")
-	assertContains(t, invalid, "Filter: All. Showing 6 of 6.")
+	assertContains(t, invalid, "Filter: All. Showing 6 of 6 requests in 6 groups.")
 	assertContains(t, invalid, `aria-current="page">All`)
 	assertContains(t, invalid, "/v1/huge")
 	if strings.Contains(invalid, "source=nope") {
@@ -112,7 +112,7 @@ func TestHistorySourceFilter(t *testing.T) {
 		t.Fatal("deleted mock is still stored")
 	}
 	afterDelete := get(t, client, srv.URL+"/_admin/history?source=mock")
-	assertContains(t, afterDelete, "Filter: Mocked. Showing 1 of 5.")
+	assertContains(t, afterDelete, "Filter: Mocked. Showing 1 of 5 requests in 1 group.")
 	assertContains(t, afterDelete, "/v1/mock-b")
 	if strings.Contains(afterDelete, "/v1/mock-a") {
 		t.Fatal("deleted row is still listed")
@@ -136,7 +136,7 @@ func TestHistorySourceFilter(t *testing.T) {
 		t.Fatalf("clear left %d entries", len(log.List()))
 	}
 	empty := get(t, client, srv.URL+cleared.Header.Get("Location"))
-	assertContains(t, empty, "Filter: Mocked. Showing 0 of 0.")
+	assertContains(t, empty, "Filter: Mocked. Showing 0 of 0 requests in 0 groups.")
 	assertContains(t, empty, "No history yet.")
 	after, err := os.ReadFile(path)
 	if err != nil {

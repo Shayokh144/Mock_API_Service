@@ -48,7 +48,7 @@ func TestHistoryTextFilter(t *testing.T) {
 	client := dashboardClient()
 
 	page := get(t, client, srv.URL+"/_admin/history?q=user/me")
-	assertContains(t, page, "Filter: All. Text: user/me. Showing 2 of 4.")
+	assertContains(t, page, "Filter: All. Text: user/me. Showing 2 of 4 requests in 2 groups.")
 	assertContains(t, page, `name="q"`)
 	assertContains(t, page, `value="user/me"`)
 	assertContains(t, page, "/API/User/Me")
@@ -61,7 +61,7 @@ func TestHistoryTextFilter(t *testing.T) {
 	assertContains(t, page, `href="/_admin/history?q=user%2Fme"`)
 
 	combined := get(t, client, srv.URL+"/_admin/history?source=mock&upstream="+other.ID+"&q=USER/ME")
-	assertContains(t, combined, "Filter: Mocked. Text: USER/ME. Showing 1 of 4.")
+	assertContains(t, combined, "Filter: Mocked. Text: USER/ME. Showing 1 of 4 requests in 1 group.")
 	assertContains(t, combined, "/v1/items?name=user/me")
 	if strings.Contains(combined, "/API/User/Me") || strings.Contains(combined, "/api/users") {
 		t.Fatalf("combined filter showed the wrong rows:\n%s", combined)
@@ -73,7 +73,7 @@ func TestHistoryTextFilter(t *testing.T) {
 	assertContains(t, combined, `action="/_admin/history/clear?q=USER%2FME&amp;source=mock&amp;upstream=`+other.ID+`"`)
 
 	blank := get(t, client, srv.URL+"/_admin/history?q=%20%20")
-	assertContains(t, blank, "Filter: All. Showing 4 of 4.")
+	assertContains(t, blank, "Filter: All. Showing 4 of 4 requests in 4 groups.")
 	if strings.Contains(blank, "q=") {
 		t.Fatal("blank text filter was kept")
 	}
