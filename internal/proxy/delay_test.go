@@ -145,7 +145,55 @@ func TestDelayStopsWhenTheClientCancels(t *testing.T) {
 	if sniff.wrote {
 		t.Fatal("cancelled delay still wrote a response")
 	}
-	if len(log.List()) != 0 {
-		t.Fatalf("history = %+v", log.List())
+	entries := log.List()
+	if len(entries) != 1 || entries[0].DelayMS != 5000 || entries[0].Status != 0 || entries[0].Source != history.SourceRejected {
+		t.Fatalf("history = %+v", entries)
+	}
+}
+
+func TestLongDelayIsRecordedAndStopsOnCancel(t *testing.T) {
+	store := rules.NewMemory()
+	saved, err := store.Create(rules.Draft{
+		Name: "long", Enabled: true, Method: "GET", PathPattern: "/v1/long",
+		StatusCode: 200, DelayMS: 120000, Body: `{"slow":true}`,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	log := history.New(10)
+	handler := New(Options{Rules: store, History: log, Timeout: time.Second})
+	handler.wait = func(ctx context.Context, d time.Duration) error {
+		if d != 120000*time.Millisecond {
+			t.Errorf("delay = %s", d)
+		}
+		return nil
+	}
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/long", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	entries := log.List()
+	if len(entries) != 1 || entries[0].DelayMS != 120000 || entries[0].RuleID != saved.ID || entries[0].Source != history.SourceMock {
+		t.Fatalf("history = %+v", entries)
+	}
+
+	cancelLog := history.New(5)
+	cancelled := New(Options{Rules: store, History: cancelLog, Timeout: time.Second})
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	req := httptest.NewRequest(http.MethodGet, "/v1/long", nil).WithContext(ctx)
+	sniff := &writeSniff{ResponseWriter: httptest.NewRecorder()}
+	started := time.Now()
+	cancelled.ServeHTTP(sniff, req)
+	if time.Since(started) > time.Second {
+		t.Fatal("a cancelled 120000 ms delay did not return promptly")
+	}
+	if sniff.wrote {
+		t.Fatal("cancelled delay wrote a response")
+	}
+	cancelledEntries := cancelLog.List()
+	if len(cancelledEntries) != 1 || cancelledEntries[0].DelayMS != 120000 || cancelledEntries[0].Status != 0 || cancelledEntries[0].RuleID != saved.ID {
+		t.Fatalf("cancelled history = %+v", cancelledEntries)
 	}
 }

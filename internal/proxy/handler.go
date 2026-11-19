@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"mime"
 	"net"
 	"net/http"
@@ -114,6 +115,8 @@ func (h *Handler) serveAPI(w http.ResponseWriter, r *http.Request) {
 		if rule, ok := h.rules.MatchHTTP(r.Method, forwarded, id, r.URL.RawQuery, r.Header, payload); ok {
 			capw.step = rule.AppliedStep
 			if err := h.pause(r.Context(), rule.DelayMS); err != nil {
+				capw.unwritten = true
+				h.record(started, r, reqHeaders, payload, capw, history.SourceRejected, rule.ID, id, name, forwarded, rule.DelayMS, viaReferer)
 				return
 			}
 			if rule.Fault != "" {
@@ -181,6 +184,9 @@ func (h *Handler) closeFault(w *bodyCapture) {
 func (h *Handler) pause(ctx context.Context, delayMS int) error {
 	if delayMS <= 0 {
 		return nil
+	}
+	if int64(delayMS) > int64(math.MaxInt64)/int64(time.Millisecond) {
+		return fmt.Errorf("delay_ms is too large")
 	}
 	wait := h.wait
 	if wait == nil {

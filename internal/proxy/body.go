@@ -37,6 +37,7 @@ type bodyCapture struct {
 	previewLimit int
 	previewCut   bool
 	upgrade      bool
+	unwritten    bool
 	limit        int
 	fault        string
 	step         int
@@ -120,7 +121,7 @@ func (c *bodyCapture) snapshot() (int, http.Header, []byte, bool) {
 		switch {
 		case c.upgrade:
 			status = http.StatusSwitchingProtocols
-		case c.fault != "":
+		case c.fault != "" || c.unwritten:
 			status = 0
 		default:
 			status = http.StatusOK

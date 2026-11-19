@@ -329,9 +329,9 @@ Content-Type: application/json
 
 ## Delay
 
-**Delay (ms)** waits before the response is written. Leave it at `0` for no wait. The maximum is `60000` (60 seconds).
+**Delay (ms)** waits before the response is written. Leave it at `0` for no wait. There is no upper limit. A negative number is rejected. A number that would overflow a duration is rejected.
 
-The wait applies to a saved mock and to a Fresh request rule. A fresh rule waits, then forwards. If the app cancels during the wait, the proxy stops and does not write a response.
+The wait applies to a saved mock and to a Fresh request rule. A fresh rule waits, then forwards. If the app cancels during the wait, the proxy stops at once and does not write a response. History still records the delay.
 
 Use a delay to try loading states, spinners, retry logic, and client timeouts without a slow server.
 
@@ -526,7 +526,7 @@ Use this on a Mac after the automated tests pass. The implementation environment
 18. History can show All, Mocked, or Real server. A fresh-request row appears under Real server as `upstream (fresh rule)`. A bad source query shows All. Delete keeps the filter. Clear all still removes every entry.
 19. The Upstreams page can add two base URLs, each with its own prefix, without a restart. A rule for one upstream does not match requests that resolve to the other, including a request routed by Referer. An Any rule still matches, including a request that matches no upstream. History shows the upstream name. An old rules file still loads.
 20. Two prefixed upstreams can serve at once. `/okya/api/v1/x?page=2` is forwarded as `/api/v1/x?page=2`, and `/okyax` does not match `/okya`. `GET /login` with `Referer: http://10.0.2.2:8080/okya/login/otp` is forwarded as `/login` to the `/okya` upstream. A request with no prefix and no matching Referer returns 404 from the proxy. History keeps the original path and the forwarded path. An old upstreams file with an empty prefix still loads, and that upstream receives a prefix derived from its name.
-21. A rule can wait up to 60000 ms before the response is written. `0` does not wait. The rules list shows `1500 ms` and leaves `0` blank. History records the delay. An older rules file with no `delay_ms` field loads as `0`. Cancelling during the wait writes no response.
+21. A rule can wait before the response is written. `120000` ms is accepted. A negative delay is rejected. A delay that would overflow a duration is rejected. `0` does not wait. The rules list shows `1500 ms` and leaves `0` blank. History records the delay. An older rules file with no `delay_ms` field loads as `0`. Cancelling during the wait writes no response.
 22. A raw response rule sends the pasted status, headers, and body. `Connection: close` closes the connection. `X-Mock-Response` is omitted unless the checkbox is on. An older rules file stays in Fields mode. The delay still applies.
 23. A POST `/oauth/token` rule with body condition `grant_type=refresh_token` returns the raw 401. `grant_type=authorization_code` still passes through. The rules list shows the condition. An older rules file with no conditions still matches on method and path.
 24. History **URL contains** keeps `?q=user/me` and combines with the source tabs and the upstream menu. The rules **Upstream** menu keeps `?upstream=OKYA_AUTH_DEV`, includes Any rules for a named upstream, and shows only Any rules when Any is selected.

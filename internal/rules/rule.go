@@ -6,9 +6,11 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"regexp"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/Shayokh144/Mock_API_Service/internal/config"
@@ -16,8 +18,9 @@ import (
 
 const maxPatternLength = 2048
 
-// maxDelayMS is the longest pause a rule may add before the response is written.
-const maxDelayMS = 60000
+// MaxDelayMS is the largest delay that fits in a time.Duration.
+// A larger value would wrap when converted to nanoseconds.
+const MaxDelayMS = int64(math.MaxInt64) / int64(time.Millisecond)
 
 // Rule is one saved mock. Body is null when the response has no body.
 type Rule struct {
@@ -112,8 +115,8 @@ func normalize(d Draft, allowWildcard bool) (Rule, error) {
 	if _, ok := allowedMethods[method]; !ok {
 		return Rule{}, fmt.Errorf("method must be one of GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS")
 	}
-	if d.DelayMS < 0 || d.DelayMS > maxDelayMS {
-		return Rule{}, fmt.Errorf("delay_ms must be from 0 through %d", maxDelayMS)
+	if err := CheckDelayMS(d.DelayMS); err != nil {
+		return Rule{}, err
 	}
 	fault, err := normalizeFault(d.Fault)
 	if err != nil {
@@ -221,6 +224,17 @@ type ResponseStep struct {
 	Fault        string            `json:"fault,omitempty" yaml:"fault,omitempty"`
 }
 
+// CheckDelayMS rejects a negative delay and a delay that would overflow time.Duration.
+func CheckDelayMS(ms int) error {
+	if ms < 0 {
+		return fmt.Errorf("delay_ms must be zero or greater")
+	}
+	if int64(ms) > MaxDelayMS {
+		return fmt.Errorf("delay_ms is too large")
+	}
+	return nil
+}
+
 func normalizeResponses(steps []ResponseStep) ([]ResponseStep, error) {
 	if len(steps) == 0 {
 		return nil, nil
@@ -231,8 +245,8 @@ func normalizeResponses(steps []ResponseStep) ([]ResponseStep, error) {
 		if err != nil {
 			return nil, fmt.Errorf("responses[%d]: %w", i, err)
 		}
-		if step.DelayMS < 0 || step.DelayMS > maxDelayMS {
-			return nil, fmt.Errorf("responses[%d]: delay_ms must be from 0 through %d", i, maxDelayMS)
+		if err := CheckDelayMS(step.DelayMS); err != nil {
+			return nil, fmt.Errorf("responses[%d]: %w", i, err)
 		}
 		mode, err := responseMode(step.ResponseMode)
 		if err != nil {
