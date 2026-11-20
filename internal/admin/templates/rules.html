@@ -53,8 +53,8 @@
         <td>{{.Conditions}}</td>
         <td>{{.Kind}}</td>
         <td>{{if .Enabled}}enabled{{else}}disabled{{end}}</td>
-        <td>{{if .Fresh}}fresh{{else}}mock{{end}}</td>
-        <td>{{.Status}}</td>
+        <td><span class="{{if .Fresh}}badge badge-neutral{{else}}badge badge-mock{{end}}">{{if .Fresh}}fresh{{else}}mock{{end}}</span></td>
+        <td><span class="{{statusClass .Status}}">{{.Status}}</span></td>
         <td>{{.Priority}}</td>
         <td>{{.Delay}}</td>
         <td>{{if .Fault}}{{.Fault}}{{else}}none{{end}}</td>

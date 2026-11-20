@@ -43,6 +43,9 @@ type historyPageData struct {
 	SessionAction   string
 	SessionID       string
 	ReadOnly        bool
+	Theme           string
+	Next            string
+	Nav             string
 }
 
 type historyUpstreamChoice struct {
@@ -312,7 +315,23 @@ func (s *Server) historyView(r *http.Request) ([]history.Entry, historyPageData)
 		data.GroupCount = len(data.Groups)
 	}
 	data.Summary = historySummary(data.FilterLabel, data.Text, data.Shown, data.Total, data.GroupCount, data.Grouped)
+	data.Theme = themeFrom(r)
+	data.Next = historyThemeNext(r, string(data.FilterQuery))
+	data.Nav = "history"
+	if r != nil && r.URL != nil {
+		data.Nav = navFrom(r.URL.Path)
+	}
 	return shown, data
+}
+
+// historyThemeNext returns to this history page with the filters that were kept.
+// A rejected source, upstream, or blank text query is not copied into the theme form.
+func historyThemeNext(r *http.Request, query string) string {
+	path := "/_admin/history"
+	if r != nil && r.URL != nil && strings.HasPrefix(r.URL.Path, "/_admin/history") {
+		path = r.URL.Path
+	}
+	return safeAdminPath(path + query)
 }
 
 func historyGrouped(r *http.Request) bool {
@@ -472,16 +491,7 @@ func historyFilterLabel(source history.Source) string {
 }
 
 func (s *Server) renderHistory(w http.ResponseWriter, name string, data historyPageData, status int, live bool) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Cache-Control", "no-store")
-	w.Header().Set("X-Content-Type-Options", "nosniff")
-	w.Header().Set("Referrer-Policy", "same-origin")
-	w.Header().Set("X-Frame-Options", "DENY")
-	csp := "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
-	if live {
-		csp = "default-src 'none'; script-src 'self'; connect-src 'self'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
-	}
-	w.Header().Set("Content-Security-Policy", csp)
+	writeHTMLHeaders(w, live, live)
 	w.WriteHeader(status)
 	if err := s.tmpl.ExecuteTemplate(w, name, data); err != nil {
 		http.Error(w, "template error", http.StatusInternalServerError)

@@ -58,7 +58,10 @@ func (s *Server) UseSessions(m *sessions.Manager) {
 
 // New parses the embedded templates. A parse error should stop startup.
 func New(store *rules.Store, log *history.Log, ups *upstreams.Store) (*Server, error) {
-	tmpl, err := template.ParseFS(templateFiles, "templates/*.html")
+	tmpl, err := template.New("admin").Funcs(template.FuncMap{
+		"statusClass": statusClass,
+		"sourceClass": sourceClass,
+	}).ParseFS(templateFiles, "templates/*.html")
 	if err != nil {
 		return nil, err
 	}
@@ -87,6 +90,9 @@ type page struct {
 	SessionAction       string
 	SessionID           string
 	ReadOnly            bool
+	Theme               string
+	Next                string
+	Nav                 string
 }
 
 type sessionChoice struct {
@@ -152,6 +158,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	path := r.URL.Path
 	switch {
+	case path == "/_admin/admin.css" && r.Method == http.MethodGet:
+		s.asset(w, "static/admin.css", "text/css; charset=utf-8")
+	case path == "/_admin/rule-form.js" && r.Method == http.MethodGet:
+		s.asset(w, "static/rule-form.js", "text/javascript; charset=utf-8")
+	case path == "/_admin/theme" && r.Method == http.MethodPost:
+		s.setTheme(w, r)
 	case path == "/_admin/rules" && r.Method == http.MethodPost:
 		s.createRule(w, r)
 	case path == "/_admin" || path == "/_admin/" || path == "/_admin/rules":
@@ -654,6 +666,11 @@ func (s *Server) decorate(r *http.Request, data page) page {
 	if r != nil {
 		data.SessionAction = r.URL.Path
 	}
+	data.Theme = themeFrom(r)
+	data.Next = nextFrom(r)
+	if r != nil && r.URL != nil {
+		data.Nav = navFrom(r.URL.Path)
+	}
 	return data
 }
 
@@ -672,16 +689,7 @@ func (s *Server) readOnlyPost(w http.ResponseWriter, r *http.Request) bool {
 
 func (s *Server) render(w http.ResponseWriter, r *http.Request, name string, data page, status int) {
 	data = s.decorate(r, data)
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Cache-Control", "no-store")
-	w.Header().Set("X-Content-Type-Options", "nosniff")
-	w.Header().Set("Referrer-Policy", "same-origin")
-	w.Header().Set("X-Frame-Options", "DENY")
-	csp := "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
-	if name == "rule_form" {
-		csp = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
-	}
-	w.Header().Set("Content-Security-Policy", csp)
+	writeHTMLHeaders(w, name == "rule_form", false)
 	w.WriteHeader(status)
 	if err := s.tmpl.ExecuteTemplate(w, name, data); err != nil {
 		http.Error(w, "template error", http.StatusInternalServerError)

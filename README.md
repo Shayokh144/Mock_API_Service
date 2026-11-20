@@ -64,6 +64,10 @@ dashboard at http://localhost:8081/_admin
 
 Open [http://localhost:8081/_admin](http://localhost:8081/_admin). Stop the process with Ctrl+C.
 
+The dashboard is server-rendered HTML in the same binary. Its stylesheet is embedded and served from `/_admin/admin.css`. The page does not load a CDN, and it does not run a Node build. Color, spacing, radius, and type are CSS custom properties. Paths, code, and bodies use a monospace stack. Status `2xx` is green, `3xx` is neutral, `4xx` is amber, and `5xx` is red. Status `0` and a rejected row are dark red. A mocked row is blue. A passthrough row is neutral.
+
+The theme follows the operating system until you choose Light, Dark, or System in the header and press Apply. That is a same-origin form post. It stores an `HttpOnly` cookie named `mock_theme` and redirects back to the page you were on. System, and a missing cookie, use `prefers-color-scheme`. The choice works with JavaScript off. A script cannot paint the theme before the first response without an inline script, and the content security policy does not allow inline scripts or inline styles.
+
 The dashboard is a separate listener so a mocked HTML response cannot share the dashboard origin. `http://localhost:8080/_admin` returns 404 and says the dashboard is not served on the proxy port. A dashboard request whose Host is not `localhost`, `127.0.0.1`, or `[::1]` on the admin port is rejected with 403. A state-changing dashboard request is accepted only from a browser on that admin origin: `Sec-Fetch-Site: same-origin`, or a loopback `Origin` on the same admin host and port. A request with neither, including a curl-style POST that sends no `Origin` and no `Sec-Fetch-Site`, is 403 and changes nothing. Scripts create and change rules and upstreams through `/_api` with the bearer token. Both listeners set a 10 second read-header timeout.
 
 Rules are saved when you create, edit, enable, disable, or delete them. They are still there after a restart. History is memory only. A restart clears history and keeps rules.

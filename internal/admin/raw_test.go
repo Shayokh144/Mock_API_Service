@@ -31,8 +31,9 @@ func TestRawRuleFormAndList(t *testing.T) {
 		t.Fatal(err)
 	}
 	form := readAll(t, formResp)
-	if !strings.Contains(formResp.Header.Get("Content-Security-Policy"), "script-src 'unsafe-inline'") {
-		t.Fatalf("csp = %q", formResp.Header.Get("Content-Security-Policy"))
+	csp := formResp.Header.Get("Content-Security-Policy")
+	if !strings.Contains(csp, "script-src 'self'") || strings.Contains(csp, "unsafe-inline") {
+		t.Fatalf("csp = %q", csp)
 	}
 	pathAt := strings.Index(form, `id="path_pattern"`)
 	delayAt := strings.Index(form, `id="delay_ms"`)
@@ -49,7 +50,8 @@ func TestRawRuleFormAndList(t *testing.T) {
 		`placeholder="HTTP/1.1 401 Unauthorized`,
 		`Content-Type: application/json`,
 		`{&#34;error&#34;:&#34;unauthorized&#34;}"`,
-		`addEventListener("change", apply)`,
+		`<script src="/_admin/rule-form.js"></script>`,
+		`<link rel="stylesheet" href="/_admin/admin.css">`,
 		`id="status_code" name="status_code" type="number" min="100" max="599" required`,
 	} {
 		if !strings.Contains(form, want) {
@@ -93,7 +95,7 @@ func TestRawRuleFormAndList(t *testing.T) {
 		t.Fatalf("create status = %d", created.StatusCode)
 	}
 	page := get(t, client, srv.URL+"/_admin")
-	if !strings.Contains(page, "<th scope=\"col\">Mode</th>") || !strings.Contains(page, "<td>Raw</td>") || !strings.Contains(page, "<td>401</td>") {
+	if !strings.Contains(page, "<th scope=\"col\">Mode</th>") || !strings.Contains(page, "<td>Raw</td>") || !strings.Contains(page, `class="badge status-4xx">401</span>`) {
 		t.Fatalf("list = %s", page)
 	}
 	saved := store.List()[0]
