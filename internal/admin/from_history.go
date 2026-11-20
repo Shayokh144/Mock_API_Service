@@ -12,6 +12,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/Shayokh144/Mock_API_Service/internal/history"
+	"github.com/Shayokh144/Mock_API_Service/internal/rules"
 )
 
 func (s *Server) newRule(w http.ResponseWriter, r *http.Request) {
@@ -73,6 +74,9 @@ func (s *Server) prefillFromHistory(entry history.Entry) formView {
 	view.Body = compactJSON(text)
 	view.RawResponse = rawResponse(entry.Status, entry.ResponseHeaders, text, entry.ResponseDecoded)
 	view.MockHeader = strings.EqualFold(entry.ResponseHeaders.Get("X-Mock-Response"), "true")
+	if strings.TrimSpace(view.RawResponse) != "" {
+		view.ResponseMode = rules.ModeRaw
+	}
 	return view
 }
 
