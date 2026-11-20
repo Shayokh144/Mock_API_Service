@@ -1,14 +1,16 @@
 package admin
 
 import (
+	"bytes"
 	"embed"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
 )
 
-//go:embed static/admin.css static/rule-form.js
+//go:embed static/admin.css static/rule-form.js static/copy.js
 var assetFiles embed.FS
 
 func (s *Server) asset(w http.ResponseWriter, name, contentType string) {
@@ -63,4 +65,18 @@ func sourceClass(source string) string {
 	default:
 		return "badge badge-neutral"
 	}
+}
+
+// prettyBody indents a JSON object or array for the history detail page.
+// Any other preview is returned unchanged.
+func prettyBody(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" || (trimmed[0] != '{' && trimmed[0] != '[') {
+		return raw
+	}
+	var buf bytes.Buffer
+	if err := json.Indent(&buf, []byte(trimmed), "", "  "); err != nil {
+		return raw
+	}
+	return buf.String()
 }

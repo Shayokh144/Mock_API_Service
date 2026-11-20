@@ -1,8 +1,7 @@
 {{define "upstreams"}}
 {{template "head" .}}
 {{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{end}}
-<p>Each upstream has its own prefix. A request uses the prefix on its path. A request with no prefix uses the Referer path when that matches a prefix. Otherwise the proxy returns 404.</p>
-<p><a class="button" href="/_admin/upstreams/new">New upstream</a></p>
+<p class="hint">Each upstream has its own prefix. A request uses the prefix on its path. A request with no prefix uses the Referer path when that matches a prefix. Otherwise the proxy returns 404.</p>
 {{if .Upstreams}}
 <table>
   <caption>Saved upstreams</caption>
@@ -38,7 +37,10 @@
 </table>
 <p class="hint">Deleting an upstream sets rules that named it to Any upstream.</p>
 {{else}}
-<p>No upstreams yet.</p>
+<div class="empty">
+  <p>No upstreams yet.</p>
+  <p class="hint">Add a base URL and a prefix such as /demo. Point the debug build at this proxy plus that prefix.</p>
+</div>
 {{end}}
 {{template "foot" .}}
 {{end}}

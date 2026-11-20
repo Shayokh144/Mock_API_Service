@@ -96,14 +96,14 @@ func TestHistoryDashboard(t *testing.T) {
 	}
 
 	detail := get(t, client, srv.URL+"/_admin/history/"+latest.ID)
-	for _, want := range []string{"Rules are kept", "0123456789abcdef", "&#34;error&#34;:&#34;boom&#34;", "Response body preview was truncated", shownAt} {
+	for _, want := range []string{"Rules are kept", "0123456789abcdef", "&#34;error&#34;: &#34;boom&#34;", "Response body preview was truncated", shownAt} {
 		if !strings.Contains(detail, want) {
 			t.Fatalf("detail missing %s\n%s", want, detail)
 		}
 	}
 	olderEntry := log.List()[1]
 	inspected := get(t, client, srv.URL+"/_admin/history/"+olderEntry.ID)
-	if !strings.Contains(inspected, "X-Request-Id: abc") || !strings.Contains(inspected, "&#34;from&#34;:&#34;upstream&#34;") || !strings.Contains(inspected, "&#34;q&#34;:1") {
+	if !strings.Contains(inspected, "X-Request-Id: abc") || !strings.Contains(inspected, "&#34;from&#34;: &#34;upstream&#34;") || !strings.Contains(inspected, "&#34;q&#34;: 1") {
 		t.Fatalf("detail headers or bodies missing: %s", inspected)
 	}
 

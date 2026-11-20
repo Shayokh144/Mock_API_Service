@@ -98,9 +98,15 @@
   </tbody>
 </table>
 {{else if .Total}}
-<p id="history-empty">No entries for this filter.</p>
+<div class="empty">
+  <p id="history-empty">No entries for this filter.</p>
+  <p class="hint">Clear the text box or choose All to see the other recorded requests.</p>
+</div>
 {{else}}
-<p id="history-empty">No history yet.</p>
+<div class="empty">
+  <p id="history-empty">No history yet.</p>
+  <p class="hint">Calls through the proxy show up here. Rules stay saved when history is empty.</p>
+</div>
 {{end}}
 <script src="/_admin/history.js"></script>
 {{template "foot" .}}

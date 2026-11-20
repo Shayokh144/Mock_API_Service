@@ -8,44 +8,55 @@
 </head>
 <body>
   <a class="skip" href="#main">Skip to content</a>
-  <header>
-    <p>Mock API proxy</p>
-    <nav aria-label="Sections">
-      <a href="/_admin"{{if eq .Nav "rules"}} aria-current="page"{{end}}>Rules</a>
-      <a href="/_admin/upstreams"{{if eq .Nav "upstreams"}} aria-current="page"{{end}}>Upstreams</a>
-      <a href="/_admin/history"{{if eq .Nav "history"}} aria-current="page"{{end}}>History</a>
-    </nav>
-    <div class="header-controls">
-      {{if .Sessions}}
-      <form method="get" action="{{.SessionAction}}">
-        <label for="dashboard-session">Session</label>
-        <select id="dashboard-session" name="session">
-          {{range .Sessions}}
-          <option value="{{.ID}}" {{if .Selected}}selected{{end}}>{{.Name}}</option>
+  <div class="app">
+    <aside class="sidebar">
+      <p class="brand">Mock API proxy</p>
+      <nav aria-label="Sections">
+        <a href="/_admin{{.SessionQuery}}"{{if eq .Nav "rules"}} aria-current="page"{{end}}>Rules</a>
+        <a href="/_admin/upstreams{{.SessionQuery}}"{{if eq .Nav "upstreams"}} aria-current="page"{{end}}>Upstreams</a>
+        <a href="/_admin/history{{.SessionQuery}}"{{if eq .Nav "history"}} aria-current="page"{{end}}>History</a>
+        <a href="/_admin/sessions{{.SessionQuery}}"{{if eq .Nav "sessions"}} aria-current="page"{{end}}>Sessions</a>
+      </nav>
+    </aside>
+    <div class="workspace">
+      <header class="topbar">
+        <p class="session-chip">Session <strong>{{.CurrentSession}}</strong>{{if .ReadOnly}} <span class="badge badge-neutral">read-only</span>{{end}}</p>
+        <div class="header-controls">
+          {{if .Sessions}}
+          <form method="get" action="{{.SessionAction}}">
+            <label for="dashboard-session">Session</label>
+            <select id="dashboard-session" name="session">
+              {{range .Sessions}}
+              <option value="{{.ID}}" {{if .Selected}}selected{{end}}>{{.Name}}</option>
+              {{end}}
+            </select>
+            <button class="secondary" type="submit">View</button>
+          </form>
           {{end}}
-        </select>
-        <button class="secondary" type="submit">View</button>
-      </form>
-      {{end}}
-      <form method="post" action="/_admin/theme">
-        <input type="hidden" name="next" value="{{.Next}}">
-        <label for="dashboard-theme">Theme</label>
-        <select id="dashboard-theme" name="theme">
-          <option value="system" {{if or (eq .Theme "system") (eq .Theme "")}}selected{{end}}>System</option>
-          <option value="light" {{if eq .Theme "light"}}selected{{end}}>Light</option>
-          <option value="dark" {{if eq .Theme "dark"}}selected{{end}}>Dark</option>
-        </select>
-        <button class="secondary" type="submit">Apply</button>
-      </form>
-    </div>
-  </header>
-  <main id="main">
-    <h1>{{.Title}}</h1>
-    {{if .ReadOnly}}<p class="hint">This test session is read-only in the dashboard.</p>{{end}}
+          <form method="post" action="/_admin/theme">
+            <input type="hidden" name="next" value="{{.Next}}">
+            <label for="dashboard-theme">Theme</label>
+            <select id="dashboard-theme" name="theme">
+              <option value="system" {{if or (eq .Theme "system") (eq .Theme "")}}selected{{end}}>System</option>
+              <option value="light" {{if eq .Theme "light"}}selected{{end}}>Light</option>
+              <option value="dark" {{if eq .Theme "dark"}}selected{{end}}>Dark</option>
+            </select>
+            <button class="secondary" type="submit">Apply</button>
+          </form>
+        </div>
+      </header>
+      <main id="main">
+        <div class="page-head">
+          <h1>{{.Title}}</h1>
+          {{if .PrimaryLabel}}<a class="button" href="{{.PrimaryHref}}">{{.PrimaryLabel}}</a>{{end}}
+        </div>
+        {{if .ReadOnly}}<p class="hint">This test session is read-only in the dashboard.</p>{{end}}
 {{end}}
 
 {{define "foot"}}
-  </main>
+      </main>
+    </div>
+  </div>
 </body>
 </html>
 {{end}}
