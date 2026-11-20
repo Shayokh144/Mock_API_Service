@@ -1,0 +1,2178 @@
+openapi: 3.1.0
+info:
+  title: Mock API Service automation API
+  version: "1.0.0"
+  description: |
+    Local automation API for the mock proxy. It is served only on the admin
+    listener, `http://127.0.0.1:8081` by default. The proxy port returns 404
+    for `/_api`. The process version in `GET /_api/health` is separate from
+    this document version. A stock build reports `dev`.
+
+    The bearer token is the contents of `data/admin.token` (or the file next
+    to `RULES_PATH`). The directory is mode `0700` and the file is mode `0600`.
+    The log prints the path and never the token. Do not paste a real token
+    into docs, tickets, or chat. Read it in the shell with
+    `$(cat data/admin.token)`.
+
+    `POST /_api/token/rotate` replaces that file and returns 204. The previous
+    token stops working immediately.
+
+    ## Requests the server rejects first
+
+    These checks run before the route handler.
+
+    * The Host must be `localhost`, `127.0.0.1`, or `[::1]`, and the port must
+      be the admin port. Anything else is **403** `forbidden`
+      (`admin API requests must use a loopback Host on the admin port`).
+      This runs before the token check.
+    * Any `Origin` header is **403** `forbidden`, including a loopback origin.
+      `OPTIONS` is **403** with the same code. The API sends no CORS headers.
+      Message: `the admin API does not accept browser origins`.
+    * A missing or wrong bearer token is **401** `unauthorized`
+      (`a bearer token is required`). The comparison does not distinguish a
+      missing token from a wrong one.
+
+    ## Body limits
+
+    * A non-empty body on JSON routes must use `Content-Type: application/json`.
+      A charset parameter is fine. Anything else is **415**
+      `unsupported_media_type`. An empty body does not need a content type.
+    * `POST /_api/sessions/{session_id}/scenarios/load` accepts
+      `application/json`, `application/yaml`, `text/yaml`, and
+      `application/x-yaml` instead.
+    * A body larger than 1 MiB (1048576 bytes) is **413** `payload_too_large`.
+    * JSON objects are decoded with unknown fields rejected. An unknown field
+      is **400** `bad_request` (`request contains an unknown field`). Invalid
+      JSON is **400** (`invalid JSON`). A second JSON value after the first
+      is **400** as well.
+    * `GET` and `DELETE` ignore an empty body. A non-empty body is read as
+      JSON and must be an object with no fields.
+
+    ## Sessions and the default confirm flag
+
+    The developer session id is `default`. It listens on the proxy port
+    (8080 unless configured otherwise) and cannot be deleted. Test sessions
+    listen on `127.0.0.1`, keep rules and history in memory, and share the
+    upstream list. That list is read-only here. This API does not create,
+    rename, or delete upstreams, and it does not choose a fallback upstream.
+
+    Every write to `default` needs the query `confirm=default`. The writes
+    are create, replace, delete, enable, disable, a named upsert, scenario
+    load, and reset. Without that exact query the response is **409**
+    `conflict` (`writes to the default session need ?confirm=default`) and
+    nothing changes. Test sessions do not need the flag. Reads do not need
+    it. `DELETE /_api/sessions/default` is **409** because that session
+    cannot be deleted, with or without the flag.
+    `DELETE /_api/sessions/{session_id}/history` does not use the flag.
+    It clears history on `default` immediately.
+
+    A wrong method on `/_api/health` or `/_api/token/rotate` is **404**
+    `not_found` (`unknown API path`). A wrong method on a session path that
+    exists is **405** `method_not_allowed`.
+
+    ## Errors
+
+    Errors use one JSON object and never include the token.
+
+    ```json
+    {"error":{"code":"unauthorized","message":"a bearer token is required"}}
+    ```
+
+    | Status | code | When |
+    | --- | --- | --- |
+    | 400 | bad_request | Invalid JSON, an unknown field, or a value the handler rejects. |
+    | 401 | unauthorized | The bearer token is missing or wrong. |
+    | 403 | forbidden | Host is not loopback on the admin port, any Origin is set, or the method is OPTIONS. |
+    | 404 | not_found | The path, session, or rule is unknown. Sessions disabled is the same status. |
+    | 409 | conflict | Default write without `confirm=default`, port in use, duplicate rule, name taken, or deleting `default`. |
+    | 413 | payload_too_large | The body is larger than 1 MiB. |
+    | 415 | unsupported_media_type | The content type is not one this route accepts. |
+    | 429 | too_many | An 11th test session, or a 501st rule in one session. |
+    | 500 | internal | The token file, rule file, or scenario export could not be written. |
+
+servers:
+  - url: http://127.0.0.1:8081
+    description: Admin listener. Change the port if the process is not on 8081. The host must stay loopback.
+security:
+  - bearerAuth: []
+tags:
+  - name: Health
+    description: Process check. It does not read rules or history.
+  - name: Token
+    description: Replace the bearer token on disk.
+  - name: Sessions
+    description: The developer session and short-lived test proxies.
+  - name: Rules
+    description: Mock rules stored on one session.
+  - name: History
+    description: Recorded proxy traffic for one session.
+  - name: Scenarios
+    description: Load and export a version 1 scenario.
+paths:
+  /_api/health:
+    get:
+      tags: [Health]
+      operationId: getHealth
+      summary: Check that the admin API is up
+      description: |
+        Returns the process status and version. The token is still required.
+        A body is rejected unless it is empty or an empty JSON object.
+      responses:
+        "200":
+          description: The API is serving requests.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+              example:
+                status: ok
+                version: dev
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "415":
+          $ref: "#/components/responses/UnsupportedMedia"
+  /_api/token/rotate:
+    post:
+      tags: [Token]
+      operationId: rotateToken
+      summary: Replace the bearer token
+      description: |
+        Writes a new 32-byte hex token to the token file and returns 204.
+        The token you just used stops matching. Read the file again. The
+        response body is empty and does not contain the new token.
+        An empty body is accepted. `{}` is accepted. Any field is 400.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmptyObject"
+            example: {}
+      responses:
+        "204":
+          description: The token file was replaced. Use the new file contents.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMedia"
+        "500":
+          description: The token file could not be replaced.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: internal
+                  message: could not rotate the token
+  /_api/sessions:
+    get:
+      tags: [Sessions]
+      operationId: listSessions
+      summary: List sessions
+      description: |
+        The developer session is first. Its id is `default`. Test sessions
+        follow in no particular order. Rules and history are not included.
+      responses:
+        "200":
+          description: Open sessions.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionList"
+              example:
+                sessions:
+                  - id: default
+                    name: default
+                    port: 8080
+                    proxy_url: http://127.0.0.1:8080
+                    emulator_url: http://10.0.2.2:8080
+                  - id: 4f2a9c1b8e0d77a1
+                    name: login-tests
+                    port: 49152
+                    proxy_url: http://127.0.0.1:49152
+                    emulator_url: http://10.0.2.2:49152
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/SessionsUnavailable"
+    post:
+      tags: [Sessions]
+      operationId: createSession
+      summary: Open a test session
+      description: |
+        Starts another proxy on `127.0.0.1`. Rules and history stay in memory
+        and are never written under `data/`. `port` 0, or an omitted port,
+        picks a free port. An omitted or empty name becomes `session`.
+        `idle_timeout_seconds` of 0, or an omitted value, means 30 minutes.
+        A session with no proxy traffic and no API call for that long closes
+        itself. Ten test sessions is the limit. The developer port and the
+        admin port are reserved.
+
+        `scenario` is an optional version 1 document, as JSON inside this
+        body. The new session starts with those rules. If the document is
+        invalid the session is closed and the response is 400.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SessionWrite"
+            example:
+              name: login-tests
+              port: 0
+              idle_timeout_seconds: 1800
+      responses:
+        "201":
+          description: The test proxy is listening.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+              example:
+                id: 4f2a9c1b8e0d77a1
+                name: login-tests
+                port: 49152
+                proxy_url: http://127.0.0.1:49152
+                emulator_url: http://10.0.2.2:49152
+        "400":
+          description: |
+            The name is longer than 80 characters, the idle timeout is
+            negative, the port is outside 0 through 65535, or the scenario
+            was rejected. A rejected scenario does not leave a session open.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: bad_request
+                  message: name must be 80 characters or fewer
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          description: The requested port is already in use.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: conflict
+                  message: that port is in use
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMedia"
+        "429":
+          description: Ten test sessions are already open.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: too_many
+                  message: only 10 test sessions can be open
+        "500":
+          $ref: "#/components/responses/SessionInternal"
+  /_api/sessions/{session_id}:
+    parameters:
+      - $ref: "#/components/parameters/SessionId"
+    get:
+      tags: [Sessions]
+      operationId: getSession
+      summary: Get one session
+      description: Refreshes the idle timer for a test session.
+      responses:
+        "200":
+          description: The session is open.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+              example:
+                id: 4f2a9c1b8e0d77a1
+                name: login-tests
+                port: 49152
+                proxy_url: http://127.0.0.1:49152
+                emulator_url: http://10.0.2.2:49152
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/SessionNotFound"
+    delete:
+      tags: [Sessions]
+      operationId: deleteSession
+      summary: Close a test session
+      description: |
+        Stops the test proxy and drops its in-memory rules and history.
+        `default` cannot be deleted. The confirm flag does not change that.
+      responses:
+        "204":
+          description: The test session is closed.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/SessionNotFound"
+        "409":
+          description: The developer session cannot be deleted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: conflict
+                  message: the default session cannot be deleted
+  /_api/sessions/{session_id}/rules:
+    parameters:
+      - $ref: "#/components/parameters/SessionId"
+    get:
+      tags: [Rules]
+      operationId: listRules
+      summary: List rules
+      description: |
+        Returns the session rules and a label for the upstream filter.
+
+        `upstream` empty lists every rule. The label is `All upstreams`.
+        `upstream=any` (any letter case) lists rules that are not tied to an
+        upstream. The label is `Any`. A known upstream name lists rules for
+        that upstream and rules that are not tied to one. The label is the
+        query value. An unknown name returns an empty list and the label
+        `All upstreams`. It is not an error.
+      parameters:
+        - $ref: "#/components/parameters/RuleUpstream"
+      responses:
+        "200":
+          description: Rules visible with the filter.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RuleList"
+              example:
+                rules:
+                  - id: a1b2c3d4e5f67890
+                    name: refresh-fail
+                    description: Refresh token is rejected
+                    upstream: Any
+                    method: POST
+                    path: /v1/oauth/token
+                    query_conditions: []
+                    body_conditions:
+                      - grant_type=refresh_token
+                    header_conditions: []
+                    status: 401
+                    headers:
+                      Content-Type: application/json
+                    body:
+                      error: invalid_grant
+                      error_description: dummy refresh failure
+                    delay_ms: 0
+                    priority: 0
+                    enabled: true
+                    fresh_request: false
+                upstream: All upstreams
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/SessionNotFound"
+    post:
+      tags: [Rules]
+      operationId: createRule
+      summary: Create a rule
+      description: |
+        Adds one rule. On `default`, add `confirm=default` or the response
+        is 409 and nothing is stored. A session holds at most 500 rules.
+        `enabled` omitted means true. `name` omitted means the rule has no
+        stable slug. A slug already used in the session is 409.
+      parameters:
+        - $ref: "#/components/parameters/Confirm"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RuleWrite"
+            example:
+              name: refresh-fail
+              description: Refresh token is rejected
+              upstream: Any
+              method: POST
+              path: /v1/oauth/token
+              body_conditions:
+                - grant_type=refresh_token
+              status: 401
+              headers:
+                Content-Type: application/json
+              body:
+                error: invalid_grant
+                error_description: dummy refresh failure
+              delay_ms: 0
+              enabled: true
+      responses:
+        "201":
+          description: The rule was stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Rule"
+              example:
+                id: a1b2c3d4e5f67890
+                name: refresh-fail
+                description: Refresh token is rejected
+                upstream: Any
+                method: POST
+                path: /v1/oauth/token
+                query_conditions: []
+                body_conditions:
+                  - grant_type=refresh_token
+                header_conditions: []
+                status: 401
+                headers:
+                  Content-Type: application/json
+                body:
+                  error: invalid_grant
+                  error_description: dummy refresh failure
+                delay_ms: 0
+                priority: 0
+                enabled: true
+                fresh_request: false
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/SessionNotFound"
+        "409":
+          $ref: "#/components/responses/RuleConflict"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMedia"
+        "429":
+          $ref: "#/components/responses/TooManyRules"
+  /_api/sessions/{session_id}/rules/{rule_id}:
+    parameters:
+      - $ref: "#/components/parameters/SessionId"
+      - $ref: "#/components/parameters/RuleId"
+    get:
+      tags: [Rules]
+      operationId: getRule
+      summary: Get a rule by id
+      responses:
+        "200":
+          description: The rule.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Rule"
+              example:
+                id: a1b2c3d4e5f67890
+                name: refresh-fail
+                description: Refresh token is rejected
+                upstream: Any
+                method: POST
+                path: /v1/oauth/token
+                query_conditions: []
+                body_conditions:
+                  - grant_type=refresh_token
+                header_conditions: []
+                status: 401
+                headers:
+                  Content-Type: application/json
+                body:
+                  error: invalid_grant
+                  error_description: dummy refresh failure
+                delay_ms: 0
+                priority: 0
+                enabled: true
+                fresh_request: false
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: The session or the rule does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: not_found
+                  message: rule not found
+    put:
+      tags: [Rules]
+      operationId: replaceRule
+      summary: Replace a rule
+      description: |
+        Replaces the whole rule. Omitted fields use their zero values.
+        `enabled` omitted means true, so a replace that forgets it turns the
+        rule on. This is not a patch. On `default`, add `confirm=default`.
+        The id in the path stays the same.
+      parameters:
+        - $ref: "#/components/parameters/Confirm"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RuleWrite"
+            example:
+              name: refresh-fail
+              description: Refresh token is rejected
+              upstream: Any
+              method: POST
+              path: /v1/oauth/token
+              body_conditions:
+                - grant_type=refresh_token
+              status: 401
+              headers:
+                Content-Type: application/json
+              body:
+                error: invalid_grant
+                error_description: dummy refresh failure
+              delay_ms: 250
+              enabled: true
+      responses:
+        "200":
+          description: The stored rule after replacement.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Rule"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: The session or the rule does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: not_found
+                  message: rule not found
+        "409":
+          $ref: "#/components/responses/RuleConflict"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMedia"
+    delete:
+      tags: [Rules]
+      operationId: deleteRule
+      summary: Delete a rule
+      description: On `default`, add `confirm=default`. No body is required.
+      parameters:
+        - $ref: "#/components/parameters/Confirm"
+      responses:
+        "204":
+          description: The rule was deleted.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: The session or the rule does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: not_found
+                  message: rule not found
+        "409":
+          $ref: "#/components/responses/DefaultConfirm"
+  /_api/sessions/{session_id}/rules/{rule_id}/enable:
+    parameters:
+      - $ref: "#/components/parameters/SessionId"
+      - $ref: "#/components/parameters/RuleId"
+    post:
+      tags: [Rules]
+      operationId: enableRule
+      summary: Enable a rule
+      description: |
+        Turns the rule on. A rule that is already on is returned unchanged.
+        No body is required. On `default`, add `confirm=default`.
+      parameters:
+        - $ref: "#/components/parameters/Confirm"
+      responses:
+        "200":
+          description: The rule, now enabled.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Rule"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: The session or the rule does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: not_found
+                  message: rule not found
+        "409":
+          $ref: "#/components/responses/DefaultConfirm"
+  /_api/sessions/{session_id}/rules/{rule_id}/disable:
+    parameters:
+      - $ref: "#/components/parameters/SessionId"
+      - $ref: "#/components/parameters/RuleId"
+    post:
+      tags: [Rules]
+      operationId: disableRule
+      summary: Disable a rule
+      description: |
+        Turns the rule off. A rule that is already off is returned unchanged.
+        No body is required. On `default`, add `confirm=default`.
+      parameters:
+        - $ref: "#/components/parameters/Confirm"
+      responses:
+        "200":
+          description: The rule, now disabled.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Rule"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: The session or the rule does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: not_found
+                  message: rule not found
+        "409":
+          $ref: "#/components/responses/DefaultConfirm"
+  /_api/sessions/{session_id}/rules/by-name/{name}:
+    parameters:
+      - $ref: "#/components/parameters/SessionId"
+      - $ref: "#/components/parameters/RuleName"
+    get:
+      tags: [Rules]
+      operationId: getRuleByName
+      summary: Get a rule by stable name
+      description: |
+        `by-name` is a literal path segment. The router matches it before
+        `{rule_id}`, so a slug is never confused with a rule id.
+      responses:
+        "200":
+          description: The rule with this stable name.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Rule"
+        "400":
+          description: The name in the path does not match the slug pattern.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: bad_request
+                  message: name must match [a-z0-9][a-z0-9._-]{0,63}
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: The session or the rule does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: not_found
+                  message: rule not found
+    put:
+      tags: [Rules]
+      operationId: upsertRuleByName
+      summary: Create or replace a rule by stable name
+      description: |
+        Creates the rule when the name is new (201) or replaces it when the
+        name exists (200). The body `name` must be empty or equal to the path.
+        On `default`, add `confirm=default`. A new rule still counts toward
+        the 500 rule cap.
+      parameters:
+        - $ref: "#/components/parameters/Confirm"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RuleWrite"
+            example:
+              description: Refresh token is rejected
+              upstream: Any
+              method: POST
+              path: /v1/oauth/token
+              body_conditions:
+                - grant_type=refresh_token
+              status: 401
+              headers:
+                Content-Type: application/json
+              body:
+                error: invalid_grant
+                error_description: dummy refresh failure
+      responses:
+        "200":
+          description: An existing rule with this name was replaced.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Rule"
+        "201":
+          description: No rule had this name, so one was created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Rule"
+              example:
+                id: a1b2c3d4e5f67890
+                name: refresh-fail
+                description: Refresh token is rejected
+                upstream: Any
+                method: POST
+                path: /v1/oauth/token
+                query_conditions: []
+                body_conditions:
+                  - grant_type=refresh_token
+                header_conditions: []
+                status: 401
+                headers:
+                  Content-Type: application/json
+                body:
+                  error: invalid_grant
+                  error_description: dummy refresh failure
+                delay_ms: 0
+                priority: 0
+                enabled: true
+                fresh_request: false
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/RuleConflict"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMedia"
+        "429":
+          $ref: "#/components/responses/TooManyRules"
+    delete:
+      tags: [Rules]
+      operationId: deleteRuleByName
+      summary: Delete a rule by stable name
+      description: On `default`, add `confirm=default`.
+      parameters:
+        - $ref: "#/components/parameters/Confirm"
+      responses:
+        "204":
+          description: The rule was deleted.
+        "400":
+          description: The name in the path does not match the slug pattern.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: bad_request
+                  message: name must match [a-z0-9][a-z0-9._-]{0,63}
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: No rule uses this name.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: not_found
+                  message: rule not found
+        "409":
+          $ref: "#/components/responses/DefaultConfirm"
+  /_api/sessions/{session_id}/rules/by-name/{name}/enable:
+    parameters:
+      - $ref: "#/components/parameters/SessionId"
+      - $ref: "#/components/parameters/RuleName"
+    post:
+      tags: [Rules]
+      operationId: enableRuleByName
+      summary: Enable a rule by stable name
+      description: |
+        Same effect as enable by id. A missing name is 404. On `default`,
+        add `confirm=default`.
+      parameters:
+        - $ref: "#/components/parameters/Confirm"
+      responses:
+        "200":
+          description: The rule, now enabled.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Rule"
+        "400":
+          description: The name in the path does not match the slug pattern.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: bad_request
+                  message: name must match [a-z0-9][a-z0-9._-]{0,63}
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: No rule uses this name.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: not_found
+                  message: rule not found
+        "409":
+          $ref: "#/components/responses/DefaultConfirm"
+  /_api/sessions/{session_id}/rules/by-name/{name}/disable:
+    parameters:
+      - $ref: "#/components/parameters/SessionId"
+      - $ref: "#/components/parameters/RuleName"
+    post:
+      tags: [Rules]
+      operationId: disableRuleByName
+      summary: Disable a rule by stable name
+      description: |
+        Same effect as disable by id. A missing name is 404. On `default`,
+        add `confirm=default`.
+      parameters:
+        - $ref: "#/components/parameters/Confirm"
+      responses:
+        "200":
+          description: The rule, now disabled.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Rule"
+        "400":
+          description: The name in the path does not match the slug pattern.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: bad_request
+                  message: name must match [a-z0-9][a-z0-9._-]{0,63}
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: No rule uses this name.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: not_found
+                  message: rule not found
+        "409":
+          $ref: "#/components/responses/DefaultConfirm"
+  /_api/sessions/{session_id}/reset:
+    parameters:
+      - $ref: "#/components/parameters/SessionId"
+    post:
+      tags: [Sessions]
+      operationId: resetSession
+      summary: Clear rules and history
+      description: |
+        An empty body clears both rules and history. A missing `rules` or
+        `history` field means true. `{"rules":false}` clears history only.
+        `{"history":false}` clears rules only. Sequence counters and
+        `max_uses` counts are reset even when both flags are false.
+        On `default`, add `confirm=default`.
+      parameters:
+        - $ref: "#/components/parameters/Confirm"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResetWrite"
+            examples:
+              both:
+                summary: Clear rules and history
+                value:
+                  rules: true
+                  history: true
+              historyOnly:
+                summary: Keep rules and drop recorded traffic
+                value:
+                  rules: false
+                  history: true
+      responses:
+        "204":
+          description: The requested data was cleared.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/SessionNotFound"
+        "409":
+          $ref: "#/components/responses/DefaultConfirm"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMedia"
+        "500":
+          description: Rules could not be cleared.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: internal
+                  message: could not reset rules
+  /_api/sessions/{session_id}/history:
+    parameters:
+      - $ref: "#/components/parameters/SessionId"
+    get:
+      tags: [History]
+      operationId: listHistory
+      summary: List recorded traffic
+      description: |
+        Returns the newest matching entries first. Filters combine with AND.
+        `since` as an entry id returns entries newer than that id and leaves
+        the id itself out. `since` as an RFC3339 time returns entries strictly
+        after that instant. An unknown id, or a string that is neither, is
+        400. Pass the newest id you have already seen to poll for new traffic.
+
+        `Authorization` and `Cookie` values are replaced with `••••••••`
+        unless `reveal` is `1`. `truncated` is true when the stored request
+        body or response body was cut at the capture cap.
+      parameters:
+        - name: method
+          in: query
+          description: Case-insensitive method match. Empty means any method.
+          schema:
+            type: string
+            examples: ["POST"]
+        - name: path
+          in: query
+          description: Case-sensitive substring of the request path.
+          schema:
+            type: string
+            examples: ["oauth/token"]
+        - name: path_exact
+          in: query
+          description: The request path must equal this string.
+          schema:
+            type: string
+            examples: ["/v1/oauth/token"]
+        - name: upstream
+          in: query
+          description: |
+            Upstream id or upstream name. `any` matches entries that were
+            not tied to an upstream.
+          schema:
+            type: string
+            examples: ["OKYA"]
+        - name: status
+          in: query
+          description: Response status. Must be an integer when set.
+          schema:
+            type: integer
+            examples: [401]
+        - name: mocked
+          in: query
+          description: |
+            `true` keeps mocked responses. `false` keeps everything else.
+            Any other value is 400. Empty means both.
+          schema:
+            type: string
+            enum: ["true", "false"]
+        - name: rule_name
+          in: query
+          description: |
+            Stable rule name. The entry's rule id must be that rule.
+          schema:
+            type: string
+            examples: ["refresh-fail"]
+        - name: rule_id
+          in: query
+          description: Rule id stored on the entry.
+          schema:
+            type: string
+            examples: ["a1b2c3d4e5f67890"]
+        - name: since
+          in: query
+          description: An entry id, or an RFC3339 timestamp.
+          schema:
+            type: string
+            examples: ["b7c3d4e5f6789012"]
+        - name: limit
+          in: query
+          description: How many matching entries to return. Default 100. Maximum 500.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 100
+        - name: reveal
+          in: query
+          description: Set to `1` to show Authorization and Cookie values.
+          schema:
+            type: string
+            enum: ["1"]
+      responses:
+        "200":
+          description: Matching entries, newest first. The list is empty when nothing matches.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HistoryList"
+              example:
+                entries:
+                  - id: c8d4e5f678901234
+                    time: "2026-04-12T15:04:05Z"
+                    method: POST
+                    path: /v1/oauth/token
+                    query: ""
+                    upstream: Any
+                    status: 401
+                    duration_ms: 3
+                    mocked: true
+                    rule_id: a1b2c3d4e5f67890
+                    rule_name: refresh-fail
+                    request_headers:
+                      Authorization:
+                        - "••••••••"
+                      Content-Type:
+                        - application/x-www-form-urlencoded
+                    request_body: grant_type=refresh_token&refresh_token=dummy
+                    response_headers:
+                      Content-Type:
+                        - application/json
+                    response_body: '{"error":"invalid_grant","error_description":"dummy refresh failure"}'
+                    truncated: false
+        "400":
+          description: |
+            `limit` is outside 1 through 500, `mocked` is not true or false,
+            `status` is not an integer, or `since` is not an RFC3339 time or
+            a known entry id.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: bad_request
+                  message: since must be an RFC3339 time or an entry id
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/SessionNotFound"
+    delete:
+      tags: [History]
+      operationId: clearHistory
+      summary: Clear history only
+      description: |
+        Deletes recorded traffic for this session. Rules stay. This does not
+        require `confirm=default`, including on the developer session.
+      responses:
+        "204":
+          description: History is empty.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/SessionNotFound"
+  /_api/sessions/{session_id}/scenario:
+    parameters:
+      - $ref: "#/components/parameters/SessionId"
+    get:
+      tags: [Scenarios]
+      operationId: exportScenario
+      summary: Export the session rules as a scenario
+      description: |
+        `format=yaml` (any letter case) returns `application/yaml`. Any other
+        value, including an empty one, returns `application/json`. The
+        document version is 1. The document name is the session name. The
+        description is empty. A rule with no stable name is exported with
+        its id in `name`.
+      parameters:
+        - name: format
+          in: query
+          description: "`yaml` exports YAML. Every other value exports JSON."
+          schema:
+            type: string
+            examples: ["yaml"]
+      responses:
+        "200":
+          description: The current rules as a version 1 scenario.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Scenario"
+              example:
+                version: 1
+                name: login-tests
+                description: ""
+                rules:
+                  - name: refresh-fail
+                    description: Refresh token is rejected
+                    upstream: Any
+                    method: POST
+                    path: /v1/oauth/token
+                    query_conditions: []
+                    body_conditions:
+                      - grant_type=refresh_token
+                    header_conditions: []
+                    status: 401
+                    headers:
+                      Content-Type: application/json
+                    body:
+                      error: invalid_grant
+                      error_description: dummy refresh failure
+                    delay_ms: 0
+                    priority: 0
+                    enabled: true
+                    fresh_request: false
+                    mock_header: false
+            application/yaml:
+              schema:
+                $ref: "#/components/schemas/Scenario"
+              example:
+                version: 1
+                name: login-tests
+                description: ""
+                rules:
+                  - name: refresh-fail
+                    description: Refresh token is rejected
+                    upstream: Any
+                    method: POST
+                    path: /v1/oauth/token
+                    query_conditions: []
+                    body_conditions:
+                      - grant_type=refresh_token
+                    header_conditions: []
+                    status: 401
+                    headers:
+                      Content-Type: application/json
+                    body:
+                      error: invalid_grant
+                      error_description: dummy refresh failure
+                    delay_ms: 0
+                    priority: 0
+                    enabled: true
+                    fresh_request: false
+                    mock_header: false
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/SessionNotFound"
+        "500":
+          description: The scenario could not be encoded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: internal
+                  message: could not export the scenario
+  /_api/sessions/{session_id}/scenarios/load:
+    parameters:
+      - $ref: "#/components/parameters/SessionId"
+    post:
+      tags: [Scenarios]
+      operationId: loadScenario
+      summary: Load a scenario into a session
+      description: |
+        The body is the scenario itself. This route does not take a file
+        path. `mode=replace` is the default and replaces the session rules.
+        `mode=merge` updates rules that share a stable name and leaves the
+        others. Any other mode is 400. A document that fails validation
+        changes nothing.
+
+        On `default`, add `confirm=default`. The content type is
+        `application/json`, `application/yaml`, `text/yaml`, or
+        `application/x-yaml`. The response names are stable rule names.
+        `created`, `updated`, and `unchanged` are always arrays.
+      parameters:
+        - $ref: "#/components/parameters/Confirm"
+        - name: mode
+          in: query
+          description: "`replace` (default) or `merge`."
+          schema:
+            type: string
+            enum: [replace, merge]
+            default: replace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Scenario"
+            example:
+              version: 1
+              name: okya-auth-refresh-failure
+              description: The refresh call fails with a dummy error. No real tokens.
+              rules:
+                - name: refresh-fail
+                  description: Refresh token is rejected
+                  upstream: Any
+                  method: POST
+                  path: /v1/oauth/token
+                  body_conditions:
+                    - grant_type=refresh_token
+                  status: 401
+                  headers:
+                    Content-Type: application/json
+                  body:
+                    error: invalid_grant
+                    error_description: dummy refresh failure
+          application/yaml:
+            schema:
+              type: string
+            example: |
+              version: 1
+              name: okya-auth-refresh-failure
+              description: The refresh call fails with a dummy error. No real tokens.
+              rules:
+                - name: refresh-fail
+                  description: Refresh token is rejected
+                  upstream: Any
+                  method: POST
+                  path: /v1/oauth/token
+                  body_conditions:
+                    - grant_type=refresh_token
+                  status: 401
+                  headers:
+                    Content-Type: application/json
+                  body:
+                    error: invalid_grant
+                    error_description: dummy refresh failure
+          text/yaml:
+            schema:
+              type: string
+          application/x-yaml:
+            schema:
+              type: string
+      responses:
+        "200":
+          description: The document was applied. Names are stable rule names.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScenarioLoadResult"
+              examples:
+                replace:
+                  summary: Replace created the only rule
+                  value:
+                    created: ["refresh-fail"]
+                    updated: []
+                    unchanged: []
+                merge:
+                  summary: Merge updated one rule and added another
+                  value:
+                    created: ["login-fail"]
+                    updated: ["refresh-fail"]
+                    unchanged: ["health"]
+        "400":
+          description: |
+            The mode is not replace or merge, the document is not version 1,
+            a rule is invalid, or an upstream name is unknown. The session
+            rules are unchanged.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: bad_request
+                  message: scenario version must be 1
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/SessionNotFound"
+        "409":
+          $ref: "#/components/responses/DefaultConfirm"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "415":
+          description: |
+            The content type is not JSON or YAML. Message:
+            `Content-Type must be application/json or application/yaml`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: unsupported_media_type
+                  message: Content-Type must be application/json or application/yaml
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: |
+        The current contents of `data/admin.token`. Send
+        `Authorization: Bearer` and the file text. Never put a real token in
+        an example. A token is 64 hex characters (32 random bytes).
+  parameters:
+    SessionId:
+      name: session_id
+      in: path
+      required: true
+      description: |
+        `default` is the developer session. Any other value is a test session
+        id returned by create. Ids are 16 hex characters.
+      schema:
+        type: string
+        examples: ["4f2a9c1b8e0d77a1", "default"]
+    RuleId:
+      name: rule_id
+      in: path
+      required: true
+      description: Rule id. 16 hex characters.
+      schema:
+        type: string
+        examples: ["a1b2c3d4e5f67890"]
+    RuleName:
+      name: name
+      in: path
+      required: true
+      description: Stable slug. Pattern `[a-z0-9][a-z0-9._-]{0,63}`.
+      schema:
+        type: string
+        pattern: "^[a-z0-9][a-z0-9._-]{0,63}$"
+        examples: ["refresh-fail"]
+    Confirm:
+      name: confirm
+      in: query
+      required: false
+      description: |
+        Writes to the `default` session must send `confirm=default`. Any
+        other value, including omitting it, is 409 and changes nothing.
+        Test sessions ignore this parameter.
+      schema:
+        type: string
+        enum: ["default"]
+    RuleUpstream:
+      name: upstream
+      in: query
+      required: false
+      description: |
+        Empty lists every rule. `any` lists rules with no upstream. A known
+        upstream name lists that upstream plus rules with no upstream. An
+        unknown name returns an empty list.
+      schema:
+        type: string
+        examples: ["OKYA"]
+  responses:
+    Unauthorized:
+      description: The bearer token is missing or wrong.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error:
+              code: unauthorized
+              message: a bearer token is required
+    Forbidden:
+      description: |
+        The Host is not loopback on the admin port, the request has an
+        Origin header, or the method is OPTIONS.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            host:
+              summary: Host is not loopback on the admin port
+              value:
+                error:
+                  code: forbidden
+                  message: admin API requests must use a loopback Host on the admin port
+            origin:
+              summary: Origin was sent, or the method is OPTIONS
+              value:
+                error:
+                  code: forbidden
+                  message: the admin API does not accept browser origins
+    BadRequest:
+      description: |
+        The JSON is invalid, a field is unknown, or a value failed a check.
+        Nothing was saved.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            unknownField:
+              summary: A field is not in the schema
+              value:
+                error:
+                  code: bad_request
+                  message: request contains an unknown field
+            invalidJSON:
+              summary: The body is not JSON
+              value:
+                error:
+                  code: bad_request
+                  message: invalid JSON
+    UnsupportedMedia:
+      description: "A body was sent without `Content-Type: application/json`."
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error:
+              code: unsupported_media_type
+              message: Content-Type must be application/json
+    PayloadTooLarge:
+      description: The body is larger than 1 MiB.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error:
+              code: payload_too_large
+              message: request body must be 1 MiB or smaller
+    SessionNotFound:
+      description: No open session has this id.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error:
+              code: not_found
+              message: session not found
+    SessionsUnavailable:
+      description: This process has no session manager.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error:
+              code: not_found
+              message: sessions are not available
+    DefaultConfirm:
+      description: |
+        A write to `default` did not include `confirm=default`. Nothing changed.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error:
+              code: conflict
+              message: writes to the default session need ?confirm=default
+    RuleConflict:
+      description: |
+        The write needs `confirm=default`, the stable name is already used,
+        or another rule already has this method, path, upstream, and conditions.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            confirm:
+              summary: Default session write without the confirm flag
+              value:
+                error:
+                  code: conflict
+                  message: writes to the default session need ?confirm=default
+            nameTaken:
+              summary: The stable name is already used in this session
+              value:
+                error:
+                  code: conflict
+                  message: a rule with this name already exists
+            duplicate:
+              summary: Method, path, upstream, and conditions already match a rule
+              value:
+                error:
+                  code: conflict
+                  message: a rule with this method, path, and conditions already exists
+    TooManyRules:
+      description: The session already has 500 rules.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error:
+              code: too_many
+              message: a session can hold 500 rules
+    SessionInternal:
+      description: The session could not be updated.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error:
+              code: internal
+              message: could not update the session
+  schemas:
+    Error:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              description: Stable machine code such as bad_request or conflict.
+            message:
+              type: string
+              description: Short explanation. Safe to show. It never contains the token.
+    EmptyObject:
+      type: object
+      additionalProperties: false
+      description: An object with no fields.
+    Health:
+      type: object
+      additionalProperties: false
+      required: [status, version]
+      properties:
+        status:
+          type: string
+          enum: [ok]
+        version:
+          type: string
+          description: Process version. The default build reports dev.
+    Session:
+      type: object
+      additionalProperties: false
+      required: [id, name, port, proxy_url, emulator_url]
+      properties:
+        id:
+          type: string
+          description: "`default`, or 16 hex characters for a test session."
+        name:
+          type: string
+        port:
+          type: integer
+          description: Proxy listen port on 127.0.0.1.
+        proxy_url:
+          type: string
+          description: "Base URL on this machine, `http://127.0.0.1:{port}`."
+          examples: ["http://127.0.0.1:49152"]
+        emulator_url:
+          type: string
+          description: |
+            Base URL an Android emulator uses to reach this host,
+            `http://10.0.2.2:{port}`.
+          examples: ["http://10.0.2.2:49152"]
+    SessionList:
+      type: object
+      additionalProperties: false
+      required: [sessions]
+      properties:
+        sessions:
+          type: array
+          items:
+            $ref: "#/components/schemas/Session"
+    SessionWrite:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          maxLength: 80
+          description: Label. Empty becomes `session`. At most 80 characters.
+        port:
+          type: integer
+          minimum: 0
+          maximum: 65535
+          description: |
+            TCP port on 127.0.0.1. 0 picks a free port. The proxy port and
+            the admin port are rejected with 409.
+        idle_timeout_seconds:
+          type: integer
+          minimum: 0
+          description: |
+            Quiet time before the session closes. 0 and omitted both mean
+            1800 seconds (30 minutes). A negative value is 400.
+        scenario:
+          description: |
+            Optional version 1 scenario. Invalid rules close the new session
+            and return 400. The object is JSON here. YAML belongs on
+            scenarios/load.
+          allOf:
+            - $ref: "#/components/schemas/Scenario"
+    ResetWrite:
+      type: object
+      additionalProperties: false
+      properties:
+        rules:
+          type: boolean
+          description: Clear rules when true. Omitted means true.
+        history:
+          type: boolean
+          description: Clear history when true. Omitted means true.
+    RuleList:
+      type: object
+      additionalProperties: false
+      required: [rules, upstream]
+      properties:
+        rules:
+          type: array
+          items:
+            $ref: "#/components/schemas/Rule"
+        upstream:
+          type: string
+          description: Filter label. `All upstreams`, `Any`, or the name you passed.
+    Rule:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - description
+        - upstream
+        - method
+        - path
+        - query_conditions
+        - body_conditions
+        - header_conditions
+        - status
+        - headers
+        - body
+        - delay_ms
+        - priority
+        - enabled
+        - fresh_request
+      properties:
+        id:
+          type: string
+          description: 16 hex characters.
+        name:
+          type: string
+          description: |
+            Stable slug. Omitted when the rule has none. Pattern
+            `[a-z0-9][a-z0-9._-]{0,63}`.
+        description:
+          type: string
+          description: Label shown as Name in the dashboard. May be empty.
+        upstream:
+          type: string
+          description: Upstream name, or `Any` when the rule is not tied to one.
+        method:
+          type: string
+          enum: [GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS]
+        path:
+          type: string
+          description: |
+            Path pattern. It starts with `/` and must not use `/_admin` or
+            `/_api`. A `*` replaces one segment. `**` is only allowed as the
+            last segment.
+        query_conditions:
+          type: array
+          items:
+            $ref: "#/components/schemas/ConditionLine"
+        body_conditions:
+          type: array
+          items:
+            $ref: "#/components/schemas/ConditionLine"
+        header_conditions:
+          type: array
+          items:
+            $ref: "#/components/schemas/ConditionLine"
+        status:
+          type: integer
+          description: HTTP status. In raw mode this is the status parsed from raw_response.
+        headers:
+          type: object
+          additionalProperties:
+            type: string
+          description: Response headers. Empty object when there are none. Raw mode returns an empty object.
+        body:
+          description: |
+            JSON response body. Null when the rule has no body. A stored
+            text body that is not JSON is returned as a JSON string.
+        raw_response:
+          type: string
+          description: |
+            Pasted HTTP response. Present only in raw mode. Status, headers,
+            and body then come from this text.
+        delay_ms:
+          type: integer
+          minimum: 0
+          maximum: 60000
+          description: Pause before the response is written.
+        priority:
+          type: integer
+          description: Higher wins. Missing on write means 0. Negative values are allowed.
+        fault:
+          type: string
+          enum: [reset, hang]
+          description: |
+            `reset` closes the connection. `hang` does not answer. Omitted
+            when the rule returns a normal response.
+        max_uses:
+          type: integer
+          minimum: 1
+          description: |
+            How many matches to allow. Omitted when the rule is unlimited.
+            After the count, the rule no longer matches.
+        sequence:
+          type: string
+          enum: [stick, loop]
+          description: |
+            How `responses` advance. `stick` stays on the last step. `loop`
+            returns to the first. Omitted when the rule has no sequence.
+        responses:
+          type: array
+          items:
+            $ref: "#/components/schemas/ResponseStep"
+          description: |
+            Ordered responses. Each match uses the next step. Omitted when
+            the rule has a single response.
+        enabled:
+          type: boolean
+        fresh_request:
+          type: boolean
+          description: |
+            When true, a match still calls the upstream and returns that
+            response with cache validators removed. It cannot be combined
+            with fault.
+        mock_header:
+          type: boolean
+          description: |
+            When true, a raw response includes `X-Mock-Response`. Omitted
+            when false. Structured mocks send that header on their own.
+    RuleWrite:
+      type: object
+      additionalProperties: false
+      description: |
+        Fields for create, replace, and named upsert. Unknown fields are 400.
+        `description` is the dashboard label. `name` is the stable slug.
+      properties:
+        name:
+          type: string
+          description: |
+            Optional stable slug. Empty is allowed on create. Pattern
+            `[a-z0-9][a-z0-9._-]{0,63}`. On a named upsert the value must be
+            empty or match the path.
+        description:
+          type: string
+          maxLength: 80
+          description: Dashboard label. At most 80 characters.
+        upstream:
+          type: string
+          description: |
+            Upstream name, `Any`, or empty. Empty and `Any` are the same.
+            A name that is not saved is 400 (`choose an upstream or Any upstream`).
+        method:
+          type: string
+          description: |
+            One of GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS. Letter case
+            is ignored.
+        path:
+          type: string
+          description: |
+            Path pattern starting with `/`. Not `/_admin` or `/_api`. One
+            `*` per whole segment. `**` only as the last segment. No query
+            string.
+        query_conditions:
+          type: array
+          maxItems: 32
+          items:
+            $ref: "#/components/schemas/ConditionLine"
+        body_conditions:
+          type: array
+          maxItems: 32
+          items:
+            $ref: "#/components/schemas/ConditionLine"
+          description: |
+            Matched against the request body. JSON objects can use dotted
+            keys such as `user.email=ada@example.com`.
+        header_conditions:
+          type: array
+          maxItems: 32
+          items:
+            $ref: "#/components/schemas/ConditionLine"
+        status:
+          type: integer
+          description: |
+            HTTP status from 100 through 599. Not used when `raw_response`
+            is set. The status is then parsed from that text.
+        headers:
+          description: |
+            Response headers. Use an object, a list of `Name: value` strings,
+            or a list of `{name, value}` pairs. Null or omitted means none.
+          oneOf:
+            - type: object
+              additionalProperties:
+                type: string
+            - type: array
+              items:
+                type: string
+            - type: array
+              items:
+                $ref: "#/components/schemas/HeaderPair"
+        body:
+          description: |
+            JSON value stored as the response body. A JSON string is stored
+            as text. Null or omitted means no body. Ignored when
+            `raw_response` is set.
+        raw_response:
+          type: string
+          description: |
+            Full HTTP response text, status line plus headers plus body.
+            When this is non-empty the rule is in raw mode.
+          examples:
+            - "HTTP/1.1 401 Unauthorized\r\nContent-Type: application/json\r\n\r\n{\"error\":\"invalid_grant\"}\r\n"
+        delay_ms:
+          type: integer
+          minimum: 0
+          maximum: 60000
+          description: Pause before the response. 0 through 60000.
+        priority:
+          type: integer
+          description: Higher wins before path specificity. Omitted means 0.
+        fault:
+          type: string
+          description: |
+            `reset`, `hang`, `none`, or empty. `none` and empty store no
+            fault. Cannot be combined with `fresh_request`.
+        max_uses:
+          type: integer
+          minimum: 0
+          description: 0 means unlimited.
+        sequence:
+          type: string
+          description: |
+            `stick` or `loop` when `responses` is set. Omitted means stick.
+            Ignored when `responses` is empty.
+        responses:
+          type: array
+          items:
+            $ref: "#/components/schemas/ResponseStep"
+          description: |
+            Optional sequence. Step fields use `status_code`, not `status`.
+        enabled:
+          type: boolean
+          description: Omitted means true.
+        fresh_request:
+          type: boolean
+          description: Call the upstream instead of returning the saved body.
+        mock_header:
+          type: boolean
+          description: Add `X-Mock-Response` on a raw response.
+    ConditionLine:
+      type: string
+      description: |
+        One condition. Every condition on a rule must match. At most 32 per
+        list, and the key cannot repeat.
+
+        * `grant_type=refresh_token` means the key equals that value.
+        * `page` means the key is present.
+        * `code:eq=dummy` is an explicit equals.
+        * `q:prefix=hot` means the value starts with `hot`.
+        * `q:contains=hotel` means the value contains `hotel`.
+        * `code:regex=^dummy` is a regular expression.
+        * `token:present` and `debug:absent` test presence.
+        `present` and `absent` do not take a value. The other operators need
+        `=`. A dotted key walks a JSON object for body conditions.
+      examples:
+        - grant_type=refresh_token
+        - page
+        - q:contains=hotel
+        - code:regex=^dummy
+        - token:present
+        - debug:absent
+    HeaderPair:
+      type: object
+      additionalProperties: false
+      required: [name, value]
+      properties:
+        name:
+          type: string
+        value:
+          type: string
+    ResponseStep:
+      type: object
+      additionalProperties: false
+      description: |
+        One step in a response sequence. Field names differ from the rule.
+        Use `status_code` here. The rule itself uses `status`.
+      properties:
+        status_code:
+          type: integer
+          description: HTTP status from 100 through 599, unless fault or raw mode applies.
+        headers:
+          type: object
+          additionalProperties:
+            type: string
+        body:
+          description: JSON body for this step. Omitted when empty.
+        delay_ms:
+          type: integer
+          minimum: 0
+          maximum: 60000
+        response_mode:
+          type: string
+          description: Set to `raw` to send `raw_response` for this step.
+        raw_response:
+          type: string
+        mock_header:
+          type: boolean
+        fault:
+          type: string
+          description: "`reset`, `hang`, or empty."
+    HistoryList:
+      type: object
+      additionalProperties: false
+      required: [entries]
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/HistoryEntry"
+    HistoryEntry:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - time
+        - method
+        - path
+        - query
+        - upstream
+        - status
+        - duration_ms
+        - mocked
+        - request_headers
+        - request_body
+        - response_headers
+        - response_body
+        - truncated
+      properties:
+        id:
+          type: string
+          description: 16 hex characters. Use the newest one as `since` on the next poll.
+        time:
+          type: string
+          description: RFC3339 UTC time when the request started.
+          examples: ["2026-04-12T15:04:05Z"]
+        method:
+          type: string
+        path:
+          type: string
+        query:
+          type: string
+          description: Raw query string without `?`. Empty when there is none.
+        upstream:
+          type: string
+          description: Upstream name at request time, or `Any`.
+        status:
+          type: integer
+        duration_ms:
+          type: integer
+        mocked:
+          type: boolean
+          description: True when a mock rule produced the response.
+        rule_id:
+          type: string
+          description: Omitted when no rule matched.
+        rule_name:
+          type: string
+          description: |
+            Stable name of the rule, looked up now. Omitted when the rule
+            has no slug or no rule matched. This is not the dashboard label.
+        request_headers:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+        request_body:
+          type: string
+        response_headers:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+        response_body:
+          type: string
+        truncated:
+          type: boolean
+          description: True when the stored request or response body was cut at the capture cap.
+    Scenario:
+      type: object
+      additionalProperties: false
+      required: [version, name, description, rules]
+      description: |
+        Version 1 scenario. The API does not accept a filesystem path.
+        A bad document changes nothing.
+      properties:
+        version:
+          type: integer
+          enum: [1]
+        name:
+          type: string
+        description:
+          type: string
+        rules:
+          type: array
+          maxItems: 500
+          items:
+            $ref: "#/components/schemas/ScenarioRule"
+    ScenarioRule:
+      type: object
+      additionalProperties: false
+      required: [name]
+      description: |
+        Same fields as a rule write. `name` is required and unique in the
+        file. `enabled` omitted means true.
+      properties:
+        name:
+          type: string
+          pattern: "^[a-z0-9][a-z0-9._-]{0,63}$"
+        description:
+          type: string
+        upstream:
+          type: string
+          description: Upstream name, `Any`, or empty.
+        method:
+          type: string
+        path:
+          type: string
+        query_conditions:
+          type: array
+          items:
+            type: string
+        body_conditions:
+          type: array
+          items:
+            type: string
+        header_conditions:
+          type: array
+          items:
+            type: string
+        status:
+          type: integer
+        headers:
+          description: "Object of header names to strings, or a list of `Name: value` strings."
+        body:
+          description: JSON value, or a string stored as text.
+        raw_response:
+          type: string
+        delay_ms:
+          type: integer
+        priority:
+          type: integer
+        fault:
+          type: string
+        max_uses:
+          type: integer
+        sequence:
+          type: string
+        responses:
+          type: array
+          items:
+            $ref: "#/components/schemas/ResponseStep"
+        enabled:
+          type: boolean
+        fresh_request:
+          type: boolean
+        mock_header:
+          type: boolean
+    ScenarioLoadResult:
+      type: object
+      additionalProperties: false
+      required: [created, updated, unchanged]
+      properties:
+        created:
+          type: array
+          items:
+            type: string
+          description: Stable names that were added.
+        updated:
+          type: array
+          items:
+            type: string
+          description: Stable names that changed. Empty after a replace, which reports every rule as created.
+        unchanged:
+          type: array
+          items:
+            type: string
+          description: Stable names that already matched. Empty after a replace.
