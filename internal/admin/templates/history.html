@@ -43,15 +43,15 @@
 <table class="history">
   <caption>Recorded requests</caption>
   <colgroup>
-    <col style="width:9%">
-    <col style="width:20%">
-    <col style="width:10%">
-    <col style="width:11%">
-    <col style="width:12%">
-    <col style="width:8%">
-    <col style="width:10%">
-    <col style="width:12%">
-    <col style="width:8%">
+    <col class="col-method">
+    <col class="col-url">
+    <col class="col-status">
+    <col class="col-source">
+    <col class="col-upstream">
+    <col class="col-delay">
+    <col class="col-rule">
+    <col class="col-when">
+    <col class="col-actions">
   </colgroup>
   <thead>
     <tr>
@@ -81,8 +81,8 @@
               <span class="history-count" data-field="count">{{.CountLabel}}</span>
             </a>
           </td>
-          <td data-field="status">{{range $i, $line := .StatusLines}}{{if $i}}<br>{{end}}{{$line}}{{end}}</td>
-          <td data-field="sources">{{range $i, $line := .SourceLines}}{{if $i}}<br>{{end}}{{$line}}{{end}}</td>
+          <td data-field="status">{{range $i, $line := .StatusLines}}{{if $i}}<br>{{end}}<span class="{{statusClass $line}}">{{$line}}</span>{{end}}</td>
+          <td data-field="sources">{{range $i, $line := .SourceLines}}{{if $i}}<br>{{end}}<span class="{{sourceClass $line}}">{{$line}}</span>{{end}}</td>
           <td data-field="upstream">{{.Upstream}}</td>
           <td data-field="delay">{{.Delay}}</td>
           <td data-field="rule">{{.Rule}}</td>
@@ -110,8 +110,8 @@
 <tr{{if .Child}} class="history-child"{{end}} data-id="{{.ID}}" data-group="{{.GroupKey}}"{{if .Hidden}} hidden{{end}}>
   <td>{{.Method}}</td>
   <td><a href="/_admin/history/{{.ID}}{{.FilterQuery}}">{{.URL}}</a></td>
-  <td>{{.Status}}</td>
-  <td>{{.Source}}</td>
+  <td><span class="{{statusClass .Status}}">{{.Status}}</span></td>
+  <td><span class="{{sourceClass .Source}}">{{.Source}}</span></td>
   <td>{{.Upstream}}</td>
   <td>{{.Delay}}</td>
   <td>{{if .RuleID}}{{if .RuleName}}{{.RuleName}}{{else}}unnamed{{end}} ({{.RuleID}}){{else}}none{{end}}</td>
