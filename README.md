@@ -70,7 +70,7 @@ The theme follows the operating system until you choose Light, Dark, or System i
 
 The pages share one shell. A sidebar links to Rules, Upstreams, History, and Sessions. The header names the session you are viewing. A test session shows a read-only badge, and its rules and history cannot be edited here. Sessions lists the open sessions and links back to that session's rules. On a narrow window the sidebar links wrap onto one row and wide tables scroll sideways.
 
-Each list page puts its main action next to the title. An empty list says what is missing and one way to fill it. The rule form is grouped into Match, Timing and limits, and Response. The upstream form is grouped into Name and Address.
+Each list page puts its main action next to the title. An empty list says what is missing and one way to fill it. Longer notes on History, Rules, and Upstreams sit in a closed **How this works** disclosure. It is a `<details>` element, so it opens with JavaScript off. History filters are one wrapping row: All, Mocked, and Real server, then URL contains, Upstream, Group, and Apply. The count and the upstream name share one muted line. **Clear all history** is a small danger button on the right of that line. The rule form is grouped into Match, Timing and limits, and Response. The upstream form is grouped into Name and Address.
 
 The dashboard is a separate listener so a mocked HTML response cannot share the dashboard origin. `http://localhost:8080/_admin` returns 404 and says the dashboard is not served on the proxy port. A dashboard request whose Host is not `localhost`, `127.0.0.1`, or `[::1]` on the admin port is rejected with 403. A state-changing dashboard request is accepted only from a browser on that admin origin: `Sec-Fetch-Site: same-origin`, or a loopback `Origin` on the same admin host and port. A request with neither, including a curl-style POST that sends no `Origin` and no `Sec-Fetch-Site`, is 403 and changes nothing. Scripts create and change rules and upstreams through `/_api` with the bearer token. Both listeners set a 10 second read-header timeout.
 
@@ -400,6 +400,8 @@ Open [http://localhost:8081/_admin/history](http://localhost:8081/_admin/history
 The list shows method, URL, status, source, upstream, and local time. The URL is the path plus the query string. Sources are `mock`, `upstream`, `upstream-error`, and `rejected`.
 
 The upstream column is the resolved upstream. A prefix match stores that upstream's id and name, including mocks. A Referer match stores the same id and name, and the list, the live feed, and the detail page add `(via Referer)`. A rejected request stores an empty upstream. The detail page shows the app path and the forwarded path, with the query string on both. New rows keep the column.
+
+Notes about the filters, grouping, and fresh-request rows are in the closed **How this works** disclosure above the controls. The filters are one row. The summary line and **Clear all history** sit together above the table.
 
 The top of the page filters that list:
 
