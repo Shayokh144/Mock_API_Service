@@ -163,6 +163,7 @@ func concretePath(path, sessionID string) string {
 	path = strings.ReplaceAll(path, "{session_id}", sessionID)
 	path = strings.ReplaceAll(path, "{rule_id}", "0123456789abcdef")
 	path = strings.ReplaceAll(path, "{name}", "sample-rule")
+	path = strings.ReplaceAll(path, "{id}", "0123456789abcdef")
 	return path
 }
 

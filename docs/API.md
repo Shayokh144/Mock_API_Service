@@ -35,7 +35,7 @@ The Host must be `localhost`, `127.0.0.1`, or `[::1]` on the admin port. Any `Or
 
 JSON bodies use `Content-Type: application/json`. A body over 1 MiB is 413. An unknown JSON field is 400. Scenario load also accepts YAML. See below.
 
-This API cannot create or delete upstreams. A rule's `upstream` is `Any` or the name of an upstream that already exists.
+Upstreams are shared. `POST`, `PUT`, and `DELETE` on `/_api/upstreams` need `confirm=default`, including when you are otherwise using a test session. A rule's `upstream` is `Any` or the name of an upstream that already exists. An unknown `upstream` filter is 400 `unknown_upstream`.
 
 ## Errors
 
@@ -48,10 +48,11 @@ Failures share one shape.
 | Status | code | When |
 | --- | --- | --- |
 | 400 | bad_request | Bad JSON, an unknown field, or a value the route rejects. |
+| 400 | unknown_upstream | The `upstream` filter is not `Any` and not a saved upstream name. History also accepts a 16-hex upstream id. |
 | 401 | unauthorized | The token is missing or wrong. |
 | 403 | forbidden | Host is not loopback on the admin port, Origin is set, or the method is OPTIONS. |
 | 404 | not_found | Unknown path, session, or rule. |
-| 409 | conflict | Default write without `confirm=default`, busy port, duplicate rule, or deleting `default`. |
+| 409 | conflict | Default or upstream write without `confirm=default`, busy port, duplicate rule, duplicate upstream name or prefix, deleting `default`, or deleting an upstream that would duplicate an Any rule. |
 | 413 | payload_too_large | Body larger than 1 MiB. |
 | 415 | unsupported_media_type | Content type is not JSON, or not JSON or YAML on scenario load. |
 | 429 | too_many | Eleven test sessions, or 501 rules in one session. |
@@ -82,6 +83,28 @@ SESSION=4f2a9c1b8e0d77a1
 ```
 
 Use the `id` from the response. The value above is only a dummy.
+
+### List and add an upstream
+
+Upstreams are global. They are stored in `data/upstreams.json` and used by the developer proxy and every test session. Adding or changing one sends real traffic to that host as soon as the call returns. Do this only when that host is the one you mean to call.
+
+`confirm=default` is required on create, replace, and delete. Without it the response is 409 and the file stays as it was. GET does not need the flag.
+
+```sh
+curl -s -H "Authorization: Bearer $TOKEN" \
+  http://127.0.0.1:8081/_api/upstreams
+```
+
+```sh
+curl -s -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"staging","base_url":"https://staging.example.com","prefix":"/staging"}' \
+  "http://127.0.0.1:8081/_api/upstreams?confirm=default"
+```
+
+`base_url` is `http` or `https` with a host. A username, password, query, or fragment is rejected. `prefix` is one path segment and cannot duplicate another upstream. The values above are dummies. The response id is 16 hex characters. `GET` or `PUT /_api/upstreams/{id}` and `DELETE /_api/upstreams/{id}?confirm=default` use that id. A GET masks a username or password in `base_url` if one is present. The log records the id, name, prefix, and host, not the token and not URL userinfo.
+
+Deleting an upstream sets developer-session rules that named it to Any. If that would duplicate an Any rule, the response is 409 and the upstream stays.
 
 ### Mock a 401 on token refresh
 
@@ -188,7 +211,8 @@ Follow this order unless the user asked for something narrower.
 8. Delete the test session when the task is done.
 9. Touch `default` only when the user asked to change the developer proxy. Add `?confirm=default` to every write. That includes create, replace, delete, enable, disable, named upsert, scenario load, and reset. `GET` does not need it.
 10. Do not call `DELETE .../history` on `default` as a cleanup step. It does not require `confirm=default`.
+11. Change upstreams only when the user asked. `POST`, `PUT`, and `DELETE /_api/upstreams` need `?confirm=default` even from a test session. They rewrite `data/upstreams.json` and affect live traffic.
 
-`description` on a rule is the human label. `name` is the slug `[a-z0-9][a-z0-9._-]{0,63}`. `upstream` is `Any` or an existing upstream name. There is no `/_api` route for upstream records.
+`description` on a rule is the human label. `name` is the slug `[a-z0-9][a-z0-9._-]{0,63}`. `upstream` is `Any` or an existing upstream name. List and create upstreams at `/_api/upstreams`. An unknown rules or history `upstream` filter is 400 `unknown_upstream`. History still accepts a 16-hex upstream id.
 
 A replace (`PUT`) sends the whole rule. An omitted `enabled` means true.

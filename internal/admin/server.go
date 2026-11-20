@@ -77,6 +77,7 @@ type page struct {
 	RulesAction         string
 	RuleUpstreamKey     string
 	RuleUpstreamLabel   string
+	RuleUpstreamNote    string
 	RuleUpstreamChoices []upstreamChoice
 	RuleShown           int
 	RuleTotal           int
@@ -236,7 +237,7 @@ func (s *Server) rulesPage(w http.ResponseWriter, r *http.Request, status int) {
 	if store != nil {
 		all = store.List()
 	}
-	key, label := s.parseRuleUpstream(r.URL.Query().Get("upstream"))
+	key, label, note := s.parseRuleUpstream(r.URL.Query().Get("upstream"))
 	rows := make([]ruleRow, 0)
 	for _, rule := range all {
 		if !ruleMatchesUpstream(rule, key, s.upstreamIDByName(key)) {
@@ -280,6 +281,7 @@ func (s *Server) rulesPage(w http.ResponseWriter, r *http.Request, status int) {
 		RulesAction:         action,
 		RuleUpstreamKey:     key,
 		RuleUpstreamLabel:   label,
+		RuleUpstreamNote:    note,
 		RuleUpstreamChoices: s.ruleUpstreamChoices(key),
 		RuleShown:           len(rows),
 		RuleTotal:           len(all),
@@ -289,22 +291,23 @@ func (s *Server) rulesPage(w http.ResponseWriter, r *http.Request, status int) {
 	}, status)
 }
 
-func (s *Server) parseRuleUpstream(raw string) (string, string) {
+func (s *Server) parseRuleUpstream(raw string) (string, string, string) {
 	name := strings.TrimSpace(raw)
 	if name == "" {
-		return "", "All upstreams"
+		return "", "All upstreams", ""
 	}
-	if name == "any" {
-		return "any", "Any"
+	if strings.EqualFold(name, "any") {
+		return "any", "Any", ""
 	}
 	if s.upstreamIDByName(name) != "" {
-		return name, name
+		return name, name, ""
 	}
-	return "", "All upstreams"
+	note := "Unknown upstream " + name
+	return name, note, note
 }
 
 func (s *Server) upstreamIDByName(name string) string {
-	if name == "" || name == "any" || s.upstreams == nil {
+	if name == "" || strings.EqualFold(name, "any") || s.upstreams == nil {
 		return ""
 	}
 	for _, item := range s.upstreams.List() {
@@ -402,7 +405,7 @@ func ruleCountLabel(n int) string {
 }
 
 func (s *Server) upstreamQuery(r *http.Request) string {
-	key, _ := s.parseRuleUpstream(r.URL.Query().Get("upstream"))
+	key, _, _ := s.parseRuleUpstream(r.URL.Query().Get("upstream"))
 	if key == "" {
 		return ""
 	}
@@ -418,11 +421,13 @@ func (s *Server) rulesHome(r *http.Request) string {
 }
 
 func ruleMatchesUpstream(rule rules.Rule, key, namedID string) bool {
-	switch key {
-	case "":
+	switch {
+	case key == "":
 		return true
-	case "any":
+	case key == "any":
 		return rule.UpstreamID == ""
+	case namedID == "":
+		return false
 	default:
 		return rule.UpstreamID == namedID || rule.UpstreamID == ""
 	}

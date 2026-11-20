@@ -120,7 +120,7 @@ func ParseSource(raw string) (Source, bool) {
 // An empty or other value is not a filter. The caller shows every entry.
 func ParseUpstream(raw string) (string, bool) {
 	raw = strings.TrimSpace(raw)
-	if raw == UpstreamAny {
+	if strings.EqualFold(raw, UpstreamAny) {
 		return UpstreamAny, true
 	}
 	if len(raw) != 16 {

@@ -80,6 +80,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.rotate(w, r)
 	case path == "/_api/sessions" || strings.HasPrefix(path, "/_api/sessions/"):
 		s.sessionsRoute(w, r)
+	case path == "/_api/upstreams" || strings.HasPrefix(path, "/_api/upstreams/"):
+		s.upstreamsRoute(w, r)
 	default:
 		writeError(w, http.StatusNotFound, "not_found", "unknown API path")
 	}

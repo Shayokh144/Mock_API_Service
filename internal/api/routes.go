@@ -35,5 +35,10 @@ func Routes() []Route {
 		{Method: "DELETE", Path: "/_api/sessions/{session_id}/history"},
 		{Method: "GET", Path: "/_api/sessions/{session_id}/scenario"},
 		{Method: "POST", Path: "/_api/sessions/{session_id}/scenarios/load"},
+		{Method: "GET", Path: "/_api/upstreams"},
+		{Method: "POST", Path: "/_api/upstreams"},
+		{Method: "GET", Path: "/_api/upstreams/{id}"},
+		{Method: "PUT", Path: "/_api/upstreams/{id}"},
+		{Method: "DELETE", Path: "/_api/upstreams/{id}"},
 	}
 }

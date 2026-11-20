@@ -53,6 +53,9 @@ func TestParseAndFilterUpstream(t *testing.T) {
 	if id, ok := ParseUpstream("  any "); !ok || id != UpstreamAny {
 		t.Fatalf("any = %q %v", id, ok)
 	}
+	if id, ok := ParseUpstream("ANY"); !ok || id != UpstreamAny {
+		t.Fatalf("ANY = %q %v", id, ok)
+	}
 	if _, ok := ParseUpstream("nope"); ok {
 		t.Fatal("unknown value was accepted")
 	}
