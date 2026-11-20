@@ -280,6 +280,115 @@ func formatHeaders(headers map[string]string) string {
 	return b.String()
 }
 
+func (f formView) NameCount() int {
+	return filledCount(f.Name) + filledCount(f.APIName)
+}
+
+func (f formView) NameOpen(err string) bool {
+	return f.NameCount() > 0 || mentions(err, "80 characters", "must match [a-z0-9]", "this name already exists")
+}
+
+func (f formView) UpstreamSet() bool {
+	return strings.TrimSpace(f.UpstreamID) != ""
+}
+
+func (f formView) UpstreamOpen(err string) bool {
+	return f.UpstreamSet() || mentions(err, "choose an upstream")
+}
+
+func (f formView) QueryCount() int { return filledLines(f.Query) }
+
+func (f formView) QueryOpen(err string) bool {
+	return f.QueryCount() > 0 || mentions(err, "query condition")
+}
+
+func (f formView) HeaderMatchCount() int { return filledLines(f.HeaderMatch) }
+
+func (f formView) HeaderMatchOpen(err string) bool {
+	return f.HeaderMatchCount() > 0 || mentions(err, "header condition")
+}
+
+func (f formView) BodyMatchCount() int { return filledLines(f.BodyMatch) }
+
+func (f formView) BodyMatchOpen(err string) bool {
+	return f.BodyMatchCount() > 0 || mentions(err, "body condition")
+}
+
+func (f formView) TimingCount() int {
+	n := 0
+	if nonzeroField(f.Priority) {
+		n++
+	}
+	if nonzeroField(f.MaxUses) {
+		n++
+	}
+	if strings.EqualFold(strings.TrimSpace(f.Sequence), "loop") {
+		n++
+	}
+	if strings.TrimSpace(f.Responses) != "" {
+		n++
+	}
+	if strings.TrimSpace(f.Fault) != "" {
+		n++
+	}
+	if nonzeroField(f.DelayMS) {
+		n++
+	}
+	return n
+}
+
+func (f formView) TimingOpen(err string) bool {
+	return f.TimingCount() > 0 || mentions(err, "delay_ms", "priority", "max_uses", "responses", "sequence", "fault", "reset or hang")
+}
+
+func (f formView) HeaderCount() int { return filledLines(f.Headers) }
+
+func (f formView) HeadersOpen(err string) bool {
+	return f.HeaderCount() > 0 || mentions(err, "header line", "header name")
+}
+
+func filledCount(raw string) int {
+	if strings.TrimSpace(raw) == "" {
+		return 0
+	}
+	return 1
+}
+
+func filledLines(raw string) int {
+	n := 0
+	for _, line := range strings.Split(raw, "\n") {
+		if strings.TrimSpace(line) != "" {
+			n++
+		}
+	}
+	return n
+}
+
+func nonzeroField(raw string) bool {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return false
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil {
+		return true
+	}
+	return n != 0
+}
+
+func mentions(err string, parts ...string) bool {
+	if strings.TrimSpace(err) == "" {
+		return false
+	}
+	err = strings.ToLower(err)
+	for _, part := range parts {
+		if strings.Contains(err, strings.ToLower(part)) {
+			return true
+		}
+	}
+	return false
+}
+
 func viewFromRule(rule rules.Rule, action, submit string) formView {
 	return formView{
 		Action:       action,
