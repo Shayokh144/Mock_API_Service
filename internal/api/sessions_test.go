@@ -16,6 +16,7 @@ import (
 	"github.com/Shayokh144/Mock_API_Service/internal/history"
 	"github.com/Shayokh144/Mock_API_Service/internal/rules"
 	"github.com/Shayokh144/Mock_API_Service/internal/sessions"
+	"github.com/Shayokh144/Mock_API_Service/internal/upstreams"
 )
 
 func TestSessionsAreIsolated(t *testing.T) {
@@ -171,6 +172,7 @@ func testAPI(t *testing.T, dir string) (*TokenFile, *Server, *sessions.Manager) 
 	manager := sessions.New(sessions.Options{
 		Rules:        store,
 		History:      history.New(20),
+		Upstreams:    upstreams.NewMemory(),
 		ProxyAddr:    "127.0.0.1:8080",
 		AdminAddr:    "127.0.0.1:8081",
 		HistoryLimit: 20,

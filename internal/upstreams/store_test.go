@@ -38,10 +38,13 @@ func TestCreateRequiresPrefixAndRejectsBadURLs(t *testing.T) {
 	if _, err := store.Create("spaces", "https://plain.example", "  "); err == nil {
 		t.Fatal("blank prefix was accepted")
 	}
-	for _, raw := range []string{"", "staging.example.com", "ftp://files.example.com", "http://staging.example.com/?q=1", "http://staging.example.com/#x", "/v1"} {
+	for _, raw := range []string{"", "staging.example.com", "ftp://files.example.com", "http://staging.example.com/?q=1", "http://staging.example.com/#x", "/v1", "http://", "https://user:secret@staging.example.com", "https://user@staging.example.com"} {
 		if _, err := store.Create("bad", raw, "/bad"); err == nil {
 			t.Fatalf("accepted %q", raw)
 		}
+	}
+	if _, err := store.Create("creds", "https://user:secret@staging.example.com", "/creds"); err == nil || !strings.Contains(err.Error(), "username or password") {
+		t.Fatalf("userinfo = %v", err)
 	}
 	if err := store.Delete(develop.ID); err != nil {
 		t.Fatal(err)

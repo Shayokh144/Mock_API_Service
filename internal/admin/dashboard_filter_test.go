@@ -153,19 +153,33 @@ func TestRulesUpstreamFilter(t *testing.T) {
 		t.Fatalf("any filter showed a named rule:\n%s", anyPage)
 	}
 
-	unknown := get(t, client, srv.URL+"/_admin?upstream=missing")
-	assertContains(t, unknown, "Upstream: All upstreams. Showing 3 of 3.")
-	assertContains(t, unknown, "Develop only")
-	if strings.Contains(unknown, "upstream=missing") || strings.Contains(unknown, `value="missing"`) {
-		t.Fatal("unknown upstream filter was kept")
+	anyCase := get(t, client, srv.URL+"/_admin/rules?upstream=ANY")
+	assertContains(t, anyCase, "Upstream: Any. Showing 1 of 3.")
+	assertContains(t, anyCase, "Shared")
+	assertContains(t, anyCase, `value="any" selected`)
+	if strings.Contains(anyCase, "Refresh") || strings.Contains(anyCase, "Develop only") {
+		t.Fatalf("ANY filter showed a named rule:\n%s", anyCase)
 	}
-	okyaAt := strings.Index(unknown, "<h2>OKYA_AUTH_DEV · /okya-auth</h2>")
-	developAt := strings.Index(unknown, "<h2>develop · /develop</h2>")
-	anyAt := strings.Index(unknown, "<h2>Any upstream</h2>")
+
+	unknown := get(t, client, srv.URL+"/_admin?upstream=OKYAA")
+	assertContains(t, unknown, "Upstream: Unknown upstream OKYAA. Showing 0 of 3.")
+	assertContains(t, unknown, "Unknown upstream OKYAA")
+	assertContains(t, unknown, "No rules for this upstream.")
+	if strings.Contains(unknown, "Refresh") || strings.Contains(unknown, "Develop only") || strings.Contains(unknown, "Shared") {
+		t.Fatalf("unknown upstream filter showed rules:\n%s", unknown)
+	}
+	if strings.Contains(unknown, `value="" selected`) || strings.Contains(unknown, `value="any" selected`) {
+		t.Fatal("unknown upstream filter selected a real choice")
+	}
+
+	all := get(t, client, srv.URL+"/_admin")
+	okyaAt := strings.Index(all, "<h2>OKYA_AUTH_DEV · /okya-auth</h2>")
+	developAt := strings.Index(all, "<h2>develop · /develop</h2>")
+	anyAt := strings.Index(all, "<h2>Any upstream</h2>")
 	if okyaAt < 0 || developAt < okyaAt || anyAt < developAt {
-		t.Fatalf("blocks are not in upstream order:\n%s", unknown)
+		t.Fatalf("blocks are not in upstream order:\n%s", all)
 	}
-	if strings.Contains(unknown, `scope="col">Upstream<`) {
+	if strings.Contains(all, `scope="col">Upstream<`) {
 		t.Fatal("grouped tables still have an Upstream column")
 	}
 

@@ -53,12 +53,16 @@ info:
     The developer session id is `default`. It listens on the proxy port
     (8080 unless configured otherwise) and cannot be deleted. Test sessions
     listen on `127.0.0.1`, keep rules and history in memory, and share the
-    upstream list. That list is read-only here. This API does not create,
-    rename, or delete upstreams, and it does not choose a fallback upstream.
+    upstream list. Upstreams are global. `GET /_api/upstreams` lists them.
+    `POST /_api/upstreams` and `PUT` or `DELETE /_api/upstreams/{id}` change
+    `data/upstreams.json`. Those writes need `confirm=default` because they
+    change traffic for the developer session and every test session. This
+    API does not choose a fallback upstream.
 
     Every write to `default` needs the query `confirm=default`. The writes
     are create, replace, delete, enable, disable, a named upsert, scenario
-    load, and reset. Without that exact query the response is **409**
+    load, and reset. Upstream creates, replacements, and deletes need the
+    same query. Without that exact query the response is **409**
     `conflict` (`writes to the default session need ?confirm=default`) and
     nothing changes. Test sessions do not need the flag. Reads do not need
     it. `DELETE /_api/sessions/default` is **409** because that session
@@ -81,10 +85,11 @@ info:
     | Status | code | When |
     | --- | --- | --- |
     | 400 | bad_request | Invalid JSON, an unknown field, or a value the handler rejects. |
+    | 400 | unknown_upstream | A rules or history `upstream` filter is not `Any` and not a saved upstream. History also accepts a 16-hex upstream id. |
     | 401 | unauthorized | The bearer token is missing or wrong. |
     | 403 | forbidden | Host is not loopback on the admin port, any Origin is set, or the method is OPTIONS. |
     | 404 | not_found | The path, session, or rule is unknown. Sessions disabled is the same status. |
-    | 409 | conflict | Default write without `confirm=default`, port in use, duplicate rule, name taken, or deleting `default`. |
+    | 409 | conflict | Default or upstream write without `confirm=default`, port in use, duplicate rule, duplicate upstream name or prefix, deleting `default`, or deleting an upstream that would duplicate an Any rule. |
     | 413 | payload_too_large | The body is larger than 1 MiB. |
     | 415 | unsupported_media_type | The content type is not one this route accepts. |
     | 429 | too_many | An 11th test session, or a 501st rule in one session. |
@@ -108,6 +113,8 @@ tags:
     description: Recorded proxy traffic for one session.
   - name: Scenarios
     description: Load and export a version 1 scenario.
+  - name: Upstreams
+    description: Shared upstream records in data/upstreams.json.
 paths:
   /_api/health:
     get:
@@ -173,6 +180,310 @@ paths:
                 error:
                   code: internal
                   message: could not rotate the token
+  /_api/upstreams:
+    get:
+      tags: [Upstreams]
+      operationId: listUpstreams
+      summary: List upstreams
+      description: |
+        Returns the shared upstream list in creation order. The dashboard
+        and every session, including test sessions, read this same list.
+        A GET does not need `confirm=default`.
+
+        The stored record has no header, credential, or token fields.
+        `base_url` is the only field that can carry a secret. A username
+        or password in that URL is masked as `***` in this response.
+        Creating an upstream rejects userinfo, so a normal record has none.
+      responses:
+        "200":
+          description: Saved upstreams. The list is empty when none are saved.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UpstreamList"
+              example:
+                upstreams:
+                  - id: a1b2c3d4e5f67890
+                    name: staging
+                    base_url: https://staging.example.com
+                    prefix: /staging
+                    created_at: "2026-04-12T15:04:05Z"
+                    updated_at: "2026-04-12T15:04:05Z"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "415":
+          $ref: "#/components/responses/UnsupportedMedia"
+    post:
+      tags: [Upstreams]
+      operationId: createUpstream
+      summary: Create an upstream
+      description: |
+        Adds one upstream and writes `data/upstreams.json`. The new upstream
+        serves immediately on the developer proxy and on every test session.
+        `confirm=default` is required. Without that exact query the response
+        is 409 and nothing is stored.
+
+        `name`, `base_url`, and `prefix` use the same checks as the dashboard
+        form. `base_url` must be an absolute `http` or `https` URL with a
+        host. A username, password, query, or fragment is rejected. Another
+        scheme is rejected. `prefix` is one path segment, such as `/staging`,
+        and it cannot duplicate another upstream. The server log records the
+        id, name, prefix, and target host. It does not record the URL path
+        or any credential.
+      parameters:
+        - $ref: "#/components/parameters/Confirm"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpstreamWrite"
+            example:
+              name: staging
+              base_url: https://staging.example.com
+              prefix: /staging
+      responses:
+        "201":
+          description: The upstream was stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Upstream"
+              example:
+                id: a1b2c3d4e5f67890
+                name: staging
+                base_url: https://staging.example.com
+                prefix: /staging
+                created_at: "2026-04-12T15:04:05Z"
+                updated_at: "2026-04-12T15:04:05Z"
+        "400":
+          description: The name, base URL, or prefix was rejected.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                scheme:
+                  summary: The base URL is not http or https
+                  value:
+                    error:
+                      code: bad_request
+                      message: base URL must be http or https
+                userinfo:
+                  summary: The base URL contains a username or password
+                  value:
+                    error:
+                      code: bad_request
+                      message: base URL must not include a username or password
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          description: |
+            `confirm=default` is missing, the name is already used, or the
+            prefix is already used.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                confirm:
+                  summary: Write without confirm=default
+                  value:
+                    error:
+                      code: conflict
+                      message: writes to the default session need ?confirm=default
+                prefix:
+                  summary: Another upstream already uses this prefix
+                  value:
+                    error:
+                      code: conflict
+                      message: an upstream already uses prefix /staging
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMedia"
+        "500":
+          description: The upstream file could not be written.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: internal
+                  message: could not update upstreams
+  /_api/upstreams/{id}:
+    parameters:
+      - $ref: "#/components/parameters/UpstreamId"
+    get:
+      tags: [Upstreams]
+      operationId: getUpstream
+      summary: Get one upstream
+      description: |
+        Returns one upstream. Userinfo in `base_url` is masked. A GET does
+        not need `confirm=default`.
+      responses:
+        "200":
+          description: The upstream.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Upstream"
+              example:
+                id: a1b2c3d4e5f67890
+                name: staging
+                base_url: https://***:***@staging.example.com
+                prefix: /staging
+                created_at: "2026-04-12T15:04:05Z"
+                updated_at: "2026-04-12T15:04:05Z"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: No upstream has this id.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: not_found
+                  message: upstream not found
+    put:
+      tags: [Upstreams]
+      operationId: replaceUpstream
+      summary: Replace an upstream
+      description: |
+        Replaces the name, base URL, and prefix. The id and `created_at`
+        stay the same. `confirm=default` is required. The checks match
+        create. The change is saved to `data/upstreams.json` and serves
+        immediately.
+      parameters:
+        - $ref: "#/components/parameters/Confirm"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpstreamWrite"
+            example:
+              name: develop
+              base_url: https://develop.example.com
+              prefix: /develop
+      responses:
+        "200":
+          description: The upstream was replaced.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Upstream"
+              example:
+                id: a1b2c3d4e5f67890
+                name: develop
+                base_url: https://develop.example.com
+                prefix: /develop
+                created_at: "2026-04-12T15:04:05Z"
+                updated_at: "2026-04-12T15:09:05Z"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: No upstream has this id.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: not_found
+                  message: upstream not found
+        "409":
+          description: |
+            `confirm=default` is missing, or the name or prefix belongs to
+            a different upstream.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: conflict
+                  message: writes to the default session need ?confirm=default
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMedia"
+        "500":
+          description: The upstream file could not be written.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: internal
+                  message: could not update upstreams
+    delete:
+      tags: [Upstreams]
+      operationId: deleteUpstream
+      summary: Delete an upstream
+      description: |
+        Removes one upstream. `confirm=default` is required. Rules on the
+        developer session that named this upstream become Any. If that would
+        duplicate an Any rule for the same method, path, and conditions, the
+        response is 409 and the upstream stays. Rules on a test session are
+        left as they are, which is what the dashboard does. The server log
+        records the id, name, prefix, and target host.
+      parameters:
+        - $ref: "#/components/parameters/Confirm"
+      responses:
+        "204":
+          description: The upstream was removed. Rules that named it are now Any.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: No upstream has this id.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: not_found
+                  message: upstream not found
+        "409":
+          description: |
+            `confirm=default` is missing, or deleting the upstream would
+            make a duplicate Any rule.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                confirm:
+                  summary: Write without confirm=default
+                  value:
+                    error:
+                      code: conflict
+                      message: writes to the default session need ?confirm=default
+                duplicate:
+                  summary: An Any rule already matches the rules that would be detached
+                  value:
+                    error:
+                      code: conflict
+                      message: deleting this upstream would make a duplicate Any rule for GET /v1/items
+        "415":
+          $ref: "#/components/responses/UnsupportedMedia"
   /_api/sessions:
     get:
       tags: [Sessions]
@@ -355,8 +666,8 @@ paths:
         `upstream=any` (any letter case) lists rules that are not tied to an
         upstream. The label is `Any`. A known upstream name lists rules for
         that upstream and rules that are not tied to one. The label is the
-        query value. An unknown name returns an empty list and the label
-        `All upstreams`. It is not an error.
+        query value. A value that is not `Any` and not a saved upstream name
+        is **400** `unknown_upstream`. An upstream id is not a name here.
       parameters:
         - $ref: "#/components/parameters/RuleUpstream"
       responses:
@@ -389,6 +700,16 @@ paths:
                     enabled: true
                     fresh_request: false
                 upstream: All upstreams
+        "400":
+          description: The upstream filter is not Any and not a saved upstream name.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: unknown_upstream
+                  message: unknown upstream "OKYAA"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -1028,8 +1349,10 @@ paths:
         - name: upstream
           in: query
           description: |
-            Upstream id or upstream name. `any` matches entries that were
-            not tied to an upstream.
+            `any` (any letter case) matches entries that were not tied to an
+            upstream. A saved upstream name matches that name. A 16-hex
+            upstream id matches that id, including after the upstream was
+            deleted. Any other value is 400 `unknown_upstream`.
           schema:
             type: string
             examples: ["OKYA"]
@@ -1114,16 +1437,26 @@ paths:
         "400":
           description: |
             `limit` is outside 1 through 500, `mocked` is not true or false,
-            `status` is not an integer, or `since` is not an RFC3339 time or
-            a known entry id.
+            `status` is not an integer, `since` is not an RFC3339 time or
+            a known entry id, or `upstream` is not Any, a saved upstream
+            name, or a 16-hex upstream id.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-              example:
-                error:
-                  code: bad_request
-                  message: since must be an RFC3339 time or an entry id
+              examples:
+                since:
+                  summary: since is not a time or an entry id
+                  value:
+                    error:
+                      code: bad_request
+                      message: since must be an RFC3339 time or an entry id
+                upstream:
+                  summary: The upstream filter names nothing this history list accepts
+                  value:
+                    error:
+                      code: unknown_upstream
+                      message: unknown upstream "OKYAA"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -1419,7 +1752,9 @@ components:
       description: |
         Writes to the `default` session must send `confirm=default`. Any
         other value, including omitting it, is 409 and changes nothing.
-        Test sessions ignore this parameter.
+        Test sessions ignore this parameter on session routes. Upstream
+        creates, replacements, and deletes always need it, because those
+        records are shared.
       schema:
         type: string
         enum: ["default"]
@@ -1428,12 +1763,22 @@ components:
       in: query
       required: false
       description: |
-        Empty lists every rule. `any` lists rules with no upstream. A known
-        upstream name lists that upstream plus rules with no upstream. An
-        unknown name returns an empty list.
+        Empty lists every rule. `any` (any letter case) lists rules with no
+        upstream. A known upstream name lists that upstream plus rules with
+        no upstream. Any other value, including an upstream id, is 400
+        `unknown_upstream`.
       schema:
         type: string
         examples: ["OKYA"]
+    UpstreamId:
+      name: id
+      in: path
+      required: true
+      description: Upstream id. 16 hex characters.
+      schema:
+        type: string
+        pattern: "^[0-9a-f]{16}$"
+        examples: ["a1b2c3d4e5f67890"]
   responses:
     Unauthorized:
       description: The bearer token is missing or wrong.
@@ -1617,6 +1962,64 @@ components:
         version:
           type: string
           description: Process version. The default build reports dev.
+    Upstream:
+      type: object
+      additionalProperties: false
+      required: [id, name, base_url, prefix, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          description: 16 hex characters.
+          examples: ["a1b2c3d4e5f67890"]
+        name:
+          type: string
+          description: Label shown in the dashboard. At most 80 characters. No control characters.
+          examples: ["staging"]
+        base_url:
+          type: string
+          format: uri
+          description: |
+            Absolute `http` or `https` URL with a host. In a response, a
+            username or password is masked as `***`.
+          examples: ["https://staging.example.com"]
+        prefix:
+          type: string
+          description: One path segment, such as `/staging`. Unique among upstreams.
+          examples: ["/staging"]
+        created_at:
+          type: string
+          format: date-time
+          examples: ["2026-04-12T15:04:05Z"]
+        updated_at:
+          type: string
+          format: date-time
+          examples: ["2026-04-12T15:04:05Z"]
+    UpstreamWrite:
+      type: object
+      additionalProperties: false
+      required: [name, base_url, prefix]
+      properties:
+        name:
+          type: string
+          examples: ["staging"]
+        base_url:
+          type: string
+          format: uri
+          description: Absolute `http` or `https` URL with a host and no userinfo, query, or fragment.
+          examples: ["https://staging.example.com"]
+        prefix:
+          type: string
+          description: One path segment. Letters, digits, `-`, and `_` only.
+          examples: ["/staging"]
+    UpstreamList:
+      type: object
+      additionalProperties: false
+      required: [upstreams]
+      properties:
+        upstreams:
+          type: array
+          items:
+            $ref: "#/components/schemas/Upstream"
     Session:
       type: object
       additionalProperties: false

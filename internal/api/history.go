@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -128,6 +129,11 @@ func (s *Server) listHistory(w http.ResponseWriter, r *http.Request, info sessio
 		}
 	}
 	reveal := query.Get("reveal") == "1"
+	upstreamKey := strings.TrimSpace(query.Get("upstream"))
+	if !historyUpstreamKnown(s.upstreamStore(), upstreamKey) {
+		writeError(w, http.StatusBadRequest, "unknown_upstream", fmt.Sprintf("unknown upstream %q", upstreamKey))
+		return
+	}
 	entries := info.History.List()
 	if since != "" && !sinceIsTime {
 		found := false
@@ -148,7 +154,7 @@ func (s *Server) listHistory(w http.ResponseWriter, r *http.Request, info sessio
 		if sinceIsTime && !entry.StartedAt.After(sinceTime) {
 			continue
 		}
-		if !historyMatch(entry, info, query.Get("method"), query.Get("path"), query.Get("path_exact"), query.Get("upstream"), query.Get("rule_id"), query.Get("rule_name"), status, statusSet, mocked, mockedSet) {
+		if !historyMatch(entry, info, query.Get("method"), query.Get("path"), query.Get("path_exact"), upstreamKey, query.Get("rule_id"), query.Get("rule_name"), status, statusSet, mocked, mockedSet) {
 			continue
 		}
 		out = append(out, toHistoryItem(entry, info, reveal))

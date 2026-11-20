@@ -16,6 +16,9 @@ func TestResetAndHistory(t *testing.T) {
 	_, srv, manager := testAPI(t, t.TempDir())
 	defer manager.Close()
 	token := readToken(t, srv.tokens)
+	if _, err := manager.Upstreams().Create("OKYA", "https://okya.example", "/okya"); err != nil {
+		t.Fatal(err)
+	}
 	a := postSession(t, srv, token, `{"name":"a"}`)
 	b := postSession(t, srv, token, `{"name":"b"}`)
 	created := apiJSON(t, srv, http.MethodPut, "/_api/sessions/"+a.ID+"/rules/by-name/profile", token, `{"description":"Profile","method":"GET","path":"/v1/profile","status":200,"body":{"ok":true}}`)

@@ -103,6 +103,20 @@ func TestRuleCRUDIsolationAndPersistence(t *testing.T) {
 	if filtered.Code != http.StatusOK || !strings.Contains(filtered.Body, "profile") {
 		t.Fatalf("filter = %s", filtered.Body)
 	}
+	anyCase := apiJSON(t, srv, http.MethodGet, "/_api/sessions/"+session.ID+"/rules?upstream=ANY", token, "")
+	if anyCase.Code != http.StatusOK || strings.Contains(anyCase.Body, "profile") || !strings.Contains(anyCase.Body, `"upstream":"Any"`) {
+		t.Fatalf("ANY filter = %d %s", anyCase.Code, anyCase.Body)
+	}
+	unknownFilter := apiJSON(t, srv, http.MethodGet, "/_api/sessions/"+session.ID+"/rules?upstream=OKYAA", token, "")
+	if unknownFilter.Code != http.StatusBadRequest || !strings.Contains(unknownFilter.Body, `"code":"unknown_upstream"`) || !strings.Contains(unknownFilter.Body, `unknown upstream \"OKYAA\"`) {
+		t.Fatalf("unknown filter = %d %s", unknownFilter.Code, unknownFilter.Body)
+	}
+	if id := ups.List()[0].ID; id != "" {
+		byID := apiJSON(t, srv, http.MethodGet, "/_api/sessions/"+session.ID+"/rules?upstream="+id, token, "")
+		if byID.Code != http.StatusBadRequest || !strings.Contains(byID.Body, "unknown_upstream") {
+			t.Fatalf("id filter = %d %s", byID.Code, byID.Body)
+		}
+	}
 
 	replaced := apiJSON(t, srv, http.MethodPut, "/_api/sessions/"+session.ID+"/rules/"+rule.ID, token, `{"description":"renamed","upstream":"Any","method":"GET","path":"/v1/profile","status":200,"body":{"ok":false}}`)
 	if replaced.Code != http.StatusOK || !strings.Contains(replaced.Body, "renamed") {

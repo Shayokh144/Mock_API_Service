@@ -64,7 +64,7 @@ dashboard at http://localhost:8081/_admin
 
 Open [http://localhost:8081/_admin](http://localhost:8081/_admin). Stop the process with Ctrl+C.
 
-The dashboard is a separate listener so a mocked HTML response cannot share the dashboard origin. `http://localhost:8080/_admin` returns 404 and says the dashboard is not served on the proxy port. A dashboard request whose Host is not `localhost`, `127.0.0.1`, or `[::1]` on the admin port is rejected with 403. A state-changing dashboard request is accepted only from a browser on that admin origin: `Sec-Fetch-Site: same-origin`, or a loopback `Origin` on the same admin host and port. A request with neither, including a curl-style POST that sends no `Origin` and no `Sec-Fetch-Site`, is 403 and changes nothing. Scripts create and change rules through `/_api` with the bearer token. Both listeners set a 10 second read-header timeout.
+The dashboard is a separate listener so a mocked HTML response cannot share the dashboard origin. `http://localhost:8080/_admin` returns 404 and says the dashboard is not served on the proxy port. A dashboard request whose Host is not `localhost`, `127.0.0.1`, or `[::1]` on the admin port is rejected with 403. A state-changing dashboard request is accepted only from a browser on that admin origin: `Sec-Fetch-Site: same-origin`, or a loopback `Origin` on the same admin host and port. A request with neither, including a curl-style POST that sends no `Origin` and no `Sec-Fetch-Site`, is 403 and changes nothing. Scripts create and change rules and upstreams through `/_api` with the bearer token. Both listeners set a 10 second read-header timeout.
 
 Rules are saved when you create, edit, enable, disable, or delete them. They are still there after a restart. History is memory only. A restart clears history and keeps rules.
 
@@ -425,7 +425,7 @@ Delete one row from the list or the detail page. The list returns to the same fi
 
 ## Automation API
 
-The API listens only on the admin address, `http://127.0.0.1:8081` by default. The proxy port returns 404 for `/_api`. Scripts that create, edit, or delete rules use `/_api` with the bearer token. The dashboard forms are for a browser on the admin origin and do not accept a token. The practical guide is [docs/API.md](docs/API.md). Every route is described in [openapi.yaml](openapi.yaml).
+The API listens only on the admin address, `http://127.0.0.1:8081` by default. The proxy port returns 404 for `/_api`. Scripts that create, edit, or delete rules and upstreams use `/_api` with the bearer token. The dashboard forms are for a browser on the admin origin and do not accept a token. The practical guide is [docs/API.md](docs/API.md). Every route is described in [openapi.yaml](openapi.yaml).
 
 On the first start the process writes a 32-byte token to `data/admin.token` (or next to `RULES_PATH`). The directory is mode `0700` and the file is mode `0600`. Later starts reuse that file. The log prints the file path and never the token.
 
@@ -443,7 +443,7 @@ A missing or wrong token is 401. The Host must be `localhost`, `127.0.0.1`, or `
 
 ## Test sessions
 
-`POST /_api/sessions` opens another proxy on `127.0.0.1` with its own rules and history. Those stay in memory and are never written under `data/`. Upstreams are shared and read-only. The developer session is `default` on port 8080. It cannot be deleted.
+`POST /_api/sessions` opens another proxy on `127.0.0.1` with its own rules and history. Those stay in memory and are never written under `data/`. Upstreams are shared. Scripts manage them with `/_api/upstreams`, and test sessions read that same list. The developer session is `default` on port 8080. It cannot be deleted.
 
 ```sh
 curl -s -H "Authorization: Bearer $(cat data/admin.token)" \
@@ -476,21 +476,27 @@ Rules live under `/_api/sessions/{id}/rules`. `id` can be `default`. Every write
 
 A scenario is a YAML or JSON file with `version: 1`, a name, a description, and rules. Each rule needs a stable `name` and uses the same fields as the rules API.
 
-`POST /_api/sessions/{id}/scenarios/load` reads the scenario from the body. Loading into `default` also needs `?confirm=default`. `Content-Type` is `application/json` or `application/yaml`. `?mode=replace` is the default and replaces the session's rules. `?mode=merge` updates rules by name and leaves the others. A bad file changes nothing. The response lists `created`, `updated`, and `unchanged` names. The API does not accept a file path.
+`POST /_api/sessions/{id}/scenarios/load` reads the scenario from the body. Loading into `default` also needs `?confirm=default`. `Content-Type` is `application/json`, `application/yaml`, `text/yaml`, or `application/x-yaml`. `?mode=replace` is the default and replaces the session's rules. `?mode=merge` updates rules by name and leaves the others. A bad file changes nothing. The response lists `created`, `updated`, and `unchanged` names. The API does not accept a file path.
 
-`POST /_api/sessions` can include a `scenario` object so the new session starts with those rules. `GET /_api/sessions/{id}/scenario?format=yaml` exports the current rules. The rules page also has an Export as scenario link.
+`POST /_api/sessions` can include a `scenario` object so the new session starts with those rules. `GET /_api/sessions/{id}/scenario` exports the current rules as JSON. `?format=yaml` returns YAML. The rules page also has an Export as scenario link.
 
 ```sh
 go run ./cmd/mockproxy --scenario scenarios/okya-auth-refresh-failure.yaml
 ```
 
-That merges the file into the default session. Without `--scenario-persist`, those rules are temporary. They stay in memory and are left out of every save of `data/rules.json`, including a later save of an unrelated rule. Editing a temporary rule in the dashboard keeps it temporary, so that edit is not written either. Add `--scenario-persist` to save the scenario rules into `data/rules.json`. Examples live in `scenarios/`. They use dummy data only. `upstream` is an upstream name or `Any`. `query_conditions` and `body_conditions` are `key=value` strings. `headers` is an object or a list of `Name: value` strings. `body` is JSON. A `raw_response` string switches the rule to raw mode. `GET` accepts `?upstream=` with the same meaning as the dashboard filter. A session holds at most 500 rules. Edits to `default` are written to `data/rules.json`, except temporary scenario rules. Test-session rules stay in memory.
+That merges the file into the default session. Without `--scenario-persist`, those rules are temporary. They stay in memory and are left out of every save of `data/rules.json`, including a later save of an unrelated rule. Editing a temporary rule in the dashboard keeps it temporary, so that edit is not written either. Add `--scenario-persist` to save the scenario rules into `data/rules.json`. Examples live in `scenarios/`. They use dummy data only. `upstream` is an upstream name or `Any`. `query_conditions` and `body_conditions` are `key=value` strings. `headers` is an object or a list of `Name: value` strings. `body` is JSON. A `raw_response` string switches the rule to raw mode. `GET` accepts `?upstream=` for `Any` or a saved upstream name, and the dashboard rules page uses that same filter. An unknown name is 400 `unknown_upstream` on the API. The dashboard shows no rules and a note that names it. A session holds at most 500 rules. Edits to `default` are written to `data/rules.json`, except temporary scenario rules. Test-session rules stay in memory.
 
 Errors use one shape and do not include the token:
 
 ```json
 {"error":{"code":"unauthorized","message":"a bearer token is required"}}
 ```
+
+## Upstreams API
+
+Upstreams are global. `GET /_api/upstreams` lists them. `POST /_api/upstreams` adds one. `GET`, `PUT`, and `DELETE /_api/upstreams/{id}` read, replace, and remove one. `POST`, `PUT`, and `DELETE` need `?confirm=default`. Without it the response is 409 and nothing changes. The checks match the dashboard form. The base URL must be `http` or `https`, must have a host, and must not include a username or password. The prefix is required and unique. Writes go to `data/upstreams.json` and apply to the developer proxy and every test session immediately. The log records the id, name, prefix, and target host.
+
+Deleting an upstream sets developer-session rules that named it to Any. If that would duplicate an Any rule, the delete is 409 and the upstream stays. A rule's `upstream` filter that is not `Any` (any letter case) and not a saved upstream name is 400 `unknown_upstream`. History accepts those values and also a 16-hex upstream id.
 
 ## Tests
 

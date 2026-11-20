@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -197,7 +198,7 @@ func (s *Server) listRules(w http.ResponseWriter, r *http.Request, info sessions
 	key := strings.TrimSpace(r.URL.Query().Get("upstream"))
 	namedID, label, ok := upstreamFilter(s.sessions.Upstreams(), key)
 	if key != "" && !ok {
-		writeJSON(w, http.StatusOK, map[string]any{"rules": []ruleResponse{}, "upstream": "All upstreams"})
+		writeError(w, http.StatusBadRequest, "unknown_upstream", fmt.Sprintf("unknown upstream %q", key))
 		return
 	}
 	var out []ruleResponse

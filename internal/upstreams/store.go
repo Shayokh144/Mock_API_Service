@@ -448,6 +448,9 @@ func parseBaseURL(raw string) (*url.URL, error) {
 	if scheme != "http" && scheme != "https" {
 		return nil, fmt.Errorf("base URL must be http or https")
 	}
+	if parsed.User != nil {
+		return nil, fmt.Errorf("base URL must not include a username or password")
+	}
 	if parsed.RawQuery != "" {
 		return nil, fmt.Errorf("base URL must not include a query")
 	}
