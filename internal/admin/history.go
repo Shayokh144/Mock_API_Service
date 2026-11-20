@@ -46,6 +46,10 @@ type historyPageData struct {
 	Theme           string
 	Next            string
 	Nav             string
+	PrimaryHref     string
+	PrimaryLabel    string
+	CurrentSession  string
+	SessionQuery    string
 }
 
 type historyUpstreamChoice struct {
@@ -120,13 +124,13 @@ type headerLine struct {
 func (s *Server) historyPage(w http.ResponseWriter, r *http.Request) {
 	_, data := s.historyView(r)
 	data.Title = "History"
-	s.renderHistory(w, "history", data, http.StatusOK, true)
+	s.renderHistory(w, "history", data, http.StatusOK, true, true)
 }
 
 func (s *Server) clearConfirm(w http.ResponseWriter, r *http.Request) {
 	_, data := s.historyView(r)
 	data.Title = "Clear history"
-	s.renderHistory(w, "history_clear", data, http.StatusOK, false)
+	s.renderHistory(w, "history_clear", data, http.StatusOK, false, false)
 }
 
 func (s *Server) clearHistory(w http.ResponseWriter, r *http.Request) {
@@ -193,7 +197,7 @@ func (s *Server) historyDetail(w http.ResponseWriter, r *http.Request, id string
 	}
 	data.Title = "History entry"
 	data.Entry = &detail
-	s.renderHistory(w, "history_detail", data, http.StatusOK, false)
+	s.renderHistory(w, "history_detail", data, http.StatusOK, true, false)
 }
 
 func (s *Server) historyFeed(w http.ResponseWriter, r *http.Request) {
@@ -316,6 +320,8 @@ func (s *Server) historyView(r *http.Request) ([]history.Entry, historyPageData)
 	}
 	data.Summary = historySummary(data.FilterLabel, data.Text, data.Shown, data.Total, data.GroupCount, data.Grouped)
 	data.Theme = themeFrom(r)
+	data.CurrentSession = currentSessionName(data.Sessions)
+	data.SessionQuery = sessionQuery(data.SessionID)
 	data.Next = historyThemeNext(r, string(data.FilterQuery))
 	data.Nav = "history"
 	if r != nil && r.URL != nil {
@@ -490,8 +496,8 @@ func historyFilterLabel(source history.Source) string {
 	}
 }
 
-func (s *Server) renderHistory(w http.ResponseWriter, name string, data historyPageData, status int, live bool) {
-	writeHTMLHeaders(w, live, live)
+func (s *Server) renderHistory(w http.ResponseWriter, name string, data historyPageData, status int, script, connect bool) {
+	writeHTMLHeaders(w, script, connect)
 	w.WriteHeader(status)
 	if err := s.tmpl.ExecuteTemplate(w, name, data); err != nil {
 		http.Error(w, "template error", http.StatusInternalServerError)

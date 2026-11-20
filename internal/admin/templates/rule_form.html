@@ -3,6 +3,8 @@
 {{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{end}}
 {{if .Form.SecretHint}}<p class="hint" role="status">{{.Form.SecretHint}}</p>{{end}}
 <form id="rule-form" class="{{if eq .Form.ResponseMode "raw"}}mode-raw{{else}}mode-fields{{end}}" method="post" action="{{.Form.Action}}">
+  <fieldset class="form-section">
+    <legend>Match</legend>
   <label for="name">Name</label>
   <input id="name" name="name" type="text" maxlength="80" value="{{.Form.Name}}">
   <label for="api_name">Stable name</label>
@@ -36,6 +38,9 @@
   <label for="body_conditions">Body conditions</label>
   <textarea id="body_conditions" name="body_conditions">{{.Form.BodyMatch}}</textarea>
   <p class="hint">Optional. One condition per line, for a form body or a JSON body. grant_type=refresh_token matches a form field. user.role=admin matches a JSON path. Numbers and booleans match their text, so active=true matches true. A body over 1 MiB does not match. Every line must match.</p>
+  </fieldset>
+  <fieldset class="form-section">
+    <legend>Timing and limits</legend>
   <label for="priority">Priority</label>
   <input id="priority" name="priority" type="number" step="1" value="{{.Form.Priority}}">
   <p class="hint">Optional. Higher numbers win before the usual path and condition order. Leave it empty for 0. Negative numbers are allowed. Equal priorities use the existing order.</p>
@@ -60,6 +65,9 @@
   <label for="delay_ms">Delay (ms)</label>
   <input id="delay_ms" name="delay_ms" type="number" min="0" step="1" value="{{.Form.DelayMS}}">
   <p class="hint">Optional. Wait this many milliseconds before the response is written. Use it to try loading states, spinners, and client timeouts. 0 means no wait.</p>
+  </fieldset>
+  <fieldset class="form-section">
+    <legend>Response</legend>
   <fieldset>
     <legend>Response mode</legend>
     <label for="mode_fields"><input id="mode_fields" name="response_mode" type="radio" value="fields" {{if ne .Form.ResponseMode "raw"}}checked{{end}}> Fields</label>
@@ -83,6 +91,7 @@
     <textarea id="body" name="body">{{.Form.Body}}</textarea>
     <p class="hint">Leave the body empty for no response body. Used in Fields mode.</p>
   </div>
+  </fieldset>
   <p><button type="submit">{{.Form.Submit}}</button></p>
 </form>
 <script src="/_admin/rule-form.js"></script>

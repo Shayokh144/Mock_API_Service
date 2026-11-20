@@ -200,8 +200,12 @@ func TestHistoryDetailMasksSecrets(t *testing.T) {
 		t.Fatal(err)
 	}
 	body := readAll(t, resp)
-	if strings.Contains(resp.Header.Get("Content-Security-Policy"), "script-src") {
-		t.Fatal("detail page allows scripts")
+	csp := resp.Header.Get("Content-Security-Policy")
+	if !strings.Contains(csp, "script-src 'self'") || strings.Contains(csp, "unsafe-inline") || strings.Contains(csp, "connect-src") {
+		t.Fatalf("detail csp = %q", csp)
+	}
+	if strings.Contains(body, "<script>") || !strings.Contains(body, `<script src="/_admin/copy.js"></script>`) {
+		t.Fatal("detail page script is not the external copy file")
 	}
 	for _, want := range []string{
 		"Authorization: ••••••••",
