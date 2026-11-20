@@ -71,7 +71,6 @@ type page struct {
 	Form                formView
 	Methods             []string
 	Error               string
-	ActiveUpstream      string
 	Upstreams           []upstreamRow
 	UpstreamForm        upstreamForm
 	UpstreamChoices     []upstreamChoice
@@ -128,8 +127,6 @@ type upstreamRow struct {
 	Prefix     string
 	LocalURL   string
 	AndroidURL string
-	Routing    string
-	Active     bool
 }
 
 type upstreamForm struct {
@@ -280,7 +277,6 @@ func (s *Server) rulesPage(w http.ResponseWriter, r *http.Request, status int) {
 	s.render(w, r, "rules", page{
 		Title:               "Rules",
 		Rules:               rows,
-		ActiveUpstream:      s.activeUpstreamName(),
 		RulesAction:         action,
 		RuleUpstreamKey:     key,
 		RuleUpstreamLabel:   label,
@@ -340,11 +336,7 @@ func (s *Server) ruleGroups(rows []ruleRow) []ruleGroup {
 	unknown := map[string][]ruleRow{}
 	var unknownIDs []string
 	known := map[string]upstreams.Upstream{}
-	activeID := ""
 	if s.upstreams != nil {
-		if active, ok := s.upstreams.Active(); ok {
-			activeID = active.ID
-		}
 		for _, item := range s.upstreams.List() {
 			known[item.ID] = item
 		}
@@ -371,7 +363,7 @@ func (s *Server) ruleGroups(rows []ruleRow) []ruleGroup {
 				continue
 			}
 			groups = append(groups, ruleGroup{
-				Heading: upstreamBlockHeading(item, item.ID == activeID),
+				Heading: upstreamBlockHeading(item),
 				Count:   ruleCountLabel(len(block)),
 				Rules:   block,
 			})
@@ -395,15 +387,11 @@ func (s *Server) ruleGroups(rows []ruleRow) []ruleGroup {
 	return groups
 }
 
-func upstreamBlockHeading(item upstreams.Upstream, fallback bool) string {
-	heading := item.Name
-	if item.Prefix != "" {
-		heading += " · " + item.Prefix
+func upstreamBlockHeading(item upstreams.Upstream) string {
+	if item.Prefix == "" {
+		return item.Name
 	}
-	if fallback {
-		heading += " · fallback"
-	}
-	return heading
+	return item.Name + " · " + item.Prefix
 }
 
 func ruleCountLabel(n int) string {

@@ -32,8 +32,7 @@ func TestPrefixRoutesStripQueryAndScopeRules(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	easy, err := ups.Create("easyHotel", easySrv.URL, "/easyhotel")
-	if err != nil {
+	if _, err := ups.Create("easyHotel", easySrv.URL, "/easyhotel"); err != nil {
 		t.Fatal(err)
 	}
 	rulesStore := rules.NewMemory()
@@ -83,16 +82,14 @@ func TestPrefixRoutesStripQueryAndScopeRules(t *testing.T) {
 	if okyaPath != "/v1/" {
 		t.Fatalf("exact prefix forwarded path = %s", okyaPath)
 	}
-	got = getBody(t, proxySrv.URL+"/okyax")
-	if got != "okya-real" || okyaPath != "/v1/okyax" {
-		t.Fatalf("segment boundary path=%s body=%s", okyaPath, got)
-	}
-	if err := ups.Activate(easy.ID); err != nil {
+	missEarly, err := http.Get(proxySrv.URL + "/okyax")
+	if err != nil {
 		t.Fatal(err)
 	}
-	got = getBody(t, proxySrv.URL+"/other?q=1")
-	if got != "easy-real" || easyPath != "/other" {
-		t.Fatalf("fallback path=%s body=%s", easyPath, got)
+	missEarlyBody, _ := io.ReadAll(missEarly.Body)
+	missEarly.Body.Close()
+	if missEarly.StatusCode != http.StatusNotFound || !strings.Contains(string(missEarlyBody), noUpstreamMessage) {
+		t.Fatalf("segment boundary status=%d body=%s", missEarly.StatusCode, missEarlyBody)
 	}
 
 	entries := log.List()
@@ -116,18 +113,21 @@ func TestPrefixRoutesStripQueryAndScopeRules(t *testing.T) {
 		}
 	}
 
-	ups.ClearActiveForTest()
 	miss, err := http.Get(proxySrv.URL + "/other")
 	if err != nil {
 		t.Fatal(err)
 	}
 	missBody, _ := io.ReadAll(miss.Body)
 	miss.Body.Close()
-	if miss.StatusCode != http.StatusServiceUnavailable || !strings.Contains(string(missBody), noUpstreamMessage) {
-		t.Fatalf("no active status=%d body=%s", miss.StatusCode, missBody)
+	if miss.StatusCode != http.StatusNotFound || !strings.Contains(string(missBody), noUpstreamMessage) {
+		t.Fatalf("unmatched status=%d body=%s", miss.StatusCode, missBody)
+	}
+	rejected := log.List()[0]
+	if rejected.Path != "/other" || rejected.Source != history.SourceRejected || rejected.UpstreamID != "" || rejected.UpstreamName != "" || rejected.ViaReferer {
+		t.Fatalf("rejected = %+v", rejected)
 	}
 	still := getBody(t, proxySrv.URL+"/okya/users")
 	if still != `{"from":"okya-rule"}` {
-		t.Fatalf("prefix without active = %s", still)
+		t.Fatalf("prefix still matches = %s", still)
 	}
 }

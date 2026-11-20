@@ -1,6 +1,5 @@
 {{define "rules"}}
 {{template "head" .}}
-{{if .ActiveUpstream}}<p>Fallback upstream: {{.ActiveUpstream}}. Requests with no matching prefix go here.</p>{{else}}<p>No fallback upstream. Add one on the Upstreams page. Requests with no prefix return an error until you add one.</p>{{end}}
 <form method="get" action="{{.RulesAction}}">
   <label for="rules-upstream-filter">Upstream</label>
   <select id="rules-upstream-filter" name="upstream">

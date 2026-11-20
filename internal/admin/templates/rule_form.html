@@ -17,7 +17,7 @@
     <option value="{{.ID}}" {{if .Selected}}selected{{end}}>{{.Name}}</option>
     {{end}}
   </select>
-  <p class="hint">Any upstream matches every request. A named upstream matches only when the request resolves to that upstream, by its prefix or as the fallback.</p>
+  <p class="hint">Any upstream matches every request. A named upstream matches only when the request resolves to that upstream, by its path prefix or by a Referer whose path has that prefix.</p>
   <label for="method">Method</label>
   <select id="method" name="method">
     {{range .Methods}}
@@ -58,8 +58,8 @@
   </select>
   <p class="hint">Optional. reset closes the connection with no HTTP response. hang writes nothing until the client disconnects or UPSTREAM_TIMEOUT elapses, then closes. A delay runs first. A fresh request cannot also set a fault.</p>
   <label for="delay_ms">Delay (ms)</label>
-  <input id="delay_ms" name="delay_ms" type="number" min="0" max="60000" step="1" value="{{.Form.DelayMS}}">
-  <p class="hint">Optional. Wait this many milliseconds before the response is written. Use it to try loading states, spinners, and client timeouts. 0 means no wait. The maximum is 60000.</p>
+  <input id="delay_ms" name="delay_ms" type="number" min="0" step="1" value="{{.Form.DelayMS}}">
+  <p class="hint">Optional. Wait this many milliseconds before the response is written. Use it to try loading states, spinners, and client timeouts. 0 means no wait.</p>
   <fieldset>
     <legend>Response mode</legend>
     <label for="mode_fields"><input id="mode_fields" name="response_mode" type="radio" value="fields" {{if ne .Form.ResponseMode "raw"}}checked{{end}}> Fields</label>

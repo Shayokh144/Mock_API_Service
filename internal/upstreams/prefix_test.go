@@ -34,13 +34,11 @@ func TestPrefixValidationAndUniqueness(t *testing.T) {
 	if _, err := store.Update(otherCase.ID, "okya-upper", "https://okya.example/v2", "/okya"); err == nil {
 		t.Fatal("update stole a prefix")
 	}
-	empty, err := store.Create("plain", "https://plain.example", "")
-	if err != nil || empty.Prefix != "" {
-		t.Fatalf("empty prefix = %+v %v", empty, err)
+	if _, err := store.Create("plain", "https://plain.example", ""); err == nil || !strings.Contains(err.Error(), "prefix is required") {
+		t.Fatalf("empty prefix = %v", err)
 	}
-	secondEmpty, err := store.Create("plain-two", "https://plain.example/2", "  ")
-	if err != nil || secondEmpty.Prefix != "" {
-		t.Fatalf("second empty = %+v %v", secondEmpty, err)
+	if _, err := store.Create("plain-two", "https://plain.example/2", "  "); err == nil {
+		t.Fatal("blank prefix was accepted")
 	}
 
 	bad := []string{"okya", "/", "/okya/", "/okya/api", "/ok ya", "/okya?", "/_admin", "/_admin/extra", "/_adminx", "/okya.", "/café"}
@@ -61,11 +59,8 @@ func TestRouteStripsOnSegmentBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fallback, err := store.Create("easy", "https://easy.example", "/easyhotel")
+	easy, err := store.Create("easy", "https://easy.example", "/easyhotel")
 	if err != nil {
-		t.Fatal(err)
-	}
-	if err := store.Activate(fallback.ID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -74,30 +69,60 @@ func TestRouteStripsOnSegmentBoundary(t *testing.T) {
 		id        string
 		forwarded string
 		prefixed  bool
+		ok        bool
 	}{
-		{"/okya/api/v1/x", okya.ID, "/api/v1/x", true},
-		{"/okya", okya.ID, "/", true},
-		{"/okya/", okya.ID, "/", true},
-		{"/okyax", fallback.ID, "/okyax", false},
-		{"/okyaX", fallback.ID, "/okyaX", false},
-		{"/easyhotel/v1/rooms", fallback.ID, "/v1/rooms", true},
-		{"/other", fallback.ID, "/other", false},
-		{"", fallback.ID, "/", false},
+		{"/okya/api/v1/x", okya.ID, "/api/v1/x", true, true},
+		{"/okya", okya.ID, "/", true, true},
+		{"/okya/", okya.ID, "/", true, true},
+		{"/easyhotel/v1/rooms", easy.ID, "/v1/rooms", true, true},
 	}
 	for _, tc := range cases {
 		route, ok := store.Route(tc.path)
-		if !ok || route.Upstream.ID != tc.id || route.ForwardedPath != tc.forwarded || route.Prefixed != tc.prefixed {
+		if ok != tc.ok || route.Upstream.ID != tc.id || route.ForwardedPath != tc.forwarded || route.Prefixed != tc.prefixed || route.ViaReferer {
 			t.Fatalf("path %q route=%+v ok=%v", tc.path, route, ok)
 		}
 	}
-
-	store.ClearActiveForTest()
-	if _, ok := store.Route("/other"); ok {
-		t.Fatal("unmatched path routed with no active upstream")
+	for _, path := range []string{"/okyax", "/okyaX", "/other", ""} {
+		if _, ok := store.Route(path); ok {
+			t.Fatalf("unmatched path %q routed", path)
+		}
 	}
-	route, ok := store.Route("/okya/api/v1/x")
-	if !ok || route.Upstream.ID != okya.ID || route.ForwardedPath != "/api/v1/x" {
-		t.Fatalf("prefix still routes: %+v ok=%v", route, ok)
+}
+
+func TestRefererMatchesPrefixAndIgnoresHost(t *testing.T) {
+	store := NewMemory()
+	okya, err := store.Create("OKYA_AUTH_DEV", "https://okya.example", "/okya-auth")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Create("easy", "https://easy.example", "/easyhotel"); err != nil {
+		t.Fatal(err)
+	}
+
+	route, ok := store.MatchReferer("/login", "http://10.0.2.2:8080/okya-auth/login/otp")
+	if !ok || route.Upstream.ID != okya.ID || route.ForwardedPath != "/login" || route.Prefixed || !route.ViaReferer {
+		t.Fatalf("emulator referer = %+v ok=%v", route, ok)
+	}
+	route, ok = store.MatchReferer("/favicon.ico", "http://evil.example/okya-auth/login/otp")
+	if !ok || route.Upstream.ID != okya.ID || route.ForwardedPath != "/favicon.ico" {
+		t.Fatalf("other host with matching path = %+v ok=%v", route, ok)
+	}
+	route, ok = store.MatchReferer("/assets/app.js", "http://127.0.0.1:8080/okya-auth")
+	if !ok || route.ForwardedPath != "/assets/app.js" || route.Upstream.Prefix != "/okya-auth" {
+		t.Fatalf("exact prefix referer = %+v ok=%v", route, ok)
+	}
+
+	for _, referer := range []string{
+		"",
+		"http://10.0.2.2:8080/favicon.ico",
+		"http://evil.example/unrelated/page",
+		"http://[",
+		"not a url",
+		"http://127.0.0.1:8080/okya-auth-extra/login",
+	} {
+		if _, ok := store.MatchReferer("/login", referer); ok {
+			t.Fatalf("referer %q routed", referer)
+		}
 	}
 }
 
@@ -124,14 +149,94 @@ func TestLoadOldUpstreamsFileWithoutPrefix(t *testing.T) {
 		t.Fatal(err)
 	}
 	item, ok := store.Get("0123456789abcdef")
-	if !ok || item.Prefix != "" || item.Name != "staging" {
+	if !ok || item.Prefix != "/staging" || item.Name != "staging" {
 		t.Fatalf("loaded = %+v ok=%v", item, ok)
 	}
-	route, ok := store.Route("/v1/health")
-	if !ok || route.Prefixed || route.ForwardedPath != "/v1/health" || route.Upstream.ID != item.ID {
+	assigned := store.AssignedPrefixes()
+	if len(assigned) != 1 || assigned[0].Name != "staging" || assigned[0].Prefix != "/staging" {
+		t.Fatalf("assigned = %+v", assigned)
+	}
+	if got := PrefixWarning(assigned[0].Name, assigned[0].Prefix, "127.0.0.1:8080"); got != "warning: upstream staging had no prefix; assigned /staging. App base URL is http://127.0.0.1:8080/staging" {
+		t.Fatalf("warning = %q", got)
+	}
+	if _, ok := store.Route("/v1/health"); ok {
+		t.Fatal("unprefixed path still routed")
+	}
+	route, ok := store.Route("/staging/v1/health")
+	if !ok || !route.Prefixed || route.ForwardedPath != "/v1/health" || route.Upstream.ID != item.ID {
 		t.Fatalf("route = %+v ok=%v", route, ok)
+	}
+	saved := mustRead(t, path)
+	if !strings.Contains(saved, `"/staging"`) || strings.Contains(saved, "active_id") {
+		t.Fatalf("file = %s", saved)
+	}
+	again, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(again.AssignedPrefixes()) != 0 {
+		t.Fatal("assigned the prefix again on the next load")
 	}
 	if item.CreatedAt.Location() != time.UTC {
 		t.Fatalf("created location = %s", item.CreatedAt.Location())
+	}
+}
+
+func TestLoadAssignsPrefixFromName(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "upstreams.json")
+	raw := `{
+	  "active_id": "does-not-matter",
+	  "upstreams": [
+	    {
+	      "id": "0123456789abcdef",
+	      "name": "EasyHotel_STAGING",
+	      "base_url": "https://easy.example",
+	      "created_at": "2026-11-05T05:00:00Z",
+	      "updated_at": "2026-11-05T05:00:00Z"
+	    },
+	    {
+	      "id": "fedcba9876543210",
+	      "name": "EasyHotel-STAGING",
+	      "base_url": "https://easy-2.example",
+	      "created_at": "2026-11-05T05:00:00Z",
+	      "updated_at": "2026-11-05T05:00:00Z"
+	    },
+	    {
+	      "id": "0011223344556677",
+	      "name": "kept",
+	      "base_url": "https://kept.example",
+	      "prefix": "/easyhotel-staging-2",
+	      "created_at": "2026-11-05T05:00:00Z",
+	      "updated_at": "2026-11-05T05:00:00Z"
+	    }
+	  ]
+	}`
+	if err := os.WriteFile(path, []byte(raw), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	store, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, ok := store.Get("0123456789abcdef")
+	if !ok || first.Prefix != "/easyhotel-staging" {
+		t.Fatalf("first = %+v ok=%v", first, ok)
+	}
+	second, ok := store.Get("fedcba9876543210")
+	if !ok || second.Prefix != "/easyhotel-staging-3" {
+		t.Fatalf("second = %+v ok=%v", second, ok)
+	}
+	kept, ok := store.Get("0011223344556677")
+	if !ok || kept.Prefix != "/easyhotel-staging-2" {
+		t.Fatalf("kept = %+v ok=%v", kept, ok)
+	}
+	assigned := store.AssignedPrefixes()
+	if len(assigned) != 2 || assigned[0].Prefix != "/easyhotel-staging" || assigned[1].Prefix != "/easyhotel-staging-3" {
+		t.Fatalf("assigned = %+v", assigned)
+	}
+	warning := PrefixWarning(first.Name, first.Prefix, "[::1]:8080")
+	if warning != "warning: upstream EasyHotel_STAGING had no prefix; assigned /easyhotel-staging. App base URL is http://[::1]:8080/easyhotel-staging" {
+		t.Fatalf("warning = %q", warning)
 	}
 }

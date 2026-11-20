@@ -26,7 +26,7 @@ func TestRuleCRUDIsolationAndPersistence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ups.Create("OKYA", "http://127.0.0.1:9", ""); err != nil {
+	if _, err := ups.Create("OKYA", "http://127.0.0.1:9", "/okya"); err != nil {
 		t.Fatal(err)
 	}
 	tokens, err := LoadToken(filepath.Join(dir, "admin.token"))
@@ -56,7 +56,7 @@ func TestRuleCRUDIsolationAndPersistence(t *testing.T) {
 	if rule.ID == "" || rule.Upstream != "OKYA" || rule.Path != "/v1/profile" || !rule.Enabled {
 		t.Fatalf("rule = %+v", rule)
 	}
-	resp, err := http.Get(session.ProxyURL + "/v1/profile?page=2")
+	resp, err := http.Get(session.ProxyURL + "/okya/v1/profile?page=2")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +64,7 @@ func TestRuleCRUDIsolationAndPersistence(t *testing.T) {
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("proxied status = %d", resp.StatusCode)
 	}
-	miss, err := http.Get(other.ProxyURL + "/v1/profile?page=2")
+	miss, err := http.Get(other.ProxyURL + "/okya/v1/profile?page=2")
 	if err != nil {
 		t.Fatal(err)
 	}

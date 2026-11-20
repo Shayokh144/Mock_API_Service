@@ -24,11 +24,11 @@ func TestHistoryTextFilter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	okya, err := ups.Create("OKYA_AUTH_DEV", "http://127.0.0.1:9", "")
+	okya, err := ups.Create("OKYA_AUTH_DEV", "http://127.0.0.1:9", "/okya-auth")
 	if err != nil {
 		t.Fatal(err)
 	}
-	other, err := ups.Create("develop", "http://127.0.0.1:9", "")
+	other, err := ups.Create("develop", "http://127.0.0.1:9", "/develop")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +48,7 @@ func TestHistoryTextFilter(t *testing.T) {
 	client := dashboardClient()
 
 	page := get(t, client, srv.URL+"/_admin/history?q=user/me")
-	assertContains(t, page, "Filter: All. Text: user/me. Showing 2 of 4.")
+	assertContains(t, page, "Filter: All. Text: user/me. Showing 2 of 4 requests in 2 groups.")
 	assertContains(t, page, `name="q"`)
 	assertContains(t, page, `value="user/me"`)
 	assertContains(t, page, "/API/User/Me")
@@ -61,7 +61,7 @@ func TestHistoryTextFilter(t *testing.T) {
 	assertContains(t, page, `href="/_admin/history?q=user%2Fme"`)
 
 	combined := get(t, client, srv.URL+"/_admin/history?source=mock&upstream="+other.ID+"&q=USER/ME")
-	assertContains(t, combined, "Filter: Mocked. Text: USER/ME. Showing 1 of 4.")
+	assertContains(t, combined, "Filter: Mocked. Text: USER/ME. Showing 1 of 4 requests in 1 group.")
 	assertContains(t, combined, "/v1/items?name=user/me")
 	if strings.Contains(combined, "/API/User/Me") || strings.Contains(combined, "/api/users") {
 		t.Fatalf("combined filter showed the wrong rows:\n%s", combined)
@@ -73,7 +73,7 @@ func TestHistoryTextFilter(t *testing.T) {
 	assertContains(t, combined, `action="/_admin/history/clear?q=USER%2FME&amp;source=mock&amp;upstream=`+other.ID+`"`)
 
 	blank := get(t, client, srv.URL+"/_admin/history?q=%20%20")
-	assertContains(t, blank, "Filter: All. Showing 4 of 4.")
+	assertContains(t, blank, "Filter: All. Showing 4 of 4 requests in 4 groups.")
 	if strings.Contains(blank, "q=") {
 		t.Fatal("blank text filter was kept")
 	}
@@ -108,11 +108,11 @@ func TestRulesUpstreamFilter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	okya, err := ups.Create("OKYA_AUTH_DEV", "http://127.0.0.1:9", "")
+	okya, err := ups.Create("OKYA_AUTH_DEV", "http://127.0.0.1:9", "/okya-auth")
 	if err != nil {
 		t.Fatal(err)
 	}
-	other, err := ups.Create("develop", "http://127.0.0.1:9", "")
+	other, err := ups.Create("develop", "http://127.0.0.1:9", "/develop")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -159,8 +159,8 @@ func TestRulesUpstreamFilter(t *testing.T) {
 	if strings.Contains(unknown, "upstream=missing") || strings.Contains(unknown, `value="missing"`) {
 		t.Fatal("unknown upstream filter was kept")
 	}
-	okyaAt := strings.Index(unknown, "<h2>OKYA_AUTH_DEV · fallback</h2>")
-	developAt := strings.Index(unknown, "<h2>develop</h2>")
+	okyaAt := strings.Index(unknown, "<h2>OKYA_AUTH_DEV · /okya-auth</h2>")
+	developAt := strings.Index(unknown, "<h2>develop · /develop</h2>")
 	anyAt := strings.Index(unknown, "<h2>Any upstream</h2>")
 	if okyaAt < 0 || developAt < okyaAt || anyAt < developAt {
 		t.Fatalf("blocks are not in upstream order:\n%s", unknown)
@@ -169,10 +169,10 @@ func TestRulesUpstreamFilter(t *testing.T) {
 		t.Fatal("grouped tables still have an Upstream column")
 	}
 
-	assertContains(t, named, "<h2>OKYA_AUTH_DEV · fallback</h2>")
+	assertContains(t, named, "<h2>OKYA_AUTH_DEV · /okya-auth</h2>")
 	assertContains(t, named, "<h2>Any upstream</h2>")
 	assertContains(t, named, "1 rule")
-	if strings.Contains(named, "<h2>develop</h2>") {
+	if strings.Contains(named, "<h2>develop · /develop</h2>") {
 		t.Fatal("empty develop block was shown")
 	}
 }
@@ -191,7 +191,7 @@ func TestRuleGroupsKeepOrderAndFilter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ups.Create("unused", "http://127.0.0.1:9", ""); err != nil {
+	if _, err := ups.Create("unused", "http://127.0.0.1:9", "/unused"); err != nil {
 		t.Fatal(err)
 	}
 	gone := "0123456789abcdef"
@@ -222,7 +222,7 @@ func TestRuleGroupsKeepOrderAndFilter(t *testing.T) {
 	client := dashboardClient()
 
 	page := get(t, client, srv.URL+"/_admin")
-	okyaAt := strings.Index(page, "<h2>OKYA_AUTH_DEV · /okya-auth · fallback</h2>")
+	okyaAt := strings.Index(page, "<h2>OKYA_AUTH_DEV · /okya-auth</h2>")
 	unknownAt := strings.Index(page, "<h2>Unknown upstream: "+gone+"</h2>")
 	anyAt := strings.Index(page, "<h2>Any upstream</h2>")
 	if okyaAt < 0 || unknownAt < okyaAt || anyAt < unknownAt {

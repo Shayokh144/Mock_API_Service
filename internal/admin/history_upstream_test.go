@@ -24,11 +24,11 @@ func TestHistoryUpstreamFilter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	staging, err := ups.Create("staging", "https://staging.example.com", "")
+	staging, err := ups.Create("staging", "https://staging.example.com", "/staging")
 	if err != nil {
 		t.Fatal(err)
 	}
-	develop, err := ups.Create("develop", "https://develop.example.com", "")
+	develop, err := ups.Create("develop", "https://develop.example.com", "/develop")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +75,7 @@ func TestHistoryUpstreamFilter(t *testing.T) {
 	assertContains(t, onlyStaging, "source=mock&amp;upstream="+staging.ID)
 
 	combined := get(t, client, srv.URL+"/_admin/history?source=mock&upstream="+staging.ID)
-	assertContains(t, combined, "Filter: Mocked. Showing 1 of 4.")
+	assertContains(t, combined, "Filter: Mocked. Showing 1 of 4 requests in 1 group.")
 	assertContains(t, combined, "/v1/staging-mock")
 	if strings.Contains(combined, "/v1/staging-pass") || strings.Contains(combined, "/v1/any-mock") {
 		t.Fatalf("combined filter showed the wrong rows:\n%s", combined)
@@ -90,7 +90,7 @@ func TestHistoryUpstreamFilter(t *testing.T) {
 	}
 
 	bad := get(t, client, srv.URL+"/_admin/history?upstream=nope")
-	assertContains(t, bad, "Filter: All. Showing 4 of 4.")
+	assertContains(t, bad, "Filter: All. Showing 4 of 4 requests in 4 groups.")
 	assertContains(t, bad, "Upstream: All upstreams.")
 	assertContains(t, bad, "/v1/develop-pass")
 	if strings.Contains(bad, "upstream=nope") {
@@ -110,7 +110,7 @@ func TestHistoryUpstreamFilter(t *testing.T) {
 		t.Fatal("history.js does not pass the upstream filter to the feed")
 	}
 
-	if _, err := ups.Update(staging.ID, "staging-renamed", "https://staging.example.com/v2", ""); err != nil {
+	if _, err := ups.Update(staging.ID, "staging-renamed", "https://staging.example.com/v2", "/staging"); err != nil {
 		t.Fatal(err)
 	}
 	renamed := get(t, client, srv.URL+"/_admin/history?upstream="+staging.ID)
@@ -119,9 +119,6 @@ func TestHistoryUpstreamFilter(t *testing.T) {
 	assertContains(t, renamed, ">staging<")
 	assertContains(t, renamed, `value="`+staging.ID+`" selected>staging-renamed`)
 
-	if err := ups.Activate(develop.ID); err != nil {
-		t.Fatal(err)
-	}
 	if err := ups.Delete(staging.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +132,7 @@ func TestHistoryUpstreamFilter(t *testing.T) {
 	}
 
 	missing := get(t, client, srv.URL+"/_admin/history?upstream=0011223344556677")
-	assertContains(t, missing, "Filter: All. Showing 0 of 4.")
+	assertContains(t, missing, "Filter: All. Showing 0 of 4 requests in 0 groups.")
 	assertContains(t, missing, "No entries for this filter.")
 	assertContains(t, missing, "Deleted upstream")
 

@@ -2,7 +2,7 @@
 
 A local Go proxy for one Flutter developer on a MacBook.
 
-Point the debug build at `http://localhost:8080`. A matching rule returns a saved response. Every other call goes to your upstream server (develop/staging). That server stays unchanged. Production app configuration stays unchanged.
+Point the debug build at `http://localhost:8080` plus the upstream prefix, for example `http://localhost:8080/app`. A matching rule returns a saved response. Every other call goes to your upstream server (develop/staging). That server stays unchanged. Production app configuration stays unchanged.
 
 Behavior, matching, and deletion rules live in [docs/MVP_REQUIREMENTS.md](docs/MVP_REQUIREMENTS.md). The build order is in [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md). The task list is in [docs/TASKS.md](docs/TASKS.md).
 
@@ -31,7 +31,8 @@ The process reads environment variables. It also accepts `--scenario` and `--sce
 
 | Variable | Required | Default | Meaning |
 | --- | --- | --- | --- |
-| `UPSTREAM_BASE_URL` | no | none | Absolute `http` or `https` URL. When `upstreams.json` has no upstreams, this seeds the first one and makes it the fallback. A later start does not replace saved upstreams. A path prefix is allowed. A query or fragment is rejected. |
+| `UPSTREAM_BASE_URL` | no | none | Absolute `http` or `https` URL. When `upstreams.json` has no upstreams, this seeds the first one and gives it `UPSTREAM_PREFIX`. A later start does not replace saved upstreams. A path on the URL is joined in front of the forwarded path. A query or fragment is rejected. |
+| `UPSTREAM_PREFIX` | no | `/app` | Path prefix for the upstream seeded by `UPSTREAM_BASE_URL`. One path segment, such as `/app`. It is ignored when `upstreams.json` already has upstreams. |
 | `LISTEN_ADDR` | no | `127.0.0.1:8080` | Proxy loopback address. `localhost` becomes `127.0.0.1`. `[::1]` is allowed. Any other host fails startup. The Android emulator still calls this port as `10.0.2.2`. |
 | `ADMIN_LISTEN_ADDR` | no | `127.0.0.1:8081` | Dashboard loopback address. Same host rules as `LISTEN_ADDR`. It must differ from the proxy address. |
 | `RULES_PATH` | no | `data/rules.json` | Rule file. A missing file means there are no rules. |
@@ -69,7 +70,7 @@ Rules are saved when you create, edit, enable, disable, or delete them. They are
 
 `data/rules.json` and `data/upstreams.json` are ignored by git. `data/.gitkeep` stays in the repository.
 
-If `UPSTREAM_BASE_URL` is unset and no upstream is saved, the process still listens. The log adds `no upstream configured; add one at the dashboard`.
+If `UPSTREAM_BASE_URL` is unset and no upstream is saved, the process still listens. After the upstream file is loaded, the log adds `no upstream configured; add one at the dashboard`. When upstreams are saved, that line lists their prefixes in file order, for example `3 upstreams loaded: /okya, /okya-auth, /easyhotel`. One upstream uses the singular: `1 upstream loaded: /app`.
 
 ## Upstreams
 
@@ -78,20 +79,20 @@ Open [http://127.0.0.1:8081/_admin/upstreams](http://127.0.0.1:8081/_admin/upstr
 1. Choose **New upstream**.
 2. Name it, for example `staging`.
 3. Set the base URL to an absolute `http` or `https` URL. A path on that URL is kept and joined in front of the forwarded path. A query or fragment is rejected.
-4. Optionally set a prefix, one path segment such as `/okya`. It goes on the app base URL, not on the upstream URL.
-5. Save. The first upstream is the fallback.
-6. Add another, then choose **Set as fallback**. That upstream handles requests that match no prefix. Do not restart the proxy. Prefixed upstreams keep serving at the same time.
+4. Set a prefix. It is required, and it is one path segment such as `/okya`. It goes on the app base URL, not on the upstream URL. Two upstreams cannot share a prefix.
+5. Save. That upstream serves immediately. Do not restart the proxy.
+6. Add another upstream with a different prefix. Both serve at the same time.
 7. On **New rule** or **Edit**, choose that upstream, or **Any upstream**.
 
-A named rule matches when the request resolves to that upstream, by its prefix or as the fallback. **Any upstream** matches for every resolved upstream, and also when none is resolved. Rules see the path after the prefix is removed. When both match the same path, the more specific pattern still wins. If the patterns tie, the named rule wins over Any. A rule can set `priority`. A higher number wins before that path order, including a wildcard against an exact path. Missing priority is 0. Negative numbers are allowed. Equal priorities, including every rule left at 0, keep the existing order.
+A named rule matches when the request resolves to that upstream. The path prefix selects it. When the path has no prefix, the `Referer` path selects it, and the request path is forwarded unchanged. **Any upstream** matches for every resolved upstream, and also when none is resolved. Rules see the path after a prefix is removed. A Referer route has no prefix to remove, so the rule sees the request path. When both match the same path, the more specific pattern still wins. If the patterns tie, the named rule wins over Any. A rule can set `priority`. A higher number wins before that path order, including a wildcard against an exact path. Missing priority is 0. Negative numbers are allowed. Equal priorities, including every rule left at 0, keep the existing order.
 
 Passthrough uses the resolved upstream. Its base URL path is joined in front of the forwarded path.
 
-An absolute `Location` or `Content-Location` that uses the matched upstream's scheme and host is rewritten to this proxy: the request's Host on that session port, plus the upstream's path prefix. Relative URLs and URLs for any other host stay as the upstream sent them. On `Set-Cookie`, a `Domain` that matches the upstream host is dropped, `Secure` is dropped because the proxy is plain HTTP, and `Path` is prefixed when that upstream has a path prefix. A mocked rule response keeps the headers the rule saved. The default session and test sessions both do this.
+An absolute `Location` or `Content-Location` that uses the matched upstream's scheme and host is rewritten to this proxy: the request's Host on that session port, plus the upstream's path prefix. A root-relative value such as `Location: /login` is rewritten the same way, so a prefixed upstream keeps its prefix (`/okya/login`). A path-relative value such as `next`, and a URL for any other host, stay as the upstream sent them. On `Set-Cookie`, a `Domain` that matches the upstream host is dropped, `Secure` is dropped because the proxy is plain HTTP, and `Path` is prefixed. A mocked rule response keeps the headers the rule saved. The default session and test sessions both do this.
 
 A WebSocket upgrade (`Connection: Upgrade` and an `Upgrade` header) is tunneled. The proxy does not buffer that response and does not apply `UPSTREAM_TIMEOUT` to the open socket. History records status 101 and does not store the messages. A path prefix is removed the same way as any other forwarded call.
 
-With no matching prefix and no fallback upstream, passthrough returns `503` and `{"error":"no upstream is configured; add one at /_admin"}`. A matching Any rule still returns the mock.
+A request whose path matches no prefix, and whose `Referer` is missing, malformed, or has a path that matches no prefix, is answered by the proxy. It returns `404` and `{"error":"no upstream matches this path"}`. It is not forwarded. History records source `rejected` and an empty upstream. A matching Any rule still returns the mock.
 
 ## Two apps at once
 
@@ -106,20 +107,26 @@ A call to `http://127.0.0.1:8080/okya/api/v1/x?page=2` is forwarded to the OKYA 
 
 The Upstreams page shows those two app addresses for each prefixed upstream. The port is the proxy port, `8080` by default, not the dashboard port.
 
-A request with no prefix still goes to the fallback upstream, the one marked by **Set as fallback**. Leave the prefix empty when a single app should keep using `http://127.0.0.1:8080` with no extra segment. An upstream with no prefix is not used until it is the fallback.
+A page served under a prefix often requests root-relative paths such as `/login`, `/favicon.ico`, or `/assets/app.js`. Those paths have no prefix. The proxy reads the `Referer` header and compares its path only. The host and port are ignored, because the Android emulator uses `10.0.2.2` and the iOS Simulator uses `127.0.0.1` or `localhost`. If that path matches a prefix, the request goes to that upstream and the path is not rewritten. History, the live feed, and the detail page show the upstream name followed by `(via Referer)`. `GET /login` with `Referer: http://10.0.2.2:8080/okya/login/otp` is forwarded to the `/okya` upstream as `/login`.
 
-Rules use the path after the prefix. A rule for `/api/v1/x` on OKYA matches `/okya/api/v1/x` and does not match `/easyhotel/api/v1/x`. An Any rule matches both.
+If the `Referer` is missing, malformed, or its path matches no prefix, the proxy returns the 404 above. It does not guess an upstream.
 
-You cannot delete the fallback upstream. Choose **Set as fallback** on another one first. Deleting any other upstream sets rules that named it to Any upstream. If that would duplicate an Any rule for the same method, path, and conditions, the delete is refused and those rules stay unchanged.
+Rules use the path after the prefix. A rule for `/api/v1/x` on OKYA matches `/okya/api/v1/x` and does not match `/easyhotel/api/v1/x`. The same rule also matches a Referer-routed request whose path is `/api/v1/x` and whose `Referer` path starts with `/okya`. An Any rule matches both apps, and it also matches a request that resolved to no upstream.
+
+Deleting an upstream sets rules that named it to Any upstream. If that would duplicate an Any rule for the same method, path, and conditions, the delete is refused and those rules stay unchanged.
 
 Upstreams are stored in `upstreams.json` next to the rules file. The default path is `data/upstreams.json`. Writes are atomic, same as the rules file.
+
+An older file may still have an empty prefix, and it may still have `active_id`. The process loads that file. Each empty prefix is replaced with one derived from the upstream name: lowercase, and every character outside `a-z`, `0-9`, and `-` becomes `-`. `EasyHotel_STAGING` becomes `/easyhotel-staging`. A prefix that is already used gets `-2`, then `-3`. The new prefix is written back to the file, and `active_id` is dropped on that write. The log names the prefix and the app base URL, for example `warning: upstream EasyHotel_STAGING had no prefix; assigned /easyhotel-staging. App base URL is http://127.0.0.1:8080/easyhotel-staging`. Point the app at that URL. A later start does not assign the prefix again.
 
 ## Connect a Flutter debug build
 
 Change only the debug base URL.
 
-- iOS Simulator and Flutter desktop on the same Mac: `http://localhost:8080`
-- Android emulator: `http://10.0.2.2:8080`
+- iOS Simulator and Flutter desktop on the same Mac: `http://localhost:8080/app`
+- Android emulator: `http://10.0.2.2:8080/app`
+
+`/app` is the default prefix from `UPSTREAM_PREFIX`. The Upstreams page shows the address to copy.
 
 Inside the Android emulator, `localhost` is the emulator itself. `10.0.2.2` is the Mac's loopback address. Leave the release host unchanged.
 
@@ -151,13 +158,13 @@ Keep any path from the real base URL on the app base URL in the platform steps b
 
 An upstream prefix, such as `/okya`, is different. Put that prefix on the app base URL too, for example `http://10.0.2.2:8080/okya`. Leave it off the upstream base URL. The proxy removes it before forwarding. The Upstreams page shows the address to copy.
 
-Example: the app used `https://staging.example.com/v1`. The Android base URL is `http://10.0.2.2:8080/v1`. The iOS Simulator base URL is `http://127.0.0.1:8080/v1`. Start with `UPSTREAM_BASE_URL=https://staging.example.com`.
+Example: the app used `https://staging.example.com/v1`, and the seeded prefix is `/app`. The Android base URL is `http://10.0.2.2:8080/app/v1`. The iOS Simulator base URL is `http://127.0.0.1:8080/app/v1`. Start with `UPSTREAM_BASE_URL=https://staging.example.com`. The proxy removes `/app` and forwards `/v1/...`.
 
-The app keeps calling the proxy. To move between staging and develop when neither has a prefix, add both on the Upstreams page and choose **Set as fallback**. `UPSTREAM_BASE_URL` only seeds the first upstream when `upstreams.json` is empty. It does not change the fallback on a later start.
+The app keeps calling the proxy. To move between staging and develop, give each its own prefix, such as `/staging` and `/develop`, and point the debug build at that base URL. `UPSTREAM_BASE_URL` only seeds the first upstream when `upstreams.json` is empty. That seeded upstream uses `UPSTREAM_PREFIX`, or `/app` when the variable is unset. A later start does not change a saved upstream.
 
 ### Android Emulator
 
-1. Point the debug base URL at `http://10.0.2.2:8080`, plus any path prefix from the real base URL.
+1. Point the debug base URL at `http://10.0.2.2:8080/app`, plus any path from the real base URL. `/app` is the default `UPSTREAM_PREFIX`. Replace it with the prefix on the Upstreams page.
 2. `10.0.2.2` is the emulator's alias for the host loopback. Inside the emulator, `localhost` is the emulator itself.
 3. A loopback-only `LISTEN_ADDR` still works. The default is `127.0.0.1:8080`. The emulator maps `10.0.2.2` to that host loopback. A LAN bind is not required.
 4. Allow cleartext HTTP in the debug build only. Add `android/app/src/debug/res/xml/network_security_config.xml`:
@@ -182,14 +189,14 @@ android:networkSecurityConfig="@xml/network_security_config"
 5. Pass the base URL with `--dart-define` or a flavor. Leave the release host in source unchanged.
 
 ```sh
-flutter run --dart-define=API_BASE_URL=http://10.0.2.2:8080
+flutter run --dart-define=API_BASE_URL=http://10.0.2.2:8080/app
 ```
 
 The app reads that value, for example with `String.fromEnvironment('API_BASE_URL')`. The proxy does not read that name.
 
 ### iOS Simulator
 
-The Simulator shares the Mac's network. Use `http://127.0.0.1:8080` or `http://localhost:8080`, plus any path prefix from the real base URL.
+The Simulator shares the Mac's network. Use `http://127.0.0.1:8080/app` or `http://localhost:8080/app`, plus any path from the real base URL. `/app` is the default `UPSTREAM_PREFIX`.
 
 App Transport Security blocks plain HTTP until local networking is allowed. In `ios/Runner/Info.plist`, add:
 
@@ -226,7 +233,7 @@ Open the dashboard. Choose **New rule**.
 
 The rules list has an **Upstream** menu, same idea as History, and it is a GET form. **All upstreams** is the default. **Any** (`?upstream=any`) shows only rules set to Any. A named upstream, such as `?upstream=OKYA_AUTH_DEV`, shows rules bound to that name and also rules set to Any, because Any matches every upstream. A name that is not saved is ignored. The page says how many rules are shown.
 
-Rules are grouped by upstream. Each block has the upstream name, its prefix and the word fallback when those apply, a rule count, and its own table. Named upstreams follow the Upstreams page. **Any upstream** comes after them. A rule whose upstream was deleted is in a block labelled `Unknown upstream:` plus the id. Blocks with no rules are left out. Edit, enable, disable, and delete return to the same filter.
+Rules are grouped by upstream. Each block has the upstream name, its prefix, a rule count, and its own table. Named upstreams follow the Upstreams page. **Any upstream** comes after them. A rule whose upstream was deleted is in a block labelled `Unknown upstream:` plus the id. Blocks with no rules are left out. Edit, enable, disable, and delete return to the same filter.
 
 Exact profile error:
 
@@ -322,9 +329,9 @@ Content-Type: application/json
 
 ## Delay
 
-**Delay (ms)** waits before the response is written. Leave it at `0` for no wait. The maximum is `60000` (60 seconds).
+**Delay (ms)** waits before the response is written. Leave it at `0` for no wait. There is no upper limit. A negative number is rejected. A number that would overflow a duration is rejected.
 
-The wait applies to a saved mock and to a Fresh request rule. A fresh rule waits, then forwards. If the app cancels during the wait, the proxy stops and does not write a response.
+The wait applies to a saved mock and to a Fresh request rule. A fresh rule waits, then forwards. If the app cancels during the wait, the proxy stops at once and does not write a response. History still records the delay.
 
 Use a delay to try loading states, spinners, retry logic, and client timeouts without a slow server.
 
@@ -370,10 +377,10 @@ The rules list shows `fresh` or `mock`. Clear the checkbox to return to the save
 
 ## Passthrough
 
-With no matching rule, the proxy returns the upstream response.
+With no matching rule, the proxy returns the upstream response. The path includes that upstream's prefix. `/app` is the default seeded prefix, and the proxy removes it before forwarding.
 
 ```sh
-curl -i 'http://127.0.0.1:8080/v1/health?ping=1'
+curl -i 'http://127.0.0.1:8080/app/v1/health?ping=1'
 ```
 
 `/_admin` is never forwarded. On the proxy port it returns `404` and `the dashboard is not served on the proxy port`.
@@ -384,7 +391,7 @@ Open [http://localhost:8081/_admin/history](http://localhost:8081/_admin/history
 
 The list shows method, URL, status, source, upstream, and local time. The URL is the path plus the query string. Sources are `mock`, `upstream`, `upstream-error`, and `rejected`.
 
-The upstream column is the resolved upstream. A prefix match and the fallback both store that upstream's id and name, including mocks. The detail page shows the app path and the forwarded path, with the query string on both. The live JSON feed uses the same upstream name. New rows keep the column.
+The upstream column is the resolved upstream. A prefix match stores that upstream's id and name, including mocks. A Referer match stores the same id and name, and the list, the live feed, and the detail page add `(via Referer)`. A rejected request stores an empty upstream. The detail page shows the app path and the forwarded path, with the query string on both. New rows keep the column.
 
 The top of the page filters that list:
 
@@ -396,13 +403,15 @@ The top of the page filters that list:
 
 The page names the active filter and how many rows are shown. A bad `source` value, such as `?source=nope`, shows All. `upstream-error` and `rejected` have no button. They show under All. You can still open `?source=upstream-error` or `?source=rejected` directly.
 
-**URL contains** is a text box on the same GET form. `user/me` shows rows whose path and query contain that text, ignoring case. `?q=user/me` keeps it across a reload, and it combines with `source` and `upstream`. The All, Mocked, and Real server links keep `q` and `upstream`. The line reads `Filter: Mocked. Text: user/me. Showing 1 of 6.` A blank value is ignored. While the page is open, typing filters the rows on screen, and the live feed uses the text in the box so a new row has to match it too. Apply is what stores the text when JavaScript is off.
+**Group similar requests** is on. The menu is on the same GET form, so Apply stores it with JavaScript off. Off puts `group=0` in the address, and a reload keeps it. The other filters keep that choice. On is the address with no `group` value. Filters run first, then the rows that remain are grouped. A group is the same method, the same upstream id, and the same path. The query string is not part of the group, so `/v1/items?a=1` and `/v1/items?b=2` stay together. `/v1/users/111` and `/v1/users/222` stay apart. A rejected row with an empty upstream groups with other empty-upstream rows for that method and path. A group of one request is a normal row. A larger group is closed until you open it. The group is a table row lined up with the column headers. Method, path, status, source, upstream, and the newest time each have their own cell. The path cell has an arrow and a count such as `21 requests`. Statuses are one per line, such as `200 ×20` and `304 ×1`. Delay and rule stay blank unless every request in the group shares that value. Open the arrow to see each request, newest first, with the same link, Create rule, and Delete actions. Without JavaScript the arrow is a link and `open` in the address keeps that group open. The line reads `Filter: All. Showing 4 of 4 requests in 2 groups.` With grouping off it stays `Showing 4 of 4.`
+
+**URL contains** is a text box on the same GET form. `user/me` shows rows whose path and query contain that text, ignoring case. `?q=user/me` keeps it across a reload, and it combines with `source` and `upstream`. The All, Mocked, and Real server links keep `q` and `upstream`. The line reads `Filter: Mocked. Text: user/me. Showing 1 of 6 requests in 1 group.` A blank value is ignored. While the page is open, typing filters the rows on screen, and the live feed uses the text in the box so a new row has to match it too. Apply is what stores the text when JavaScript is off.
 
 The upstream menu is a GET form, so it works with JavaScript off. **All upstreams** is the default. **Any upstream (mock rule not linked)** shows older rows stored as `any`. New rows store the resolved upstream, so a mock from an Any rule appears under that upstream. Each saved upstream is listed by its current name. The query is `upstream=<id>`, and it combines with `source`. A value that is not `any` or a 16-digit hex id is ignored, same as a bad `source`. The live feed uses that same query.
 
 Each row stores the upstream id and the name from the moment of the request. Renaming an upstream does not change old rows, and the filter still matches them by id. Deleting an upstream leaves those rows in history. Open `?upstream=<id>` to see them. The menu labels that id with the stored name and `(deleted)` while you are on that filter. Rows with no upstream, such as a request made before any upstream existed, stay under **All upstreams**.
 
-While the list is open, it asks for new rows about once a second and adds them at the top. The active source, upstream, and text filters still apply. Rows already on the page stay put, and an open detail page is left alone. Reload the list if JavaScript is off.
+While the list is open, it asks for new rows about once a second. With grouping off, a new row is added at the top. With grouping on, a new row joins the group with the same method, upstream, and path, updates that group's count, statuses, and time, and moves the group to the top. A new key starts a new row at the top. An open group stays open. Rows already on the page stay put, and an open detail page is left alone. Reload the list if JavaScript is off.
 
 A fresh-request rule is a real server response, not a mock. Its source stays `upstream`, so **Real server** includes it. The source column says `upstream (fresh rule)` when a rule selected that response. A failed fresh request stays `upstream-error` and shows under All.
 
@@ -412,7 +421,7 @@ History stores a decoded copy of the body when `Content-Encoding` is `gzip`, `de
 
 Each row, and the detail page, has **Create rule**. It opens the new-rule form with nothing saved yet. The name is the method and path, the upstream is the one that served the call, and the path is the forwarded path with no query. Query parameters become query conditions. Status, headers, and body come from the recorded response, without pretty-printed JSON. Raw response is filled in as well, without `Content-Length`, `Transfer-Encoding`, or `Content-Encoding` when the stored body was decoded. `Set-Cookie` is left out of both the headers and the raw response. The form tells you to replace real tokens, cookies, and passwords with dummy values before saving. Delay is 0 and the rule is enabled. An upstream error or a rejected row fills only the request side. A missing history id leaves the form empty and says the entry is gone.
 
-Delete one row from the list or the detail page. The list returns to the same filter. **Clear all history** opens a dialog on this page: “Delete all recorded requests? Rules are kept.” Cancel closes it, and so do Escape and a click on the dimmed page. **Clear all** posts to `/_admin/history/clear` and returns to the same source, upstream, and text filter. With JavaScript off, the link still opens the confirm page, and that page posts the same way. A GET never clears history. Clear removes every entry, including rows the filter is hiding. Both actions keep the rules.
+Delete one row from the list or the detail page. The list returns to the same filter, including `group=0` when grouping is off. **Clear all history** opens a dialog on this page: “Delete all recorded requests? Rules are kept.” Cancel closes it, and so do Escape and a click on the dimmed page. **Clear all** posts to `/_admin/history/clear` and returns to the same source, upstream, text, and group filter. With JavaScript off, the link still opens the confirm page, and that page posts the same way. A GET never clears history. Clear removes every entry, including rows the filter is hiding. Both actions keep the rules.
 
 ## Automation API
 
@@ -501,7 +510,7 @@ Use this on a Mac after the automated tests pass. The implementation environment
 
 1. `go run ./cmd/mockproxy` listens on loopback and logs the dashboard URL.
 2. `LISTEN_ADDR=0.0.0.0:8080` fails before the process listens.
-3. With no rules, the Flutter debug client at `http://localhost:8080` receives the upstream status, body, and query string.
+3. With no rules, the Flutter debug client at `http://localhost:8080/app` (or the prefix on the Upstreams page) receives the upstream status, body, and query string.
 4. The upstream project and the production base URL are unchanged.
 5. The dashboard can create, edit, enable, disable, and delete a rule.
 6. An exact rule matches one method and one path, and ignores the query string.
@@ -517,15 +526,16 @@ Use this on a Mac after the automated tests pass. The implementation environment
 16. `go test ./...` passes.
 17. A rule with Fresh request checked returns a full upstream response with the cache validators removed. A rule without it still returns the saved mock.
 18. History can show All, Mocked, or Real server. A fresh-request row appears under Real server as `upstream (fresh rule)`. A bad source query shows All. Delete keeps the filter. Clear all still removes every entry.
-19. The Upstreams page can add two base URLs, and **Set as fallback** switches the no-prefix default without a restart. A rule for one upstream does not match requests that resolve to the other. An Any rule still matches. History shows the upstream name. An old rules file still loads.
-20. Two prefixed upstreams can serve at once. `/okya/api/v1/x?page=2` is forwarded as `/api/v1/x?page=2`, and `/okyax` does not match `/okya`. A request with no prefix uses the fallback upstream. History keeps the original path and the forwarded path. An old upstreams file with no prefix field still loads.
-21. A rule can wait up to 60000 ms before the response is written. `0` does not wait. The rules list shows `1500 ms` and leaves `0` blank. History records the delay. An older rules file with no `delay_ms` field loads as `0`. Cancelling during the wait writes no response.
+19. The Upstreams page can add two base URLs, each with its own prefix, without a restart. A rule for one upstream does not match requests that resolve to the other, including a request routed by Referer. An Any rule still matches, including a request that matches no upstream. History shows the upstream name. An old rules file still loads.
+20. Two prefixed upstreams can serve at once. `/okya/api/v1/x?page=2` is forwarded as `/api/v1/x?page=2`, and `/okyax` does not match `/okya`. `GET /login` with `Referer: http://10.0.2.2:8080/okya/login/otp` is forwarded as `/login` to the `/okya` upstream. A request with no prefix and no matching Referer returns 404 from the proxy. History keeps the original path and the forwarded path. An old upstreams file with an empty prefix still loads, and that upstream receives a prefix derived from its name.
+21. A rule can wait before the response is written. `120000` ms is accepted. A negative delay is rejected. A delay that would overflow a duration is rejected. `0` does not wait. The rules list shows `1500 ms` and leaves `0` blank. History records the delay. An older rules file with no `delay_ms` field loads as `0`. Cancelling during the wait writes no response.
 22. A raw response rule sends the pasted status, headers, and body. `Connection: close` closes the connection. `X-Mock-Response` is omitted unless the checkbox is on. An older rules file stays in Fields mode. The delay still applies.
 23. A POST `/oauth/token` rule with body condition `grant_type=refresh_token` returns the raw 401. `grant_type=authorization_code` still passes through. The rules list shows the condition. An older rules file with no conditions still matches on method and path.
 24. History **URL contains** keeps `?q=user/me` and combines with the source tabs and the upstream menu. The rules **Upstream** menu keeps `?upstream=OKYA_AUTH_DEV`, includes Any rules for a named upstream, and shows only Any rules when Any is selected.
 25. **Create rule** on a history row or its detail page opens the new-rule form filled from that call. Nothing is saved until Create rule is pressed. A missing history id leaves the form empty.
 26. The rules list groups rules by upstream, in Upstreams-page order, then Any, then unknown ids. A named filter shows that block and the Any block. Edit, enable, disable, and delete return to the same filter.
 27. A rule can set fault to reset or hang. Reset closes with no HTTP status. Hang waits until the client leaves or `UPSTREAM_TIMEOUT`. A delay runs first. Fresh request plus a fault is rejected. History shows source fault and the matched rule. An older rules file with no fault field still loads.
+28. History groups the same method, upstream, and path, and ignores the query string. Different ids in the path stay apart. A group shows the count, status summary, and sources, and opens without JavaScript. One request stays a normal row. `group=0` turns grouping off and a reload keeps it. A new request joins its group and that group moves to the top.
 
 ## Troubleshooting
 
@@ -534,7 +544,7 @@ Use this on a Mac after the automated tests pass. The implementation environment
 | Startup says `UPSTREAM_BASE_URL is required` | Export the upstream base URL in the same shell. |
 | Startup says `LISTEN_ADDR must be a loopback address` | Use `127.0.0.1`, `localhost`, or `[::1]`. |
 | Startup says the rules file contains invalid JSON | Fix or remove `data/rules.json`. Startup will not replace a broken file. |
-| The app gets a connection error | The proxy is running, and the debug base URL is `http://localhost:8080`. On an Android emulator use `http://10.0.2.2:8080`. |
+| The app gets a connection error | The proxy is running, and the debug base URL uses the proxy port plus the upstream prefix. On the Mac that is `http://localhost:8080/app`. On an Android emulator use `http://10.0.2.2:8080/app`. |
 | A trailing slash hits the wrong upstream route | `/v1/users` and `/v1/users/` are different paths. |
 | `/_admin` shows an upstream page | The request did not reach this proxy. |
 | A mock does not match | The method and path are exact, the rule is enabled, and the pattern is not under `/_admin`. |
@@ -542,8 +552,9 @@ Use this on a Mac after the automated tests pass. The implementation environment
 | Rules vanished after restart | The save failed, or the process was started from a different working directory. |
 | History vanished after restart | That is the MVP. History is in memory. Rules stay in the JSON file. |
 | Sentry still shows a mock error | `beforeSend` is not dropping `X-Mock-Response: true`. |
-| Passthrough returns `no upstream is configured` | Add an upstream at `/_admin/upstreams`, or set `UPSTREAM_BASE_URL` before the first start. |
-| A mock stopped matching after a switch | The rule names an upstream that did not resolve this request. Set that upstream as the fallback, give it a prefix, or set the rule to Any upstream. |
+| Passthrough returns `no upstream matches this path` | The path has no prefix, and the Referer is missing or its path matches no prefix. Open the app from its prefixed base URL, such as `http://10.0.2.2:8080/okya`. |
+| Startup warns that an upstream had no prefix | An older `upstreams.json` had an empty prefix. The log line is the prefix that was saved and the app base URL to use. |
+| A mock stopped matching | The rule names an upstream that did not resolve this request. Call that upstream's prefix, or load the page from a URL whose Referer path has that prefix. Or set the rule to Any upstream. |
 | A refresh mock also hits login | Add a body condition such as `grant_type=refresh_token`. The path alone matches every call to that path. |
 
 ## Limits

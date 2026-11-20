@@ -44,6 +44,9 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.MaxBufferedBody != MaxBufferedBody {
 		t.Fatalf("max body = %d", cfg.MaxBufferedBody)
 	}
+	if cfg.UpstreamPrefix != "/app" {
+		t.Fatalf("prefix = %s", cfg.UpstreamPrefix)
+	}
 
 	lines := StartupLines(cfg)
 	if len(lines) != 4 {
@@ -71,6 +74,7 @@ func TestLoadOverrides(t *testing.T) {
 		"HISTORY_LIMIT":     "12",
 		"UPSTREAM_TIMEOUT":  "2s",
 		"MAX_BODY_BYTES":    "4096",
+		"UPSTREAM_PREFIX":   "/okya",
 	}))
 	if err != nil {
 		t.Fatal(err)
@@ -89,6 +93,9 @@ func TestLoadOverrides(t *testing.T) {
 	}
 	if cfg.RulesPath != "tmp/rules.json" || cfg.HistoryLimit != 12 || cfg.UpstreamTimeout != 2*time.Second || cfg.MaxBufferedBody != 4096 {
 		t.Fatalf("cfg = %+v", cfg)
+	}
+	if cfg.UpstreamPrefix != "/okya" {
+		t.Fatalf("prefix = %s", cfg.UpstreamPrefix)
 	}
 	if cfg.UpstreamsPath != filepath.Join("tmp", "upstreams.json") {
 		t.Fatalf("upstreams path = %s", cfg.UpstreamsPath)
@@ -126,8 +133,13 @@ func TestLoadAllowsMissingUpstream(t *testing.T) {
 		t.Fatalf("upstream = %s", cfg.Upstream)
 	}
 	lines := StartupLines(cfg)
-	if len(lines) != 5 || !strings.Contains(lines[4], "no upstream configured") {
+	if len(lines) != 4 {
 		t.Fatalf("lines = %#v", lines)
+	}
+	for _, line := range lines {
+		if strings.Contains(line, "upstream") {
+			t.Fatalf("startup line mentions upstreams before they are loaded: %q", line)
+		}
 	}
 }
 
@@ -152,6 +164,8 @@ func TestLoadRejectsBadSettings(t *testing.T) {
 		{"zero body", map[string]string{"MAX_BODY_BYTES": "0"}, "MAX_BODY_BYTES"},
 		{"negative body", map[string]string{"MAX_BODY_BYTES": "-1"}, "MAX_BODY_BYTES"},
 		{"text body", map[string]string{"MAX_BODY_BYTES": "eight"}, "MAX_BODY_BYTES"},
+		{"bad prefix", map[string]string{"UPSTREAM_PREFIX": "/okya/"}, "UPSTREAM_PREFIX"},
+		{"admin prefix", map[string]string{"UPSTREAM_PREFIX": "/_admin"}, "UPSTREAM_PREFIX"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

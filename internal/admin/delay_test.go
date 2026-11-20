@@ -40,7 +40,10 @@ func TestDelayFormListAndHistory(t *testing.T) {
 		}
 	}
 
-	for _, raw := range []string{"-1", "60001", "abc", "1.5"} {
+	if strings.Contains(form, `max="60000"`) || strings.Contains(form, "The maximum is 60000") {
+		t.Fatalf("delay cap remains in the form:\n%s", form)
+	}
+	for _, raw := range []string{"-1", "abc", "1.5"} {
 		resp, err := client.PostForm(srv.URL+"/_admin/rules", url.Values{
 			"name": {"Slow"}, "enabled": {"on"}, "method": {"GET"}, "path_pattern": {"/v1/slow"},
 			"status_code": {"200"}, "delay_ms": {raw}, "body": {`{"ok":true}`},
@@ -49,9 +52,31 @@ func TestDelayFormListAndHistory(t *testing.T) {
 			t.Fatal(err)
 		}
 		body := readAll(t, resp)
-		if resp.StatusCode != http.StatusBadRequest || !strings.Contains(body, "delay_ms must be from 0 through 60000") {
+		if resp.StatusCode != http.StatusBadRequest || !strings.Contains(body, "delay_ms must be zero or greater") {
 			t.Fatalf("delay %q status=%d body=%s", raw, resp.StatusCode, body)
 		}
+	}
+	overflow, err := client.PostForm(srv.URL+"/_admin/rules", url.Values{
+		"name": {"Slow"}, "enabled": {"on"}, "method": {"GET"}, "path_pattern": {"/v1/slow"},
+		"status_code": {"200"}, "delay_ms": {"9223372036855"}, "body": {`{"ok":true}`},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	overflowBody := readAll(t, overflow)
+	if overflow.StatusCode != http.StatusBadRequest || !strings.Contains(overflowBody, "delay_ms is too large") {
+		t.Fatalf("overflow status=%d body=%s", overflow.StatusCode, overflowBody)
+	}
+	long, err := client.PostForm(srv.URL+"/_admin/rules", url.Values{
+		"name": {"Long"}, "enabled": {"on"}, "method": {"GET"}, "path_pattern": {"/v1/long"},
+		"status_code": {"200"}, "delay_ms": {"120000"}, "body": {`{"ok":true}`},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	long.Body.Close()
+	if long.StatusCode != http.StatusSeeOther {
+		t.Fatalf("long delay status = %d", long.StatusCode)
 	}
 
 	created, err := client.PostForm(srv.URL+"/_admin/rules", url.Values{

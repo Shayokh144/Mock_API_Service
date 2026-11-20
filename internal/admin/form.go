@@ -2,7 +2,9 @@ package admin
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"sort"
 	"strconv"
@@ -210,11 +212,21 @@ func parseDelayMS(raw string) (int, error) {
 	if raw == "" {
 		return 0, nil
 	}
-	delay, err := strconv.Atoi(raw)
-	if err != nil || delay < 0 || delay > 60000 {
-		return 0, fmt.Errorf("delay_ms must be from 0 through 60000")
+	delay, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil {
+		var numErr *strconv.NumError
+		if errors.As(err, &numErr) && numErr.Err == strconv.ErrRange {
+			return 0, fmt.Errorf("delay_ms is too large")
+		}
+		return 0, fmt.Errorf("delay_ms must be zero or greater")
 	}
-	return delay, nil
+	if delay > int64(math.MaxInt) {
+		return 0, fmt.Errorf("delay_ms is too large")
+	}
+	if err := rules.CheckDelayMS(int(delay)); err != nil {
+		return 0, err
+	}
+	return int(delay), nil
 }
 
 func modeLabel(mode string) string {

@@ -30,6 +30,7 @@ const (
 // Config is the validated process configuration.
 type Config struct {
 	Upstream        *url.URL
+	UpstreamPrefix  string
 	ListenAddr      string
 	AdminListenAddr string
 	RulesPath       string
@@ -48,6 +49,10 @@ func Load(getenv func(string) string) (Config, error) {
 	}
 
 	upstream, err := parseUpstream(getenv("UPSTREAM_BASE_URL"))
+	if err != nil {
+		return Config{}, err
+	}
+	prefix, err := parseUpstreamPrefix(getenv("UPSTREAM_PREFIX"))
 	if err != nil {
 		return Config{}, err
 	}
@@ -82,6 +87,7 @@ func Load(getenv func(string) string) (Config, error) {
 
 	return Config{
 		Upstream:        upstream,
+		UpstreamPrefix:  prefix,
 		ListenAddr:      listenAddr,
 		AdminListenAddr: adminAddr,
 		RulesPath:       rulesPath,
@@ -111,16 +117,12 @@ func TokenPath(rulesPath string) string {
 
 // StartupLines are the human-readable lines printed before the process listens.
 func StartupLines(cfg Config) []string {
-	lines := []string{
+	return []string{
 		"listening on " + cfg.ListenAddr,
 		"admin listening on " + cfg.AdminListenAddr,
 		"dashboard at " + DashboardURL(cfg.AdminListenAddr),
 		"admin token file " + cfg.TokenPath,
 	}
-	if cfg.Upstream == nil {
-		lines = append(lines, "no upstream configured; add one at the dashboard")
-	}
-	return lines
 }
 
 // DashboardURL is the local browser URL for the resolved listen address.
@@ -159,6 +161,31 @@ func parseUpstream(raw string) (*url.URL, error) {
 	}
 	u.Scheme = scheme
 	return u, nil
+}
+
+func parseUpstreamPrefix(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "/app", nil
+	}
+	if strings.HasPrefix(raw, "/_admin") {
+		return "", fmt.Errorf("UPSTREAM_PREFIX must not use /_admin")
+	}
+	if !strings.HasPrefix(raw, "/") || strings.HasSuffix(raw, "/") || strings.Count(raw, "/") != 1 {
+		return "", fmt.Errorf("UPSTREAM_PREFIX must be one path segment, such as /app")
+	}
+	segment := raw[1:]
+	if segment == "" {
+		return "", fmt.Errorf("UPSTREAM_PREFIX must be one path segment, such as /app")
+	}
+	for _, r := range segment {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-', r == '_':
+		default:
+			return "", fmt.Errorf("UPSTREAM_PREFIX must use only letters, digits, - and _")
+		}
+	}
+	return raw, nil
 }
 
 func resolveListenAddr(raw, envName, fallback string) (string, error) {

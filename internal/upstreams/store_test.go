@@ -9,62 +9,51 @@ import (
 	"time"
 )
 
-func TestCreateActivateAndRejectBadURLs(t *testing.T) {
+func TestCreateRequiresPrefixAndRejectsBadURLs(t *testing.T) {
 	store := NewMemory()
 	store.now = func() time.Time {
 		return time.Date(2026, 11, 5, 12, 0, 0, 0, time.FixedZone("ICT", 7*3600))
 	}
-	staging, err := store.Create(" staging ", "HTTPS://staging.example.com/v1", "")
+	staging, err := store.Create(" staging ", "HTTPS://staging.example.com/v1", "/staging")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if staging.Name != "staging" || staging.BaseURL != "https://staging.example.com/v1" {
+	if staging.Name != "staging" || staging.BaseURL != "https://staging.example.com/v1" || staging.Prefix != "/staging" {
 		t.Fatalf("staging = %+v", staging)
 	}
 	if staging.CreatedAt.Location() != time.UTC || staging.CreatedAt.Format(time.RFC3339) != "2026-11-05T05:00:00Z" {
 		t.Fatalf("created = %s", staging.CreatedAt)
 	}
-	active, ok := store.Active()
-	if !ok || active.ID != staging.ID {
-		t.Fatalf("active = %+v ok=%v", active, ok)
-	}
 
-	develop, err := store.Create("develop", "http://develop.example.com", "")
+	develop, err := store.Create("develop", "http://develop.example.com", "/develop")
 	if err != nil {
 		t.Fatal(err)
 	}
-	active, ok = store.Active()
-	if !ok || active.ID != staging.ID {
-		t.Fatal("creating a second upstream changed the active one")
-	}
-	if err := store.Activate(develop.ID); err != nil {
-		t.Fatal(err)
-	}
-	active, ok = store.Active()
-	if !ok || active.Name != "develop" {
-		t.Fatalf("active = %+v", active)
-	}
-
-	if _, err := store.Create("develop", "http://other.example.com", ""); err == nil {
+	if _, err := store.Create("develop", "http://other.example.com", "/other"); err == nil {
 		t.Fatal("duplicate name was accepted")
 	}
+	if _, err := store.Create("plain", "https://plain.example", ""); err == nil || !strings.Contains(err.Error(), "prefix is required") {
+		t.Fatalf("empty prefix = %v", err)
+	}
+	if _, err := store.Create("spaces", "https://plain.example", "  "); err == nil {
+		t.Fatal("blank prefix was accepted")
+	}
 	for _, raw := range []string{"", "staging.example.com", "ftp://files.example.com", "http://staging.example.com/?q=1", "http://staging.example.com/#x", "/v1"} {
-		if _, err := store.Create("bad", raw, ""); err == nil {
+		if _, err := store.Create("bad", raw, "/bad"); err == nil {
 			t.Fatalf("accepted %q", raw)
 		}
 	}
-	if err := store.Delete(develop.ID); err != ErrActive {
-		t.Fatalf("delete active = %v", err)
+	if err := store.Delete(develop.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := store.Get(develop.ID); ok {
+		t.Fatal("deleted upstream still present")
 	}
 	if err := store.Delete(staging.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := store.Get(staging.ID); ok {
-		t.Fatal("deleted upstream still present")
-	}
-	active, ok = store.Active()
-	if !ok || active.ID != develop.ID {
-		t.Fatal("active upstream was removed")
+	if len(store.List()) != 0 {
+		t.Fatal("store was not emptied")
 	}
 }
 
@@ -75,21 +64,21 @@ func TestSeedOnlyWhenEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.Seed(""); err != nil {
+	if err := store.Seed("", ""); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := store.Active(); ok {
+	if len(store.List()) != 0 {
 		t.Fatal("empty seed created an upstream")
 	}
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Fatal("seed created a file without an upstream")
 	}
-	if err := store.Seed("https://staging.example.com/api"); err != nil {
+	if err := store.Seed("https://staging.example.com/api", ""); err != nil {
 		t.Fatal(err)
 	}
-	active, ok := store.Active()
-	if !ok || active.Name != "staging.example.com" || active.BaseURL != "https://staging.example.com/api" {
-		t.Fatalf("seeded = %+v ok=%v", active, ok)
+	seeded := store.List()
+	if len(seeded) != 1 || seeded[0].Name != "staging.example.com" || seeded[0].BaseURL != "https://staging.example.com/api" || seeded[0].Prefix != "/app" {
+		t.Fatalf("seeded = %+v", seeded)
 	}
 	info, err := os.Stat(path)
 	if err != nil {
@@ -98,10 +87,10 @@ func TestSeedOnlyWhenEmpty(t *testing.T) {
 	if info.Mode().Perm() != 0o600 {
 		t.Fatalf("mode = %o", info.Mode().Perm())
 	}
-	if err := store.Seed("https://other.example.com"); err != nil {
+	if err := store.Seed("https://other.example.com", "/other"); err != nil {
 		t.Fatal(err)
 	}
-	if got := store.List(); len(got) != 1 || got[0].BaseURL != "https://staging.example.com/api" {
+	if got := store.List(); len(got) != 1 || got[0].BaseURL != "https://staging.example.com/api" || got[0].Prefix != "/app" {
 		t.Fatalf("seed replaced stored upstreams: %+v", got)
 	}
 
@@ -109,9 +98,26 @@ func TestSeedOnlyWhenEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	again, ok := reloaded.Active()
-	if !ok || again.ID != active.ID || again.BaseURL != active.BaseURL {
+	again := reloaded.List()
+	if len(again) != 1 || again[0].ID != seeded[0].ID || again[0].BaseURL != seeded[0].BaseURL || again[0].Prefix != "/app" {
 		t.Fatalf("reloaded = %+v", again)
+	}
+	if strings.Contains(mustRead(t, path), "active_id") {
+		t.Fatal("seed wrote active_id")
+	}
+}
+
+func TestSeedUsesPrefix(t *testing.T) {
+	store := NewMemory()
+	if err := store.Seed("https://staging.example.com", "/easyhotel"); err != nil {
+		t.Fatal(err)
+	}
+	got := store.List()
+	if len(got) != 1 || got[0].Prefix != "/easyhotel" {
+		t.Fatalf("seeded = %+v", got)
+	}
+	if _, ok := store.Route("/easyhotel/v1/rooms"); !ok {
+		t.Fatal("seeded prefix did not route")
 	}
 }
 
@@ -133,32 +139,31 @@ func TestLoadRejectsBrokenFile(t *testing.T) {
 	}
 }
 
-func TestUpdateKeepsIDAndActiveFlag(t *testing.T) {
+func TestUpdateKeepsID(t *testing.T) {
 	store := NewMemory()
-	first, err := store.Create("staging", "https://old.example.com", "")
+	first, err := store.Create("staging", "https://old.example.com", "/staging")
 	if err != nil {
 		t.Fatal(err)
 	}
-	updated, err := store.Update(first.ID, "staging", "https://new.example.com/v1", "")
+	updated, err := store.Update(first.ID, "staging", "https://new.example.com/v1", "/staging")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if updated.ID != first.ID || updated.BaseURL != "https://new.example.com/v1" {
+	if updated.ID != first.ID || updated.BaseURL != "https://new.example.com/v1" || updated.Prefix != "/staging" {
 		t.Fatalf("updated = %+v", updated)
 	}
-	active, ok := store.Active()
-	if !ok || active.BaseURL != "https://new.example.com/v1" {
-		t.Fatalf("active = %+v", active)
+	if _, err := store.Update(first.ID, "staging", "https://new.example.com/v1", ""); err == nil {
+		t.Fatal("update cleared the prefix")
 	}
 }
 
-func TestSwitchIsSafeAcrossGoroutines(t *testing.T) {
+func TestRouteIsSafeAcrossGoroutines(t *testing.T) {
 	store := NewMemory()
-	a, err := store.Create("a", "http://a.example", "")
+	a, err := store.Create("a", "http://a.example", "/a")
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := store.Create("b", "http://b.example", "")
+	b, err := store.Create("b", "http://b.example", "/b")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,20 +172,27 @@ func TestSwitchIsSafeAcrossGoroutines(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if err := store.Activate(a.ID); err != nil {
-				t.Errorf("activate a: %v", err)
+			route, ok := store.Route("/a/x")
+			if !ok || route.Upstream.ID != a.ID || route.ForwardedPath != "/x" || !route.Prefixed {
+				t.Errorf("a = %+v ok=%v", route, ok)
 			}
-			if _, ok := store.Active(); !ok {
-				t.Error("missing active")
+			if _, ok := store.Route("/missing"); ok {
+				t.Error("missing path routed")
 			}
-			if err := store.Activate(b.ID); err != nil {
-				t.Errorf("activate b: %v", err)
+			route, ok = store.MatchReferer("/login", "http://10.0.2.2:8080/b/otp")
+			if !ok || route.Upstream.ID != b.ID || route.ForwardedPath != "/login" || route.Prefixed || !route.ViaReferer {
+				t.Errorf("referer = %+v ok=%v", route, ok)
 			}
 		}()
 	}
 	wg.Wait()
-	active, ok := store.Active()
-	if !ok || (active.ID != a.ID && active.ID != b.ID) {
-		t.Fatalf("active = %+v ok=%v", active, ok)
+}
+
+func mustRead(t *testing.T, path string) string {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
 	}
+	return string(raw)
 }

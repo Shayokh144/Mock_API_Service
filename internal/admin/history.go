@@ -20,7 +20,7 @@ var historyJS []byte
 
 type historyPageData struct {
 	Title           string
-	Entries         []historyRow
+	Entries         []historyLine
 	Entry           *historyDetail
 	Error           string
 	FilterKey       string
@@ -35,6 +35,10 @@ type historyPageData struct {
 	Text            string
 	Shown           int
 	Total           int
+	Grouped         bool
+	GroupCount      int
+	Groups          []historyGroup
+	Summary         string
 	Sessions        []sessionChoice
 	SessionAction   string
 	SessionID       string
@@ -62,6 +66,36 @@ type historyRow struct {
 	Step     int
 }
 
+// historyLine is one rendered request, with the filter query copied in for the row template.
+type historyLine struct {
+	historyRow
+	FilterQuery template.URL
+	ReadOnly    bool
+	GroupKey    string
+	Child       bool
+	Hidden      bool
+}
+
+// historyGroup is one collapsed set of requests, or a single request when Rows has one entry.
+type historyGroup struct {
+	Key           string
+	Method        string
+	Path          string
+	Upstream      string
+	When          string
+	CountLabel    string
+	StatusSummary string
+	StatusLines   []string
+	Sources       string
+	SourceLines   []string
+	Delay         string
+	Rule          string
+	Rows          []historyLine
+	Open          bool
+	ToggleQuery   template.URL
+	newest        time.Time
+}
+
 type historyDetail struct {
 	historyRow
 	Forwarded         string
@@ -81,12 +115,8 @@ type headerLine struct {
 }
 
 func (s *Server) historyPage(w http.ResponseWriter, r *http.Request) {
-	shown, data := s.historyView(r)
+	_, data := s.historyView(r)
 	data.Title = "History"
-	data.Entries = make([]historyRow, 0, len(shown))
-	for _, entry := range shown {
-		data.Entries = append(data.Entries, historyRowFrom(entry))
-	}
 	s.renderHistory(w, "history", data, http.StatusOK, true)
 }
 
@@ -173,21 +203,26 @@ func (s *Server) historyFeed(w http.ResponseWriter, r *http.Request) {
 		Text:          data.Text,
 		Shown:         data.Shown,
 		Total:         data.Total,
+		Grouped:       data.Grouped,
+		Groups:        data.GroupCount,
 		Entries:       make([]historyFeedRow, 0, len(shown)),
 	}
 	for _, entry := range shown {
 		row := historyRowFrom(entry)
 		payload.Entries = append(payload.Entries, historyFeedRow{
-			ID:       row.ID,
-			Method:   row.Method,
-			URL:      row.URL,
-			Status:   row.Status,
-			Source:   row.Source,
-			Upstream: row.Upstream,
-			Delay:    row.Delay,
-			When:     row.When,
-			RuleID:   row.RuleID,
-			RuleName: row.RuleName,
+			ID:         row.ID,
+			Method:     row.Method,
+			URL:        row.URL,
+			Path:       entry.Path,
+			Status:     row.Status,
+			Source:     row.Source,
+			Upstream:   row.Upstream,
+			UpstreamID: entry.UpstreamID,
+			Delay:      row.Delay,
+			When:       row.When,
+			RuleID:     row.RuleID,
+			RuleName:   row.RuleName,
+			GroupKey:   historyGroupKey(entry),
 		})
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
@@ -221,7 +256,7 @@ func (s *Server) deleteHistory(w http.ResponseWriter, r *http.Request, id string
 }
 
 func (s *Server) historyView(r *http.Request) ([]history.Entry, historyPageData) {
-	data := historyPageData{FilterKey: "all", FilterLabel: "All", UpstreamLabel: "All upstreams"}
+	data := historyPageData{FilterKey: "all", FilterLabel: "All", UpstreamLabel: "All upstreams", Grouped: historyGrouped(r)}
 	_, log, sessionID, readOnly, found := s.scope(r)
 	data.Sessions, data.SessionID, data.ReadOnly = s.sessionChrome(r)
 	if r != nil {
@@ -231,6 +266,7 @@ func (s *Server) historyView(r *http.Request) ([]history.Entry, historyPageData)
 	data.SessionID = sessionID
 	if !found {
 		data.Error = "That session is not open."
+		data.Summary = historySummary(data.FilterLabel, "", 0, 0, 0, data.Grouped)
 		return nil, data
 	}
 	var entries []history.Entry
@@ -263,12 +299,27 @@ func (s *Server) historyView(r *http.Request) ([]history.Entry, historyPageData)
 		shown = filterHistoryText(shown, text)
 	}
 	data.Shown = len(shown)
-	data.SourceAll = template.URL(historyQueryString("", upstreamKey, text, sessionID))
-	data.SourceMock = template.URL(historyQueryString(string(history.SourceMock), upstreamKey, text, sessionID))
-	data.SourceReal = template.URL(historyQueryString(string(history.SourceUpstream), upstreamKey, text, sessionID))
-	data.FilterQuery = template.URL(historyQueryString(sourceKey, upstreamKey, text, sessionID))
+	openKeys := historyOpenKeys(r)
+	data.SourceAll = template.URL(historyQueryString("", upstreamKey, text, sessionID, data.Grouped, openKeys))
+	data.SourceMock = template.URL(historyQueryString(string(history.SourceMock), upstreamKey, text, sessionID, data.Grouped, openKeys))
+	data.SourceReal = template.URL(historyQueryString(string(history.SourceUpstream), upstreamKey, text, sessionID, data.Grouped, openKeys))
+	data.FilterQuery = template.URL(historyQueryString(sourceKey, upstreamKey, text, sessionID, data.Grouped, openKeys))
 	data.UpstreamChoices = s.upstreamFilterChoices(entries, upstreamKey)
+	data.Entries = historyLines(shown, data.FilterQuery, data.ReadOnly)
+	if data.Grouped {
+		data.Groups = groupHistory(shown, data.Entries)
+		markGroupOpen(data.Groups, openKeys, sourceKey, upstreamKey, text, sessionID, data.Grouped)
+		data.GroupCount = len(data.Groups)
+	}
+	data.Summary = historySummary(data.FilterLabel, data.Text, data.Shown, data.Total, data.GroupCount, data.Grouped)
 	return shown, data
+}
+
+func historyGrouped(r *http.Request) bool {
+	if r == nil || r.URL == nil {
+		return true
+	}
+	return strings.TrimSpace(r.URL.Query().Get("group")) != "0"
 }
 
 func historyReturnPath(r *http.Request) string {
@@ -284,14 +335,31 @@ func historyReturnPath(r *http.Request) string {
 	if raw := strings.TrimSpace(r.URL.Query().Get("session")); raw != "" && raw != sessions.DefaultID {
 		sessionID = raw
 	}
-	query := historyQueryString(sourceKey, upstreamKey, normalizeHistoryText(r.URL.Query().Get("q")), sessionID)
+	query := historyQueryString(sourceKey, upstreamKey, normalizeHistoryText(r.URL.Query().Get("q")), sessionID, historyGrouped(r), historyOpenKeys(r))
 	if query == "" {
 		return "/_admin/history"
 	}
 	return "/_admin/history" + query
 }
 
-func historyQueryString(source, upstream, text, sessionID string) string {
+func historyOpenKeys(r *http.Request) []string {
+	if r == nil || r.URL == nil {
+		return nil
+	}
+	seen := map[string]bool{}
+	var keys []string
+	for _, raw := range r.URL.Query()["open"] {
+		key := strings.TrimSpace(raw)
+		if key == "" || seen[key] {
+			continue
+		}
+		seen[key] = true
+		keys = append(keys, key)
+	}
+	return keys
+}
+
+func historyQueryString(source, upstream, text, sessionID string, grouped bool, open []string) string {
 	values := url.Values{}
 	if text != "" {
 		values.Set("q", text)
@@ -304,6 +372,14 @@ func historyQueryString(source, upstream, text, sessionID string) string {
 	}
 	if upstream != "" {
 		values.Set("upstream", upstream)
+	}
+	if !grouped {
+		values.Set("group", "0")
+	}
+	for _, key := range open {
+		if key != "" {
+			values.Add("open", key)
+		}
 	}
 	encoded := values.Encode()
 	if encoded == "" {
@@ -428,7 +504,7 @@ func historyRowFrom(entry history.Entry) historyRow {
 		URL:      historyTarget(entry),
 		Status:   entry.Status,
 		Source:   historySourceLabel(entry),
-		Upstream: entry.UpstreamName,
+		Upstream: entry.UpstreamLabel(),
 		Delay:    delayLabel(entry.DelayMS),
 		When:     formatHistoryTime(entry.StartedAt),
 		RuleID:   entry.RuleID,
@@ -464,20 +540,25 @@ type historyFeed struct {
 	Text          string           `json:"text"`
 	Shown         int              `json:"shown"`
 	Total         int              `json:"total"`
+	Grouped       bool             `json:"grouped"`
+	Groups        int              `json:"groups"`
 	Entries       []historyFeedRow `json:"entries"`
 }
 
 type historyFeedRow struct {
-	ID       string `json:"id"`
-	Method   string `json:"method"`
-	URL      string `json:"url"`
-	Status   int    `json:"status"`
-	Source   string `json:"source"`
-	Upstream string `json:"upstream"`
-	Delay    string `json:"delay"`
-	When     string `json:"when"`
-	RuleID   string `json:"rule_id"`
-	RuleName string `json:"rule_name"`
+	ID         string `json:"id"`
+	Method     string `json:"method"`
+	URL        string `json:"url"`
+	Path       string `json:"path"`
+	Status     int    `json:"status"`
+	Source     string `json:"source"`
+	Upstream   string `json:"upstream"`
+	UpstreamID string `json:"upstream_id"`
+	Delay      string `json:"delay"`
+	When       string `json:"when"`
+	RuleID     string `json:"rule_id"`
+	RuleName   string `json:"rule_name"`
+	GroupKey   string `json:"group_key"`
 }
 
 func headerLines(header map[string][]string) []headerLine {

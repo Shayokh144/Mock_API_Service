@@ -84,9 +84,9 @@ func TestPrefixFormTableAndHistoryDetail(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	plain.Body.Close()
-	if plain.StatusCode != http.StatusSeeOther {
-		t.Fatalf("plain status = %d", plain.StatusCode)
+	plainBody := readAll(t, plain)
+	if plain.StatusCode != http.StatusBadRequest || !strings.Contains(plainBody, "prefix is required") {
+		t.Fatalf("plain status=%d body=%s", plain.StatusCode, plainBody)
 	}
 
 	port := proxySrv.Listener.Addr().String()
@@ -95,13 +95,8 @@ func TestPrefixFormTableAndHistoryDetail(t *testing.T) {
 	}
 	page := get(t, client, adminSrv.URL+"/_admin/upstreams")
 	for _, want := range []string{
-		"Fallback upstream: OKYA. Requests with no matching prefix go here.",
-		"Upstreams with a prefix all work at the same time. The fallback only handles requests with no prefix.",
+		"A request with no prefix uses the Referer path",
 		"<th scope=\"col\">Prefix</th>",
-		"<th scope=\"col\">Fallback</th>",
-		"Always on via /okya and fallback",
-		"Not used",
-		"Set as fallback",
 		"/okya",
 		"http://127.0.0.1:" + port + "/okya",
 		"http://10.0.2.2:" + port + "/okya",
@@ -110,24 +105,13 @@ func TestPrefixFormTableAndHistoryDetail(t *testing.T) {
 			t.Fatalf("missing %q in %s", want, page)
 		}
 	}
+	if strings.Contains(page, "Set as fallback") || strings.Contains(page, "Fallback") {
+		t.Fatalf("fallback controls remain: %s", page)
+	}
 	item := ups.List()[0]
-	rulesPage := get(t, client, adminSrv.URL+"/_admin")
-	if !strings.Contains(rulesPage, "Fallback upstream: OKYA. Requests with no matching prefix go here.") {
-		t.Fatalf("rules page = %s", rulesPage)
-	}
 	ruleForm := get(t, client, adminSrv.URL+"/_admin/rules/new")
-	if !strings.Contains(ruleForm, "by its prefix or as the fallback") {
+	if !strings.Contains(ruleForm, "by its path prefix or by a Referer whose path has that prefix") {
 		t.Fatalf("rule form = %s", ruleForm)
-	}
-	plainItem := ups.List()[1]
-	use, err := client.PostForm(adminSrv.URL+"/_admin/upstreams/"+plainItem.ID+"/activate", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	use.Body.Close()
-	switched := get(t, client, adminSrv.URL+"/_admin/upstreams")
-	if !strings.Contains(switched, "Always on via /okya") || strings.Contains(switched, "and fallback") || strings.Contains(switched, "Not used") || !strings.Contains(switched, "<td>Fallback</td>") {
-		t.Fatalf("switched page = %s", switched)
 	}
 
 	form := get(t, client, adminSrv.URL+"/_admin/upstreams/"+item.ID+"/edit")

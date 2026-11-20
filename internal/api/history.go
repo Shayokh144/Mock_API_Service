@@ -209,7 +209,7 @@ func toHistoryItem(entry history.Entry, info sessions.Info, reveal bool) history
 			name = rule.APIName
 		}
 	}
-	upstream := entry.UpstreamName
+	upstream := entry.UpstreamLabel()
 	if upstream == "" {
 		upstream = "Any"
 	}

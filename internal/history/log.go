@@ -49,6 +49,7 @@ type Entry struct {
 	DelayMS               int
 	UpstreamID            string
 	UpstreamName          string
+	ViaReferer            bool
 	RequestBodyTruncated  bool
 	ResponseBodyTruncated bool
 }
@@ -129,6 +130,17 @@ func ParseUpstream(raw string) (string, bool) {
 		return "", false
 	}
 	return strings.ToLower(raw), true
+}
+
+// UpstreamLabel is the history name, with a Referer note when the path was routed that way.
+func (e Entry) UpstreamLabel() string {
+	if e.UpstreamName == "" {
+		return ""
+	}
+	if e.ViaReferer {
+		return e.UpstreamName + " (via Referer)"
+	}
+	return e.UpstreamName
 }
 
 // Filter keeps entries with source, in the same order.

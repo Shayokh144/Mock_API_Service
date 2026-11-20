@@ -142,8 +142,11 @@ func TestRunMissingUpstreamStillListens(t *testing.T) {
 	if err != nil || !called.Load() {
 		t.Fatalf("err=%v called=%v", err, called.Load())
 	}
-	if !strings.Contains(stderr.String(), "no upstream configured") {
+	if !strings.Contains(stderr.String(), "no upstream configured; add one at the dashboard") {
 		t.Fatalf("stderr = %q", stderr.String())
+	}
+	if strings.Contains(stderr.String(), "loaded:") {
+		t.Fatalf("empty store reported loaded upstreams: %q", stderr.String())
 	}
 	if _, err := os.Stat(filepath.Join(dir, "upstreams.json")); !os.IsNotExist(err) {
 		t.Fatal("missing env created an upstreams file")
@@ -170,7 +173,7 @@ func TestRunSeedsUpstreamOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(raw), "https://staging.example.com/v1") || !strings.Contains(string(raw), "staging.example.com") {
+	if !strings.Contains(string(raw), "https://staging.example.com/v1") || !strings.Contains(string(raw), "staging.example.com") || !strings.Contains(string(raw), `"/app"`) {
 		t.Fatalf("file = %s", raw)
 	}
 	getenv = func(key string) string {
@@ -192,6 +195,133 @@ func TestRunSeedsUpstreamOnce(t *testing.T) {
 	}
 	if string(again) != string(raw) {
 		t.Fatalf("seed replaced the file:\n%s", again)
+	}
+}
+
+func TestRunAssignsEmptyPrefixAndWarns(t *testing.T) {
+	dir := t.TempDir()
+	rulesPath := filepath.Join(dir, "rules.json")
+	raw := []byte(`{
+	  "active_id": "0123456789abcdef",
+	  "upstreams": [
+	    {
+	      "id": "0123456789abcdef",
+	      "name": "EasyHotel_STAGING",
+	      "base_url": "https://easy.example",
+	      "created_at": "2026-11-05T05:00:00Z",
+	      "updated_at": "2026-11-05T05:00:00Z"
+	    }
+	  ]
+	}`)
+	if err := os.WriteFile(filepath.Join(dir, "upstreams.json"), raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stderr bytes.Buffer
+	err := run(func(key string) string {
+		if key == "RULES_PATH" {
+			return rulesPath
+		}
+		return ""
+	}, &stderr, func(string, http.Handler) error { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "warning: upstream EasyHotel_STAGING had no prefix; assigned /easyhotel-staging. App base URL is http://127.0.0.1:8080/easyhotel-staging"
+	logged := stderr.String()
+	if !strings.Contains(logged, want) {
+		t.Fatalf("stderr = %q", logged)
+	}
+	if strings.Index(logged, want) > strings.Index(logged, "1 upstream loaded: /easyhotel-staging") {
+		t.Fatalf("loaded line came before the prefix warning: %q", logged)
+	}
+	saved, err := os.ReadFile(filepath.Join(dir, "upstreams.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(saved), `"/easyhotel-staging"`) || strings.Contains(string(saved), "active_id") {
+		t.Fatalf("file = %s", saved)
+	}
+}
+
+func TestRunSeedsCustomPrefix(t *testing.T) {
+	dir := t.TempDir()
+	var stderr bytes.Buffer
+	err := run(func(key string) string {
+		switch key {
+		case "UPSTREAM_BASE_URL":
+			return "https://easy.example"
+		case "UPSTREAM_PREFIX":
+			return "/easyhotel"
+		case "RULES_PATH":
+			return filepath.Join(dir, "rules.json")
+		default:
+			return ""
+		}
+	}, &stderr, func(string, http.Handler) error { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved, err := os.ReadFile(filepath.Join(dir, "upstreams.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(saved), `"/easyhotel"`) {
+		t.Fatalf("file = %s", saved)
+	}
+	if !strings.Contains(stderr.String(), "1 upstream loaded: /easyhotel") {
+		t.Fatalf("stderr = %q", stderr.String())
+	}
+}
+
+func TestRunReportsLoadedUpstreams(t *testing.T) {
+	dir := t.TempDir()
+	raw := []byte(`{
+	  "upstreams": [
+	    {
+	      "id": "0123456789abcdef",
+	      "name": "okya",
+	      "base_url": "https://okya.example",
+	      "prefix": "/okya",
+	      "created_at": "2026-11-05T05:00:00Z",
+	      "updated_at": "2026-11-05T05:00:00Z"
+	    },
+	    {
+	      "id": "fedcba9876543210",
+	      "name": "okya-auth",
+	      "base_url": "https://auth.example",
+	      "prefix": "/okya-auth",
+	      "created_at": "2026-11-05T05:00:00Z",
+	      "updated_at": "2026-11-05T05:00:00Z"
+	    },
+	    {
+	      "id": "0011223344556677",
+	      "name": "easy",
+	      "base_url": "https://easy.example",
+	      "prefix": "/easyhotel",
+	      "created_at": "2026-11-05T05:00:00Z",
+	      "updated_at": "2026-11-05T05:00:00Z"
+	    }
+	  ]
+	}`)
+	if err := os.WriteFile(filepath.Join(dir, "upstreams.json"), raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stderr bytes.Buffer
+	err := run(func(key string) string {
+		if key == "RULES_PATH" {
+			return filepath.Join(dir, "rules.json")
+		}
+		return ""
+	}, &stderr, func(string, http.Handler) error { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	logged := stderr.String()
+	if !strings.Contains(logged, "3 upstreams loaded: /okya, /okya-auth, /easyhotel") {
+		t.Fatalf("stderr = %q", logged)
+	}
+	if strings.Contains(logged, "no upstream configured") {
+		t.Fatalf("loaded store said none were configured: %q", logged)
 	}
 }
 
