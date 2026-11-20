@@ -61,6 +61,7 @@ func New(store *rules.Store, log *history.Log, ups *upstreams.Store) (*Server, e
 	tmpl, err := template.New("admin").Funcs(template.FuncMap{
 		"statusClass": statusClass,
 		"sourceClass": sourceClass,
+		"prettyBody":  prettyBody,
 	}).ParseFS(templateFiles, "templates/*.html")
 	if err != nil {
 		return nil, err
@@ -93,12 +94,17 @@ type page struct {
 	Theme               string
 	Next                string
 	Nav                 string
+	PrimaryHref         string
+	PrimaryLabel        string
+	CurrentSession      string
+	SessionQuery        string
 }
 
 type sessionChoice struct {
 	ID       string
 	Name     string
 	Selected bool
+	ReadOnly bool
 }
 
 type ruleGroup struct {
@@ -180,6 +186,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.ruleRoute(w, r, strings.TrimPrefix(path, "/_admin/rules/"))
 	case path == "/_admin/upstreams" && r.Method == http.MethodPost:
 		s.createUpstream(w, r)
+	case path == "/_admin/sessions" && r.Method == http.MethodGet:
+		s.sessionsPage(w, r)
+	case path == "/_admin/copy.js" && r.Method == http.MethodGet:
+		s.asset(w, "static/copy.js", "text/javascript; charset=utf-8")
 	case path == "/_admin/upstreams" && r.Method == http.MethodGet:
 		s.upstreamsPage(w, r, http.StatusOK, "")
 	case path == "/_admin/upstreams/new" && r.Method == http.MethodGet:
@@ -287,8 +297,15 @@ func (s *Server) rulesPage(w http.ResponseWriter, r *http.Request, status int) {
 	if action == "/_admin/" {
 		action = "/_admin"
 	}
+	primaryHref, primaryLabel := "", ""
+	if !readOnly {
+		primaryHref = "/_admin/rules/new"
+		primaryLabel = "New rule"
+	}
 	s.render(w, r, "rules", page{
 		Title:               "Rules",
+		PrimaryHref:         primaryHref,
+		PrimaryLabel:        primaryLabel,
 		Rules:               rows,
 		RulesAction:         action,
 		RuleUpstreamKey:     key,
@@ -656,6 +673,7 @@ func (s *Server) sessionChrome(r *http.Request) ([]sessionChoice, string, bool) 
 			ID:       item.ID,
 			Name:     item.Name,
 			Selected: item.ID == id || (id == "" && item.ID == sessions.DefaultID),
+			ReadOnly: item.ReadOnly,
 		})
 	}
 	return choices, id, readOnly
@@ -668,10 +686,16 @@ func (s *Server) decorate(r *http.Request, data page) page {
 	}
 	data.Theme = themeFrom(r)
 	data.Next = nextFrom(r)
+	data.CurrentSession = currentSessionName(data.Sessions)
+	data.SessionQuery = sessionQuery(data.SessionID)
 	if r != nil && r.URL != nil {
 		data.Nav = navFrom(r.URL.Path)
 	}
 	return data
+}
+
+func (s *Server) sessionsPage(w http.ResponseWriter, r *http.Request) {
+	s.render(w, r, "sessions", page{Title: "Sessions"}, http.StatusOK)
 }
 
 func (s *Server) readOnlyPost(w http.ResponseWriter, r *http.Request) bool {

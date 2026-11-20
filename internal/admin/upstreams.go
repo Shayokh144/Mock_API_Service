@@ -57,9 +57,11 @@ func (s *Server) upstreamsPage(w http.ResponseWriter, r *http.Request, status in
 		}
 	}
 	s.render(w, r, "upstreams", page{
-		Title:     "Upstreams",
-		Upstreams: rows,
-		Error:     message,
+		Title:        "Upstreams",
+		PrimaryHref:  "/_admin/upstreams/new",
+		PrimaryLabel: "New upstream",
+		Upstreams:    rows,
+		Error:        message,
 	}, status)
 }
 
