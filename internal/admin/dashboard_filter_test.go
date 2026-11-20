@@ -140,6 +140,11 @@ func TestRulesUpstreamFilter(t *testing.T) {
 	assertContains(t, named, `method="get"`)
 	assertContains(t, named, `value="OKYA_AUTH_DEV" selected`)
 	assertContains(t, named, "includes rules set to Any")
+	assertContains(t, named, `<details class="help">`)
+	assertContains(t, named, `<summary>How this works</summary>`)
+	if strings.Contains(named, `<details class="help" open`) {
+		t.Fatal("rules help starts open")
+	}
 	if strings.Contains(named, "Develop only") {
 		t.Fatalf("named filter showed the other upstream:\n%s", named)
 	}

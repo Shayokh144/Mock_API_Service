@@ -1,17 +1,23 @@
 {{define "history"}}
 {{template "head" .}}
 {{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{end}}
-<p>Rules are kept. Deleting history does not delete rules.</p>
-<p class="hint">URL contains matches the path and query, ignoring case. Apply stores it in the address, so a reload keeps it. Typing filters the rows on screen, and new rows follow the text in the box. Reload the page if JavaScript is off.</p>
-<p class="hint">Group similar requests is on unless the address has <code>group=0</code>. A group is the same method, the same upstream, and the same path. The query string is ignored. One request stays a single row. The arrow opens the group. Without JavaScript it is a link, and <code>open</code> in the address keeps it open. Apply stores the choice when JavaScript is off.</p>
-<p class="hint">A fresh-request rule is a real server response. Its source stays <code>upstream</code>, so Real server includes it. The source column says <code>upstream (fresh rule)</code> when a rule selected that response. It is not a mock. <code>upstream-error</code> and <code>rejected</code> stay under All.</p>
+<details class="help">
+  <summary>How this works</summary>
+  <ul>
+    <li>Rules are kept. Deleting history does not delete rules.</li>
+    <li>URL contains matches the path and query, ignoring case. Apply stores it in the address. Typing filters the rows. Reload the page if JavaScript is off.</li>
+    <li>Group similar requests is on unless the address has <code>group=0</code>. A group is the same method, the same upstream, and the same path. The query string is ignored. The arrow opens the group. Without JavaScript it is a link, and <code>open</code> in the address keeps it open.</li>
+    <li>A fresh-request rule is a real server response. Its source stays <code>upstream</code>, so Real server includes it. The source column says <code>upstream (fresh rule)</code>. It is not a mock. <code>upstream-error</code> and <code>rejected</code> stay under All.</li>
+  </ul>
+</details>
 {{template "history_live" .}}
 {{template "foot" .}}
 {{end}}
 
 {{define "history_live"}}
 <div id="history-live" data-hx-get="/_admin/history" data-hx-trigger="every 1s" data-hx-include="#history-filters" data-hx-swap="outerHTML" data-hx-history-elt>
-<nav aria-label="History source">
+<div class="filter-bar">
+<nav class="segmented" aria-label="History source">
   <a data-source="" href="/_admin/history{{.SourceAll}}" data-hx-get="/_admin/history{{.SourceAll}}" data-hx-target="#history-live" data-hx-swap="outerHTML" data-hx-push-url="true"{{if eq .FilterKey "all"}} aria-current="page"{{end}}>All</a>
   <a data-source="mock" href="/_admin/history{{.SourceMock}}" data-hx-get="/_admin/history{{.SourceMock}}" data-hx-target="#history-live" data-hx-swap="outerHTML" data-hx-push-url="true"{{if eq .FilterKey "mock"}} aria-current="page"{{end}}>Mocked</a>
   <a data-source="upstream" href="/_admin/history{{.SourceReal}}" data-hx-get="/_admin/history{{.SourceReal}}" data-hx-target="#history-live" data-hx-swap="outerHTML" data-hx-push-url="true"{{if eq .FilterKey "upstream"}} aria-current="page"{{end}}>Real server</a>
@@ -20,25 +26,32 @@
   {{if and .SessionID (ne .SessionID "default")}}<input type="hidden" name="session" value="{{.SessionID}}">{{end}}
   {{if ne .FilterKey "all"}}<input type="hidden" name="source" value="{{.FilterKey}}">{{end}}
   {{range .OpenKeys}}<input type="hidden" name="open" value="{{.}}">{{end}}
-  <label for="history-text-filter">URL contains</label>
-  <input id="history-text-filter" name="q" type="search" value="{{.Text}}" maxlength="200" data-hx-get="/_admin/history" data-hx-trigger="keyup changed delay:300ms" data-hx-include="closest form" data-hx-target="#history-live" data-hx-swap="outerHTML" data-hx-push-url="true" data-hx-preserve>
-  <label for="history-upstream-filter">Upstream</label>
-  <select id="history-upstream-filter" name="upstream" data-hx-get="/_admin/history" data-hx-trigger="change" data-hx-include="closest form" data-hx-target="#history-live" data-hx-swap="outerHTML" data-hx-push-url="true">
-    <option value="" {{if not .UpstreamKey}}selected{{end}}>All upstreams</option>
-    {{range .UpstreamChoices}}
-    <option value="{{.ID}}" {{if .Selected}}selected{{end}}>{{.Label}}</option>
-    {{end}}
-  </select>
-  <label for="history-group">Group similar requests</label>
-  <select id="history-group" name="group" data-hx-get="/_admin/history" data-hx-trigger="change" data-hx-include="closest form" data-hx-target="#history-live" data-hx-swap="outerHTML" data-hx-push-url="true">
-    <option value="1" {{if .Grouped}}selected{{end}}>On</option>
-    <option value="0" {{if not .Grouped}}selected{{end}}>Off</option>
-  </select>
+  <div class="filter-field q">
+    <label for="history-text-filter">URL contains</label>
+    <input id="history-text-filter" name="q" type="search" value="{{.Text}}" maxlength="200" data-hx-get="/_admin/history" data-hx-trigger="keyup changed delay:300ms" data-hx-include="closest form" data-hx-target="#history-live" data-hx-swap="outerHTML" data-hx-push-url="true" data-hx-preserve>
+  </div>
+  <div class="filter-field">
+    <label for="history-upstream-filter">Upstream</label>
+    <select id="history-upstream-filter" name="upstream" data-hx-get="/_admin/history" data-hx-trigger="change" data-hx-include="closest form" data-hx-target="#history-live" data-hx-swap="outerHTML" data-hx-push-url="true">
+      <option value="" {{if not .UpstreamKey}}selected{{end}}>All upstreams</option>
+      {{range .UpstreamChoices}}
+      <option value="{{.ID}}" {{if .Selected}}selected{{end}}>{{.Label}}</option>
+      {{end}}
+    </select>
+  </div>
+  <div class="filter-field">
+    <label for="history-group">Group</label>
+    <select id="history-group" name="group" data-hx-get="/_admin/history" data-hx-trigger="change" data-hx-include="closest form" data-hx-target="#history-live" data-hx-swap="outerHTML" data-hx-push-url="true">
+      <option value="1" {{if .Grouped}}selected{{end}}>On</option>
+      <option value="0" {{if not .Grouped}}selected{{end}}>Off</option>
+    </select>
+  </div>
   <button type="submit">Apply</button>
 </form>
-<p id="history-summary" data-label="{{.FilterLabel}}" data-total="{{.Total}}" data-grouped="{{if .Grouped}}1{{else}}0{{end}}" data-readonly="{{if .ReadOnly}}1{{else}}0{{end}}">{{.Summary}}</p>
-<p id="history-upstream">Upstream: {{.UpstreamLabel}}.</p>
-{{if not .ReadOnly}}<p><a id="history-clear" href="/_admin/history/clear{{.FilterQuery}}">Clear all history</a></p>
+</div>
+<div class="list-meta">
+  <p id="history-summary" data-label="{{.FilterLabel}}" data-total="{{.Total}}" data-grouped="{{if .Grouped}}1{{else}}0{{end}}" data-readonly="{{if .ReadOnly}}1{{else}}0{{end}}">{{.Summary}} <span id="history-upstream">Upstream: {{.UpstreamLabel}}.</span></p>
+  {{if not .ReadOnly}}<a class="button danger small" id="history-clear" href="/_admin/history/clear{{.FilterQuery}}">Clear all history</a>
 <dialog id="history-clear-dialog">
   <p id="history-clear-message">Delete all recorded requests? Rules are kept.</p>
   <form id="history-clear-form" method="post" action="/_admin/history/clear{{.FilterQuery}}">
@@ -46,6 +59,7 @@
     <button class="danger" type="submit">Clear all</button>
   </form>
 </dialog>{{end}}
+</div>
 {{if .Entries}}
 <table class="history">
   <caption>Recorded requests</caption>

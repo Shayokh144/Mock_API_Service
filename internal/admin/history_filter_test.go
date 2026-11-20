@@ -54,6 +54,15 @@ func TestHistorySourceFilter(t *testing.T) {
 
 	all := get(t, client, srv.URL+"/_admin/history")
 	assertContains(t, all, "Filter: All. Showing 6 of 6 requests in 6 groups.")
+	assertContains(t, all, `<details class="help">`)
+	assertContains(t, all, `<summary>How this works</summary>`)
+	assertContains(t, all, `class="segmented"`)
+	assertContains(t, all, `class="filter-bar"`)
+	assertContains(t, all, `id="history-upstream"`)
+	assertContains(t, all, `class="button danger small" id="history-clear"`)
+	if strings.Contains(all, `<details class="help" open`) {
+		t.Fatal("history help starts open")
+	}
 	assertContains(t, all, `aria-current="page">All`)
 	assertContains(t, all, "upstream (fresh rule)")
 	if strings.Contains(all, "<script>") || strings.Contains(all, "onclick=") {

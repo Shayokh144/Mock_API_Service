@@ -1,7 +1,14 @@
 {{define "upstreams"}}
 {{template "head" .}}
 {{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{end}}
-<p class="hint">Each upstream has its own prefix. A request uses the prefix on its path. A request with no prefix uses the Referer path when that matches a prefix. Otherwise the proxy returns 404.</p>
+<details class="help">
+  <summary>How this works</summary>
+  <ul>
+    <li>Each upstream has its own prefix. A request uses the prefix on its path.</li>
+    <li>A request with no prefix uses the Referer path when that matches a prefix. Otherwise the proxy returns 404.</li>
+    <li>Deleting an upstream sets rules that named it to Any upstream.</li>
+  </ul>
+</details>
 {{if .Upstreams}}
 <table>
   <caption>Saved upstreams</caption>
@@ -35,7 +42,6 @@
     {{end}}
   </tbody>
 </table>
-<p class="hint">Deleting an upstream sets rules that named it to Any upstream.</p>
 {{else}}
 <div class="empty">
   <p>No upstreams yet.</p>

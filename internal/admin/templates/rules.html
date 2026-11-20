@@ -1,17 +1,29 @@
 {{define "rules"}}
 {{template "head" .}}
+<details class="help">
+  <summary>How this works</summary>
+  <ul>
+    <li>A named upstream includes rules set to Any, because those rules match every upstream.</li>
+    <li>Any shows only rules set to Any.</li>
+    <li>The address keeps the choice, for example <code>?upstream=OKYA_AUTH_DEV</code>.</li>
+    <li>Rules are grouped by upstream. Empty groups are left out.</li>
+  </ul>
+</details>
+<div class="filter-bar">
 <form method="get" action="{{.RulesAction}}">
-  <label for="rules-upstream-filter">Upstream</label>
-  <select id="rules-upstream-filter" name="upstream" data-hx-get="{{.RulesAction}}" data-hx-trigger="change delay:300ms" data-hx-include="closest form" data-hx-target="#rules-list" data-hx-swap="outerHTML" data-hx-push-url="true">
-    <option value="" {{if not .RuleUpstreamKey}}selected{{end}}>All upstreams</option>
-    <option value="any" {{if eq .RuleUpstreamKey "any"}}selected{{end}}>Any</option>
-    {{range .RuleUpstreamChoices}}
-    <option value="{{.Name}}" {{if .Selected}}selected{{end}}>{{.Name}}</option>
-    {{end}}
-  </select>
+  <div class="filter-field">
+    <label for="rules-upstream-filter">Upstream</label>
+    <select id="rules-upstream-filter" name="upstream" data-hx-get="{{.RulesAction}}" data-hx-trigger="change delay:300ms" data-hx-include="closest form" data-hx-target="#rules-list" data-hx-swap="outerHTML" data-hx-push-url="true">
+      <option value="" {{if not .RuleUpstreamKey}}selected{{end}}>All upstreams</option>
+      <option value="any" {{if eq .RuleUpstreamKey "any"}}selected{{end}}>Any</option>
+      {{range .RuleUpstreamChoices}}
+      <option value="{{.Name}}" {{if .Selected}}selected{{end}}>{{.Name}}</option>
+      {{end}}
+    </select>
+  </div>
   <button type="submit">Apply</button>
 </form>
-<p class="hint">A named upstream includes rules set to Any, because those rules match every upstream. Any shows only rules set to Any. The address keeps the choice, for example ?upstream=OKYA_AUTH_DEV. Rules are grouped by upstream. Empty groups are left out.</p>
+</div>
 {{template "rules_list" .}}
 {{template "foot" .}}
 {{end}}
