@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{.Title}} · Mock API proxy</title>
   <link rel="stylesheet" href="/_admin/admin.css">
+  <meta name="htmx-config" content="includeIndicatorCSS:false">
 </head>
 <body>
   <a class="skip" href="#main">Skip to content</a>
@@ -57,6 +58,7 @@
       </main>
     </div>
   </div>
+  {{if .UseHTMX}}<script src="/_admin/htmx.js"></script>{{end}}
 </body>
 </html>
 {{end}}
