@@ -95,7 +95,8 @@ func TestCreateRuleFromHistory(t *testing.T) {
 		`value="` + okya.ID + `" selected`,
 		`checked`,
 		`value="0"`,
-		`class="mode-fields"`,
+		`class="mode-raw"`,
+		`id="mode_raw" name="response_mode" type="radio" value="raw" checked`,
 		"page=2",
 		"name=A B",
 		"flag",
@@ -127,9 +128,18 @@ func TestCreateRuleFromHistory(t *testing.T) {
 	requestOnly := get(t, client, srv.URL+"/_admin/rules/new?from="+failed.ID)
 	assertContains(t, requestOnly, `value="POST /v1/down"`)
 	assertContains(t, requestOnly, `value="/v1/down"`)
-	if strings.Contains(requestOnly, "upstream unavailable") || strings.Contains(requestOnly, "HTTP/1.1 502") {
-		t.Fatalf("error row filled a response:\n%s", requestOnly)
+	assertContains(t, requestOnly, `class="mode-fields"`)
+	if strings.Contains(requestOnly, `value="raw" checked`) || strings.Contains(requestOnly, "upstream unavailable") || strings.Contains(requestOnly, "HTTP/1.1 502") {
+		t.Fatalf("error row filled a response or selected raw:\n%s", requestOnly)
 	}
+
+	blank := get(t, client, srv.URL+"/_admin/rules/new")
+	assertContains(t, blank, `class="mode-fields"`)
+	assertContains(t, blank, `id="mode_fields" name="response_mode" type="radio" value="fields" checked`)
+
+	script := get(t, client, srv.URL+"/_admin/rule-form.js")
+	assertContains(t, script, `selected.value === "raw"`)
+	assertContains(t, script, "apply();")
 
 	retired := get(t, client, srv.URL+"/_admin/rules/new?from="+gone.ID)
 	assertContains(t, retired, `value="" selected>Any upstream`)
@@ -148,6 +158,6 @@ func TestCreateRuleFromHistory(t *testing.T) {
 		t.Fatal("opening the form saved a rule")
 	}
 
-	script := get(t, client, srv.URL+"/_admin/history.js")
-	assertContains(t, script, `/_admin/rules/new?from=`)
+	historyScript := get(t, client, srv.URL+"/_admin/history.js")
+	assertContains(t, historyScript, `/_admin/rules/new?from=`)
 }
