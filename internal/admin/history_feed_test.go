@@ -92,7 +92,7 @@ func TestHistoryFeedFiltersAndGrows(t *testing.T) {
 		t.Fatalf("list CSP = %s", csp)
 	}
 	for _, want := range []string{
-		`<script src="/_admin/history.js"></script>`,
+		`<script src="/_admin/htmx.js"></script>`,
 		`id="history-summary"`,
 		`data-id="` + fresh.ID + `"`,
 		"/v1/fresh?page=2",

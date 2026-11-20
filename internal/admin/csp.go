@@ -24,6 +24,24 @@ func dashboardCSP(script, connect bool) string {
 	return strings.Join(parts, "; ")
 }
 
+func templateAllowsScript(name string) bool {
+	switch name {
+	case "rule_form", "history_detail", "rules", "rules_list", "history", "history_live":
+		return true
+	default:
+		return false
+	}
+}
+
+func templateAllowsConnect(name string) bool {
+	switch name {
+	case "rules", "rules_list", "history", "history_live":
+		return true
+	default:
+		return false
+	}
+}
+
 func writeHTMLHeaders(w http.ResponseWriter, script, connect bool) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")

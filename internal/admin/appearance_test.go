@@ -32,7 +32,7 @@ func TestDashboardStylesAndCSP(t *testing.T) {
 			t.Fatalf("csp = %q, missing %s", csp, want)
 		}
 	}
-	if strings.Contains(csp, "unsafe-inline") || strings.Contains(csp, "script-src") {
+	if strings.Contains(csp, "unsafe-inline") || !strings.Contains(csp, "script-src 'self'") || !strings.Contains(csp, "connect-src 'self'") {
 		t.Fatalf("rules page csp = %q", csp)
 	}
 	if strings.Contains(page, "<style") || strings.Contains(page, "style=") {

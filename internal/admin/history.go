@@ -50,6 +50,8 @@ type historyPageData struct {
 	PrimaryLabel    string
 	CurrentSession  string
 	SessionQuery    string
+	UseHTMX         bool
+	OpenKeys        []string
 }
 
 type historyUpstreamChoice struct {
@@ -122,8 +124,16 @@ type headerLine struct {
 }
 
 func (s *Server) historyPage(w http.ResponseWriter, r *http.Request) {
+	if rejectCrossOriginHTMX(w, r) {
+		return
+	}
 	_, data := s.historyView(r)
 	data.Title = "History"
+	data.UseHTMX = true
+	if htmxRequest(r) {
+		s.renderHistory(w, "history_live", data, http.StatusOK, true, true)
+		return
+	}
 	s.renderHistory(w, "history", data, http.StatusOK, true, true)
 }
 
@@ -307,6 +317,7 @@ func (s *Server) historyView(r *http.Request) ([]history.Entry, historyPageData)
 	}
 	data.Shown = len(shown)
 	openKeys := historyOpenKeys(r)
+	data.OpenKeys = openKeys
 	data.SourceAll = template.URL(historyQueryString("", upstreamKey, text, sessionID, data.Grouped, openKeys))
 	data.SourceMock = template.URL(historyQueryString(string(history.SourceMock), upstreamKey, text, sessionID, data.Grouped, openKeys))
 	data.SourceReal = template.URL(historyQueryString(string(history.SourceUpstream), upstreamKey, text, sessionID, data.Grouped, openKeys))

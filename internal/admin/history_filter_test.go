@@ -59,7 +59,7 @@ func TestHistorySourceFilter(t *testing.T) {
 	if strings.Contains(all, "<script>") || strings.Contains(all, "onclick=") {
 		t.Fatal("history page added an inline script")
 	}
-	assertContains(t, all, `<script src="/_admin/history.js"></script>`)
+	assertContains(t, all, `<script src="/_admin/htmx.js"></script>`)
 
 	mocked := get(t, client, srv.URL+"/_admin/history?source=mock")
 	assertContains(t, mocked, "Filter: Mocked. Showing 2 of 6 requests in 2 groups.")
