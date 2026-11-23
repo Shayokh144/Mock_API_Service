@@ -15,7 +15,7 @@
 {{end}}
 
 {{define "history_live"}}
-<div id="history-live" data-hx-get="/_admin/history" data-hx-trigger="every 1s" data-hx-include="#history-filters" data-hx-swap="outerHTML" data-hx-history-elt>
+<div id="history-live" data-hx-history-elt>
 <div class="filter-bar">
 <nav class="segmented" aria-label="History source">
   <a data-source="" href="/_admin/history{{.SourceAll}}" data-hx-get="/_admin/history{{.SourceAll}}" data-hx-target="#history-live" data-hx-swap="outerHTML" data-hx-push-url="true"{{if eq .FilterKey "all"}} aria-current="page"{{end}}>All</a>
@@ -49,6 +49,9 @@
   <button type="submit">Apply</button>
 </form>
 </div>
+{{/* Only the results poll. The filter form stays outside this element, so a
+     live refresh never replaces a select the user is choosing from. */}}
+<div id="history-results" data-hx-get="/_admin/history" data-hx-trigger="every 1s" data-hx-include="#history-filters" data-hx-select="#history-results" data-hx-swap="outerHTML">
 <div class="list-meta">
   <p id="history-summary" data-label="{{.FilterLabel}}" data-total="{{.Total}}" data-grouped="{{if .Grouped}}1{{else}}0{{end}}" data-readonly="{{if .ReadOnly}}1{{else}}0{{end}}">{{.Summary}} <span id="history-upstream">Upstream: {{.UpstreamLabel}}.</span></p>
   {{if not .ReadOnly}}<a class="button danger small" id="history-clear" href="/_admin/history/clear{{.FilterQuery}}" data-confirm="Delete every recorded request, including entries hidden by the current filter? Rules are kept." data-confirm-title="Clear all history" data-confirm-label="Clear history" data-confirm-post="/_admin/history/clear{{.FilterQuery}}">Clear all history</a>{{end}}
@@ -122,6 +125,7 @@
   <p class="hint">Calls through the proxy show up here. Rules stay saved when history is empty.</p>
 </div>
 {{end}}
+</div>
 </div>
 {{end}}
 
