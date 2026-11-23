@@ -412,7 +412,10 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, upstream *url.
 			req.URL.RawPath = ""
 			req.URL.RawQuery = incomingQuery
 			req.Host = upstream.Host
-			stripStickyCookie(req.Header)
+			rewriteOutbound(req.Header, r.Host, upstream, t.prefix)
+			if capture, ok := w.(*bodyCapture); ok {
+				capture.sent = sentHeaders(req.Header, req.Host)
+			}
 		},
 		Transport: h.transport,
 		ModifyResponse: func(resp *http.Response) error {
@@ -534,6 +537,7 @@ func (h *Handler) record(started time.Time, r *http.Request, reqHeaders http.Hea
 		RawQuery:              r.URL.RawQuery,
 		ForwardedPath:         forwardedPath,
 		RequestHeaders:        reqHeaders,
+		UpstreamHeaders:       capw.sent,
 		RequestBody:           reqBody,
 		Status:                status,
 		ResponseHeaders:       respHeaders,

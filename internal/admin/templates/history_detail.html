@@ -33,6 +33,13 @@
   {{if .RequestTruncated}}<p>Request body preview was truncated.</p>{{end}}
   <pre id="request-body">{{prettyBody .RequestBody}}</pre>
 </div>
+{{if .UpstreamHeaders}}<details class="fold" open>
+  <summary>Sent upstream</summary>
+  <p>Host, Origin, and Referer after the proxy rewrote them for the upstream.</p>
+  <ul>
+    {{range .UpstreamHeaders}}<li>{{template "header_line" .}}</li>{{end}}
+  </ul>
+</details>{{end}}
 <details class="fold" open>
   <summary>Response headers</summary>
   {{if .ResponseHeaders}}

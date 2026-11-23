@@ -111,6 +111,7 @@ type historyDetail struct {
 	Forwarded         string
 	RuleID            string
 	RequestHeaders    []headerLine
+	UpstreamHeaders   []headerLine
 	ResponseHeaders   []headerLine
 	RequestBody       string
 	ResponseBody      string
@@ -201,6 +202,7 @@ func (s *Server) historyDetail(w http.ResponseWriter, r *http.Request, id string
 		Forwarded:         forwardedTarget(entry),
 		RuleID:            entry.RuleID,
 		RequestHeaders:    headerLines(entry.RequestHeaders),
+		UpstreamHeaders:   headerLines(entry.UpstreamHeaders),
 		ResponseHeaders:   headerLines(entry.ResponseHeaders),
 		RequestBody:       entry.RequestBody,
 		ResponseBody:      entry.ResponseBody,

@@ -198,17 +198,17 @@ func TestStripStickyCookie(t *testing.T) {
 	header := http.Header{}
 	header.Add("Cookie", "a=1; "+stickyCookieName+"=abc")
 	header.Add("Cookie", "b=2")
-	stripStickyCookie(header)
+	rewriteRequestCookies(header)
 	if got := header.Values("Cookie"); len(got) != 1 || got[0] != "a=1; b=2" {
 		t.Fatalf("cookie = %q", got)
 	}
 	only := http.Header{"Cookie": {stickyCookieName + "=abc"}}
-	stripStickyCookie(only)
+	rewriteRequestCookies(only)
 	if _, ok := only["Cookie"]; ok {
 		t.Fatalf("cookie = %q", only.Values("Cookie"))
 	}
 	untouched := http.Header{"Cookie": {"a=1;b=2"}}
-	stripStickyCookie(untouched)
+	rewriteRequestCookies(untouched)
 	if untouched.Get("Cookie") != "a=1;b=2" {
 		t.Fatalf("cookie = %q", untouched.Get("Cookie"))
 	}

@@ -1,9 +1,6 @@
 package proxy
 
-import (
-	"net/http"
-	"strings"
-)
+import "net/http"
 
 // stickyCookieName remembers the last upstream this browser reached. It lets a
 // page served without its prefix, such as /login reached through the Referer,
@@ -47,35 +44,4 @@ func setStickyUpstream(w http.ResponseWriter, r *http.Request, id string) {
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 	})
-}
-
-// stripStickyCookie keeps the proxy cookie away from the upstream.
-func stripStickyCookie(header http.Header) {
-	values := header.Values("Cookie")
-	if len(values) == 0 {
-		return
-	}
-	var kept []string
-	removed := false
-	for _, value := range values {
-		for _, part := range strings.Split(value, ";") {
-			part = strings.TrimSpace(part)
-			if part == "" {
-				continue
-			}
-			name, _, _ := strings.Cut(part, "=")
-			if strings.TrimSpace(name) == stickyCookieName {
-				removed = true
-				continue
-			}
-			kept = append(kept, part)
-		}
-	}
-	if !removed {
-		return
-	}
-	header.Del("Cookie")
-	if len(kept) > 0 {
-		header.Set("Cookie", strings.Join(kept, "; "))
-	}
 }

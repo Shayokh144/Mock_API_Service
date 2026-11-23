@@ -41,6 +41,8 @@ type bodyCapture struct {
 	limit        int
 	fault        string
 	step         int
+	// sent is Host, Origin, and Referer as forwarded upstream.
+	sent http.Header
 }
 
 func (c *bodyCapture) WriteHeader(status int) {

@@ -30,6 +30,7 @@ type historyItem struct {
 	RuleName        string              `json:"rule_name,omitempty"`
 	RequestHeaders  map[string][]string `json:"request_headers"`
 	RequestBody     string              `json:"request_body"`
+	UpstreamHeaders map[string][]string `json:"upstream_headers,omitempty"`
 	ResponseHeaders map[string][]string `json:"response_headers"`
 	ResponseBody    string              `json:"response_body"`
 	Truncated       bool                `json:"truncated"`
@@ -233,6 +234,7 @@ func toHistoryItem(entry history.Entry, info sessions.Info, reveal bool) history
 		RuleName:        name,
 		RequestHeaders:  maskHeaders(entry.RequestHeaders, reveal),
 		RequestBody:     entry.RequestBody,
+		UpstreamHeaders: upstreamHeaders(entry.UpstreamHeaders, reveal),
 		ResponseHeaders: maskHeaders(entry.ResponseHeaders, reveal),
 		ResponseBody:    entry.ResponseBody,
 		Truncated:       entry.RequestBodyTruncated || entry.ResponseBodyTruncated,
@@ -275,4 +277,13 @@ func parseBoolQuery(raw string) (bool, bool, bool) {
 	default:
 		return false, false, false
 	}
+}
+
+// upstreamHeaders is Host, Origin, and Referer as forwarded. It is nil when
+// the request was not forwarded.
+func upstreamHeaders(header map[string][]string, reveal bool) map[string][]string {
+	if len(header) == 0 {
+		return nil
+	}
+	return maskHeaders(header, reveal)
 }

@@ -27,14 +27,17 @@ const UpstreamAny = "any"
 
 // Entry is one recorded request and response. Bodies are previews.
 type Entry struct {
-	ID                    string
-	StartedAt             time.Time
-	DurationMS            int
-	Method                string
-	Path                  string
-	RawQuery              string
-	ForwardedPath         string
-	RequestHeaders        http.Header
+	ID             string
+	StartedAt      time.Time
+	DurationMS     int
+	Method         string
+	Path           string
+	RawQuery       string
+	ForwardedPath  string
+	RequestHeaders http.Header
+	// UpstreamHeaders holds Host, Origin, and Referer as sent upstream.
+	// It is empty for mocks and rejections.
+	UpstreamHeaders       http.Header
 	RequestBody           string
 	Status                int
 	ResponseHeaders       http.Header
@@ -97,6 +100,7 @@ func (l *Log) Add(entry Entry) Entry {
 	}
 	entry.RequestHeaders = cloneHeader(entry.RequestHeaders)
 	entry.ResponseHeaders = cloneHeader(entry.ResponseHeaders)
+	entry.UpstreamHeaders = cloneHeader(entry.UpstreamHeaders)
 	l.entries = append(l.entries, entry)
 	if len(l.entries) > l.limit {
 		l.entries = append([]Entry(nil), l.entries[len(l.entries)-l.limit:]...)

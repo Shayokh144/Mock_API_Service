@@ -89,7 +89,7 @@ func TestUpstreamRedirectAndCookieRewrite(t *testing.T) {
 		t.Fatalf("session cookie = %+v", session)
 	}
 	cdn := found["cdn"]
-	if cdn == nil || cdn.Domain != "cdn.example" || cdn.Secure || cdn.Path != "/okya/assets" || cdn.Value != "xyz" {
+	if cdn == nil || cdn.Domain != "" || cdn.Secure || cdn.Path != "/okya/assets" || cdn.Value != "xyz" {
 		t.Fatalf("cdn cookie = %+v", cdn)
 	}
 }
@@ -165,12 +165,6 @@ func TestRewriteLeavesDifferentSchemeAlone(t *testing.T) {
 	got, ok = rewriteAbsoluteURL("http://staging.example.com:80/next?x=1#y", "127.0.0.1:8080", upstream, "")
 	if !ok || got != "http://127.0.0.1:8080/next?x=1#y" {
 		t.Fatalf("default port rewrite = %q ok=%v", got, ok)
-	}
-	if !domainMatchesUpstream(".Staging.Example.COM", "staging.example.com") {
-		t.Fatal("leading-dot domain should match")
-	}
-	if domainMatchesUpstream("example.com", "staging.example.com") {
-		t.Fatal("parent domain should not match")
 	}
 }
 

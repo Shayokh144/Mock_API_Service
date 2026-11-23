@@ -20,7 +20,7 @@ func rewriteUpstreamResponse(resp *http.Response, proxyHost string, upstream *ur
 	}
 	rewriteHeaderURL(resp.Header, "Location", proxyHost, upstream, prefix)
 	rewriteHeaderURL(resp.Header, "Content-Location", proxyHost, upstream, prefix)
-	rewriteSetCookies(resp.Header, upstream.Hostname(), cookiePrefix)
+	rewriteSetCookies(resp.Header, cookiePrefix)
 }
 
 func rewriteHeaderURL(header http.Header, name, proxyHost string, upstream *url.URL, prefix string) {
@@ -128,7 +128,7 @@ func joinRedirectPath(prefix, path string) string {
 	return strings.TrimSuffix(prefix, "/") + path
 }
 
-func rewriteSetCookies(header http.Header, upstreamHost, prefix string) {
+func rewriteSetCookies(header http.Header, prefix string) {
 	values := header.Values("Set-Cookie")
 	if len(values) == 0 {
 		return
@@ -136,7 +136,7 @@ func rewriteSetCookies(header http.Header, upstreamHost, prefix string) {
 	next := make([]string, len(values))
 	changed := false
 	for i, value := range values {
-		rewritten := rewriteSetCookie(value, upstreamHost, prefix)
+		rewritten := rewriteSetCookie(value, prefix)
 		next[i] = rewritten
 		if rewritten != value {
 			changed = true
@@ -151,27 +151,28 @@ func rewriteSetCookies(header http.Header, upstreamHost, prefix string) {
 	}
 }
 
-func rewriteSetCookie(raw, upstreamHost, prefix string) string {
+// rewriteSetCookie makes an upstream cookie usable on the plain HTTP proxy
+// origin, such as http://10.0.2.2:8080. A browser drops a cookie whose Domain
+// is another host, a SameSite=None cookie without Secure, and a __Host- or
+// __Secure- cookie without Secure. The value is not changed or logged.
+func rewriteSetCookie(raw, prefix string) string {
 	cookie, err := http.ParseSetCookie(raw)
 	if err != nil || cookie.Name == "" {
 		return raw
 	}
-	if domainMatchesUpstream(cookie.Domain, upstreamHost) {
-		cookie.Domain = ""
-	}
+	cookie.Domain = ""
 	cookie.Secure = false
+	cookie.Partitioned = false
+	if cookie.SameSite == http.SameSiteNoneMode {
+		cookie.SameSite = http.SameSiteLaxMode
+	}
+	cookie.Name = browserCookieName(cookie.Name)
 	cookie.Path = prefixCookiePath(prefix, cookie.Path)
 	serialized := cookie.String()
 	if serialized == "" {
 		return raw
 	}
 	return serialized
-}
-
-func domainMatchesUpstream(domain, host string) bool {
-	domain = strings.TrimPrefix(strings.TrimSpace(domain), ".")
-	host = strings.TrimPrefix(strings.TrimSpace(host), ".")
-	return domain != "" && strings.EqualFold(domain, host)
 }
 
 func prefixCookiePath(prefix, cookiePath string) string {
