@@ -100,7 +100,7 @@ func rewriteAbsoluteURL(raw, proxyHost string, upstream *url.URL, prefix string)
 // is not configured stays as the upstream sent it.
 func rewriteAbsoluteTo(raw, proxyHost string, targets []redirectTarget) (string, bool) {
 	parsed, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil || parsed.Host == "" || parsed.Opaque != "" {
+	if err != nil || parsed.Host == "" || parsed.Opaque != "" || !webScheme(parsed.Scheme) {
 		return raw, false
 	}
 	best := -1
@@ -139,6 +139,18 @@ func rewriteAbsoluteTo(raw, proxyHost string, targets []redirectTarget) (string,
 	parsed.Path = joinRedirectPath(targets[best].prefix, bestRel)
 	parsed.RawPath = ""
 	return parsed.String(), true
+}
+
+// webScheme is true for http, https, and a scheme-relative URL. An app
+// callback such as co.okya.pos.dev://callback, intent://, or mailto: is never
+// rewritten, so the browser can hand it to the app unchanged.
+func webScheme(scheme string) bool {
+	switch strings.ToLower(scheme) {
+	case "", "http", "https":
+		return true
+	default:
+		return false
+	}
 }
 
 // underBase removes the upstream base URL path. ok is false when path is
