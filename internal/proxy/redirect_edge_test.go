@@ -60,18 +60,24 @@ func TestLocationRewriteEdgeCases(t *testing.T) {
 	}
 }
 
-func TestCookiePathDropsBasePath(t *testing.T) {
-	got := rewriteSetCookie("s=1; Path=/api/v1", "/okya", "/api/v1")
-	if got != "s=1; Path=/okya" {
-		t.Fatalf("cookie = %q", got)
+func TestSetCookieAlwaysUsesRootPath(t *testing.T) {
+	id := "0123456789abcdef"
+	cases := map[string]string{
+		"s=1; Path=/api/v1":                  "mp_" + id + "_s=1; Path=/; HttpOnly",
+		"s=1; Path=/okya-auth; HttpOnly":     "mp_" + id + "_s=1; Path=/; HttpOnly",
+		"js=1; Path=/assets":                 "js=1; Path=/",
+		"js=1":                               "js=1; Path=/",
+		"__Host-x=1; Path=/; Secure":         "__mp_Host-x=1; Path=/",
+		"gone=; Path=/; Max-Age=0; HttpOnly": "mp_" + id + "_gone=; Path=/; Max-Age=0; HttpOnly",
 	}
-	got = rewriteSetCookie("s=1; Path=/api/v1/users", "", "/api/v1")
-	if got != "s=1; Path=/users" {
-		t.Fatalf("unprefixed cookie = %q", got)
-	}
-	got = rewriteSetCookie("s=1", "/okya", "/api/v1")
-	if got != "s=1" {
-		t.Fatalf("no path = %q", got)
+	for raw, want := range cases {
+		in := raw
+		if raw == "s=1; Path=/api/v1" {
+			in += "; HttpOnly"
+		}
+		if got := rewriteSetCookie(in, id); got != want {
+			t.Errorf("rewrite(%q) = %q, want %q", in, got, want)
+		}
 	}
 }
 

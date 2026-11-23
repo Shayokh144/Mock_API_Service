@@ -20,7 +20,7 @@
 </dl>
 {{if .UpstreamHeaders}}<details class="fold" id="detail-sent-upstream" open>
   <summary>Sent upstream</summary>
-  <p>Host, Origin, and Referer after the proxy rewrote them for the upstream.</p>
+  <p>Host, Origin, and Referer after the proxy rewrote them for the upstream. Cookie-Names lists the cookies sent, without their values.</p>
   <ul>
     {{range .UpstreamHeaders}}<li>{{template "header_line" .}}</li>{{end}}
   </ul>

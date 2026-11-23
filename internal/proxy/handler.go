@@ -412,14 +412,14 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, upstream *url.
 			req.URL.RawPath = ""
 			req.URL.RawQuery = incomingQuery
 			req.Host = upstream.Host
-			rewriteOutbound(req.Header, r.Host, upstream, t.prefix)
+			rewriteOutbound(req.Header, r.Host, upstream, t.prefix, t.id)
 			if capture, ok := w.(*bodyCapture); ok {
 				capture.sent = sentHeaders(req.Header, req.Host)
 			}
 		},
 		Transport: h.transport,
 		ModifyResponse: func(resp *http.Response) error {
-			rewriteUpstreamResponse(resp, r.Host, h.redirectTargets(upstream, t), t.cookiePrefix())
+			rewriteUpstreamResponse(resp, r.Host, h.redirectTargets(upstream, t), t.id)
 			if upgrade || resp.StatusCode == http.StatusSwitchingProtocols {
 				return nil
 			}

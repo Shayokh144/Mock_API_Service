@@ -70,7 +70,8 @@ func TestRailsLoginPassesCSRFThroughProxy(t *testing.T) {
 	upstream := railsLike(t)
 	defer upstream.Close()
 	ups := upstreams.NewMemory()
-	if _, err := ups.Create("OKYA_AUTH_DEV", upstream.URL, "/okya-auth"); err != nil {
+	okya, err := ups.Create("OKYA_AUTH_DEV", upstream.URL, "/okya-auth")
+	if err != nil {
 		t.Fatal(err)
 	}
 	log := history.New(10)
@@ -93,11 +94,11 @@ func TestRailsLoginPassesCSRFThroughProxy(t *testing.T) {
 	for _, cookie := range page.Cookies() {
 		names[cookie.Name] = cookie
 	}
-	session := names["_okya_session"]
+	session := names["mp_"+okya.ID+"__okya_session"]
 	if session == nil || session.Domain != "" || session.Secure {
 		t.Fatalf("session cookie = %+v", session)
 	}
-	csrf := names["__mp_Host-csrf"]
+	csrf := names["mp_"+okya.ID+"___Host-csrf"]
 	if csrf == nil || csrf.Secure || csrf.SameSite != http.SameSiteLaxMode {
 		t.Fatalf("csrf cookie = %+v (all %v)", csrf, page.Cookies())
 	}
@@ -148,14 +149,14 @@ func TestOutboundLeavesForeignOriginAlone(t *testing.T) {
 	header := http.Header{}
 	header.Set("Origin", "https://other.example")
 	header.Set("Referer", "https://other.example/page")
-	rewriteOutbound(header, "10.0.2.2:8080", upstream, "/okya")
+	rewriteOutbound(header, "10.0.2.2:8080", upstream, "/okya", "")
 	if header.Get("Origin") != "https://other.example" || header.Get("Referer") != "https://other.example/page" {
 		t.Fatalf("foreign values changed: %v", header)
 	}
 	header.Set("Origin", "http://10.0.2.2:8080")
 	header.Set("Referer", "http://10.0.2.2:8080/okya/login?step=2#x")
 	header.Set("Forwarded", "host=evil")
-	rewriteOutbound(header, "10.0.2.2:8080", upstream, "/okya")
+	rewriteOutbound(header, "10.0.2.2:8080", upstream, "/okya", "")
 	if got := header.Get("Origin"); got != "https://auth.okya.example" {
 		t.Fatalf("Origin = %s", got)
 	}
@@ -166,7 +167,7 @@ func TestOutboundLeavesForeignOriginAlone(t *testing.T) {
 		t.Fatal("Forwarded should be dropped")
 	}
 	header.Set("Referer", "http://10.0.2.2:8080/login")
-	rewriteOutbound(header, "10.0.2.2:8080", upstream, "/okya")
+	rewriteOutbound(header, "10.0.2.2:8080", upstream, "/okya", "")
 	if got := header.Get("Referer"); got != "https://auth.okya.example/base/login" {
 		t.Fatalf("unprefixed Referer = %s", got)
 	}
@@ -174,7 +175,7 @@ func TestOutboundLeavesForeignOriginAlone(t *testing.T) {
 
 func TestRequestCookieNamesAreRestored(t *testing.T) {
 	header := http.Header{"Cookie": {"__mp_Host-csrf=c1; a=1", "__mp_Secure-id=2"}}
-	rewriteRequestCookies(header)
+	rewriteRequestCookies(header, "")
 	if got := header.Get("Cookie"); got != "__Host-csrf=c1; a=1; __Secure-id=2" {
 		t.Fatalf("cookie = %q", got)
 	}

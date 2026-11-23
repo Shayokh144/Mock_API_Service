@@ -17,10 +17,8 @@ type redirectTarget struct {
 // strips cookie attributes that do not work on plain HTTP. targets[0] is the
 // upstream that answered. The rest are the other configured upstreams, so a
 // sign-in server that redirects to another configured host stays on the proxy.
-// cookiePrefix is added to cookie paths. It is empty when the page was not
-// served under the prefix, so a cookie set by /login is still sent to the form
-// post on /login.
-func rewriteUpstreamResponse(resp *http.Response, proxyHost string, targets []redirectTarget, cookiePrefix string) {
+// Cookies are stored per upstream on Path=/; see rewriteSetCookies.
+func rewriteUpstreamResponse(resp *http.Response, proxyHost string, targets []redirectTarget, upstreamID string) {
 	if resp == nil || len(targets) == 0 || targets[0].base == nil {
 		return
 	}
@@ -30,7 +28,7 @@ func rewriteUpstreamResponse(resp *http.Response, proxyHost string, targets []re
 	}
 	rewriteHeaderURL(resp.Header, "Location", proxyHost, targets)
 	rewriteHeaderURL(resp.Header, "Content-Location", proxyHost, targets)
-	rewriteSetCookies(resp.Header, cookiePrefix, targets[0].base.Path)
+	rewriteSetCookies(resp.Header, upstreamID)
 }
 
 func rewriteHeaderURL(header http.Header, name, proxyHost string, targets []redirectTarget) {
@@ -213,67 +211,4 @@ func joinRedirectPath(prefix, path string) string {
 		return prefix
 	}
 	return strings.TrimSuffix(prefix, "/") + path
-}
-
-func rewriteSetCookies(header http.Header, prefix, basePath string) {
-	values := header.Values("Set-Cookie")
-	if len(values) == 0 {
-		return
-	}
-	next := make([]string, len(values))
-	changed := false
-	for i, value := range values {
-		rewritten := rewriteSetCookie(value, prefix, basePath)
-		next[i] = rewritten
-		if rewritten != value {
-			changed = true
-		}
-	}
-	if !changed {
-		return
-	}
-	header.Del("Set-Cookie")
-	for _, value := range next {
-		header.Add("Set-Cookie", value)
-	}
-}
-
-// rewriteSetCookie makes an upstream cookie usable on the plain HTTP proxy
-// origin, such as http://10.0.2.2:8080. A browser drops a cookie whose Domain
-// is another host, a SameSite=None cookie without Secure, and a __Host- or
-// __Secure- cookie without Secure. The value is not changed or logged.
-func rewriteSetCookie(raw, prefix, basePath string) string {
-	cookie, err := http.ParseSetCookie(raw)
-	if err != nil || cookie.Name == "" {
-		return raw
-	}
-	cookie.Domain = ""
-	cookie.Secure = false
-	cookie.Partitioned = false
-	if cookie.SameSite == http.SameSiteNoneMode {
-		cookie.SameSite = http.SameSiteLaxMode
-	}
-	cookie.Name = browserCookieName(cookie.Name)
-	if cookie.Path != "" {
-		rel, _ := underBase(cookie.Path, basePath)
-		cookie.Path = prefixCookiePath(prefix, rel)
-	}
-	serialized := cookie.String()
-	if serialized == "" {
-		return raw
-	}
-	return serialized
-}
-
-func prefixCookiePath(prefix, cookiePath string) string {
-	if prefix == "" || cookiePath == "" || !strings.HasPrefix(cookiePath, "/") {
-		return cookiePath
-	}
-	if cookiePath == prefix || strings.HasPrefix(cookiePath, prefix+"/") {
-		return cookiePath
-	}
-	if cookiePath == "/" {
-		return prefix
-	}
-	return strings.TrimSuffix(prefix, "/") + cookiePath
 }

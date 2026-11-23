@@ -17,13 +17,6 @@ const (
 	viaCookie
 )
 
-func (t target) cookiePrefix() string {
-	if t.via != viaPrefix {
-		return ""
-	}
-	return t.prefix
-}
-
 func stickyUpstream(r *http.Request) (string, bool) {
 	cookie, err := r.Cookie(stickyCookieName)
 	if err != nil || cookie.Value == "" {

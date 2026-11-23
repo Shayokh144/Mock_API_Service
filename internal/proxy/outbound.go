@@ -6,26 +6,20 @@ import (
 	"strings"
 )
 
-// Cookie names with these prefixes need Secure, which a plain HTTP page cannot
-// set. The proxy renames them for the browser and restores them upstream.
-var cookieNamePrefixes = [][2]string{
-	{"__Host-", "__mp_Host-"},
-	{"__Secure-", "__mp_Secure-"},
-}
-
 // forwardingHeaders would make the upstream build its own URL from values the
 // client chose. Rails, for example, reads X-Forwarded-Host for base_url.
 var forwardingHeaders = []string{"Forwarded", "X-Forwarded-Host", "X-Forwarded-Proto", "X-Forwarded-Port", "X-Forwarded-Prefix", "X-Forwarded-Ssl"}
 
 // sentHeaderNames are copied into History as the headers sent upstream.
-// Cookie and Authorization are not copied.
+// Cookie values and Authorization are not copied. Cookie-Names lists only
+// the cookie names, so a missing session cookie is visible without its value.
 var sentHeaderNames = []string{"Host", "Origin", "Referer"}
 
 // rewriteOutbound makes a same-origin browser request look same-origin to the
 // upstream. A Rails app compares Origin with the scheme and host it sees, so
 // Origin http://10.0.2.2:8080 fails its CSRF check with a 422.
 // proxyHost is the Host the client used. Values for other hosts stay as sent.
-func rewriteOutbound(header http.Header, proxyHost string, upstream *url.URL, prefix string) {
+func rewriteOutbound(header http.Header, proxyHost string, upstream *url.URL, prefix, upstreamID string) {
 	for _, name := range forwardingHeaders {
 		header.Del(name)
 	}
@@ -40,7 +34,7 @@ func rewriteOutbound(header http.Header, proxyHost string, upstream *url.URL, pr
 			header.Set("Referer", rewritten)
 		}
 	}
-	rewriteRequestCookies(header)
+	rewriteRequestCookies(header, upstreamID)
 }
 
 // upstreamOrigin is scheme://host, without a default port, the way a browser
@@ -86,64 +80,6 @@ func sameHost(a, b string) bool {
 	return a != "" && strings.EqualFold(strings.TrimSpace(a), strings.TrimSpace(b))
 }
 
-// rewriteRequestCookies drops the proxy's own cookie and restores renamed
-// __Host- and __Secure- cookie names.
-func rewriteRequestCookies(header http.Header) {
-	values := header.Values("Cookie")
-	if len(values) == 0 {
-		return
-	}
-	var kept []string
-	changed := false
-	for _, value := range values {
-		for _, part := range strings.Split(value, ";") {
-			part = strings.TrimSpace(part)
-			if part == "" {
-				continue
-			}
-			name, rest, hasValue := strings.Cut(part, "=")
-			name = strings.TrimSpace(name)
-			if name == stickyCookieName {
-				changed = true
-				continue
-			}
-			if restored, ok := restoreCookieName(name); ok {
-				changed = true
-				part = restored
-				if hasValue {
-					part += "=" + rest
-				}
-			}
-			kept = append(kept, part)
-		}
-	}
-	if !changed {
-		return
-	}
-	header.Del("Cookie")
-	if len(kept) > 0 {
-		header.Set("Cookie", strings.Join(kept, "; "))
-	}
-}
-
-func restoreCookieName(name string) (string, bool) {
-	for _, pair := range cookieNamePrefixes {
-		if strings.HasPrefix(name, pair[1]) {
-			return pair[0] + name[len(pair[1]):], true
-		}
-	}
-	return name, false
-}
-
-func browserCookieName(name string) string {
-	for _, pair := range cookieNamePrefixes {
-		if len(name) >= len(pair[0]) && strings.EqualFold(name[:len(pair[0])], pair[0]) {
-			return pair[1] + name[len(pair[0]):]
-		}
-	}
-	return name
-}
-
 func sentHeaders(header http.Header, host string) http.Header {
 	out := http.Header{}
 	for _, name := range sentHeaderNames {
@@ -156,6 +92,9 @@ func sentHeaders(header http.Header, host string) http.Header {
 		if value := header.Get(name); value != "" {
 			out.Set(name, value)
 		}
+	}
+	if names := cookieNames(header); names != "" {
+		out.Set("Cookie-Names", names)
 	}
 	return out
 }

@@ -65,7 +65,7 @@ func TestTestSessionRewritesUpstreamRedirect(t *testing.T) {
 			session = cookie
 		}
 	}
-	if session == nil || session.Domain != "" || session.Secure || session.Path != "/okya" {
+	if session == nil || session.Domain != "" || session.Secure || session.Path != "/" {
 		t.Fatalf("cookie = %+v", resp.Cookies())
 	}
 }

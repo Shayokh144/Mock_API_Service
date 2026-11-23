@@ -48,7 +48,8 @@ func TestUpstreamRedirectAndCookieRewrite(t *testing.T) {
 		t.Fatal(err)
 	}
 	store := upstreams.NewMemory()
-	if _, err := store.Create("staging", upstreamBase.String(), "/okya"); err != nil {
+	staging, err := store.Create("staging", upstreamBase.String(), "/okya")
+	if err != nil {
 		t.Fatal(err)
 	}
 	proxySrv := httptest.NewServer(New(Options{Upstreams: store, Timeout: time.Second}))
@@ -84,12 +85,12 @@ func TestUpstreamRedirectAndCookieRewrite(t *testing.T) {
 	for _, cookie := range cookies.Cookies() {
 		found[cookie.Name] = cookie
 	}
-	session := found["session"]
-	if session == nil || session.Domain != "" || session.Secure || session.Path != "/okya" || !session.HttpOnly || session.Value != "abc" {
+	session := found["mp_"+staging.ID+"_session"]
+	if session == nil || session.Domain != "" || session.Secure || session.Path != "/" || !session.HttpOnly || session.Value != "abc" {
 		t.Fatalf("session cookie = %+v", session)
 	}
 	cdn := found["cdn"]
-	if cdn == nil || cdn.Domain != "" || cdn.Secure || cdn.Path != "/okya/assets" || cdn.Value != "xyz" {
+	if cdn == nil || cdn.Domain != "" || cdn.Secure || cdn.Path != "/" || cdn.Value != "xyz" {
 		t.Fatalf("cdn cookie = %+v", cdn)
 	}
 }
