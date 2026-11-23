@@ -17,24 +17,38 @@
   <dt>Fault</dt><dd>{{if .Fault}}{{.Fault}}{{else}}none{{end}}</dd>
   <dt>Step</dt><dd>{{if .Step}}{{.Step}}{{else}}none{{end}}</dd>
 </dl>
-<h2>Request headers</h2>
-{{if .RequestHeaders}}
-<ul>
-  {{range .RequestHeaders}}<li>{{template "header_line" .}}</li>{{end}}
-</ul>
-{{else}}<p>No request headers.</p>{{end}}
-<h2>Request body</h2>
-{{if .RequestTruncated}}<p>Request body preview was truncated.</p>{{end}}
-<pre>{{.RequestBody}}</pre>
-<h2>Response headers</h2>
-{{if .ResponseHeaders}}
-<ul>
-  {{range .ResponseHeaders}}<li>{{template "header_line" .}}</li>{{end}}
-</ul>
-{{else}}<p>No response headers.</p>{{end}}
-<h2>Response body</h2>
-{{if .ResponseTruncated}}<p>Response body preview was truncated.</p>{{end}}
-<pre>{{.ResponseBody}}</pre>
+<details class="fold" open>
+  <summary>Request headers</summary>
+  {{if .RequestHeaders}}
+  <ul>
+    {{range .RequestHeaders}}<li>{{template "header_line" .}}</li>{{end}}
+  </ul>
+  {{else}}<p>No request headers.</p>{{end}}
+</details>
+<div class="code-panel">
+  <div class="code-panel-bar">
+    <h2>Request body</h2>
+    <button class="secondary" type="button" data-copy="request-body">Copy</button>
+  </div>
+  {{if .RequestTruncated}}<p>Request body preview was truncated.</p>{{end}}
+  <pre id="request-body">{{prettyBody .RequestBody}}</pre>
+</div>
+<details class="fold" open>
+  <summary>Response headers</summary>
+  {{if .ResponseHeaders}}
+  <ul>
+    {{range .ResponseHeaders}}<li>{{template "header_line" .}}</li>{{end}}
+  </ul>
+  {{else}}<p>No response headers.</p>{{end}}
+</details>
+<div class="code-panel">
+  <div class="code-panel-bar">
+    <h2>Response body</h2>
+    <button class="secondary" type="button" data-copy="response-body">Copy</button>
+  </div>
+  {{if .ResponseTruncated}}<p>Response body preview was truncated.</p>{{end}}
+  <pre id="response-body">{{prettyBody .ResponseBody}}</pre>
+</div>
 {{if not $.ReadOnly}}<div class="actions">
   <a href="/_admin/rules/new?from={{.ID}}">Create rule</a>
   <form class="inline" method="post" action="/_admin/history/{{.ID}}/delete{{$.FilterQuery}}">
@@ -42,6 +56,7 @@
   </form>
 </div>{{end}}
 {{end}}
+<script src="/_admin/copy.js"></script>
 {{template "foot" .}}
 {{end}}
 

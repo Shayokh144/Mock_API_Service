@@ -107,9 +107,13 @@ func TestHistoryFeedFiltersAndGrows(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	detailResp.Body.Close()
-	if strings.Contains(detailResp.Header.Get("Content-Security-Policy"), "script-src") {
-		t.Fatal("detail page allows scripts")
+	detailBody := readBody(t, detailResp)
+	detailCSP := detailResp.Header.Get("Content-Security-Policy")
+	if !strings.Contains(detailCSP, "script-src 'self'") || strings.Contains(detailCSP, "unsafe-inline") {
+		t.Fatalf("detail csp = %s", detailCSP)
+	}
+	if strings.Contains(detailBody, "<script>") || !strings.Contains(detailBody, `<script src="/_admin/copy.js"></script>`) {
+		t.Fatal("detail page script is not the external copy file")
 	}
 
 	scriptResp, err := http.Get(srv.URL + "/_admin/history.js")

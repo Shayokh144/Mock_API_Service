@@ -2,15 +2,21 @@
 {{template "head" .}}
 {{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{end}}
 <form method="post" action="{{.UpstreamForm.Action}}">
+  <fieldset class="form-section">
+    <legend>Name</legend>
   <label for="name">Name</label>
   <input id="name" name="name" type="text" maxlength="80" required value="{{.UpstreamForm.Name}}">
-  <p class="hint">A short name such as staging or develop.</p>
+  <p class="hint">A short name such as staging or develop. It is the label in the rules list and in history.</p>
+  </fieldset>
+  <fieldset class="form-section">
+    <legend>Address</legend>
   <label for="base_url">Base URL</label>
   <input id="base_url" name="base_url" type="url" required value="{{.UpstreamForm.BaseURL}}">
   <p class="hint">Absolute http or https URL. A path on this URL is joined in front of the forwarded path. A query or fragment is not allowed.</p>
   <label for="prefix">Prefix</label>
   <input id="prefix" name="prefix" type="text" required value="{{.UpstreamForm.Prefix}}" placeholder="/okya">
   <p class="hint">Required. One path segment, such as /okya. Put it on the app base URL, not on the upstream URL. It must be unique.</p>
+  </fieldset>
   <p><button type="submit">{{.UpstreamForm.Submit}}</button></p>
 </form>
 <p><a href="/_admin/upstreams">Back to upstreams</a></p>

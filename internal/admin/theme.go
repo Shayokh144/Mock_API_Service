@@ -2,8 +2,11 @@ package admin
 
 import (
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
+
+	"github.com/Shayokh144/Mock_API_Service/internal/sessions"
 )
 
 const themeCookie = "mock_theme"
@@ -51,6 +54,22 @@ func nextFrom(r *http.Request) string {
 		return "/_admin"
 	}
 	return safeAdminPath(r.URL.RequestURI())
+}
+
+func currentSessionName(choices []sessionChoice) string {
+	for _, item := range choices {
+		if item.Selected && item.Name != "" {
+			return item.Name
+		}
+	}
+	return "default"
+}
+
+func sessionQuery(id string) string {
+	if id == "" || id == sessions.DefaultID {
+		return ""
+	}
+	return "?session=" + url.QueryEscape(id)
 }
 
 func navFrom(path string) string {

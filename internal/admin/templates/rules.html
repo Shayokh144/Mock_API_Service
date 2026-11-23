@@ -16,7 +16,6 @@
 {{if .RuleUpstreamNote}}<p id="rules-upstream-note" class="error" role="alert">{{.RuleUpstreamNote}}</p>{{end}}
 {{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{end}}
 <p><a href="/_admin/scenario?format=yaml{{if and .SessionID (ne .SessionID "default")}}&amp;session={{.SessionID}}{{end}}">Export as scenario</a></p>
-{{if not .ReadOnly}}<p><a class="button" href="/_admin/rules/new">New rule</a></p>{{end}}
 {{if .RuleGroups}}
 {{range .RuleGroups}}
 <section>
@@ -80,9 +79,15 @@
 </section>
 {{end}}
 {{else if .RuleTotal}}
-<p>No rules for this upstream.</p>
+<div class="empty">
+  <p>No rules for this upstream.</p>
+  <p class="hint">Any rules are included for a named upstream. Choose All upstreams to see every rule.</p>
+</div>
 {{else}}
-<p>No rules yet.</p>
+<div class="empty">
+  <p>No rules yet.</p>
+  <p class="hint">Create a rule to return a saved response for one method and path.</p>
+</div>
 {{end}}
 {{template "foot" .}}
 {{end}}

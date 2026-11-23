@@ -1,0 +1,33 @@
+{{define "sessions"}}
+{{template "head" .}}
+<p class="hint">The default session is the developer proxy. A test session is read-only in this dashboard. Change a test session through the API.</p>
+{{if .Sessions}}
+<div class="table-wrap">
+<table>
+  <caption>Open sessions</caption>
+  <thead>
+    <tr>
+      <th scope="col">Name</th>
+      <th scope="col">Access</th>
+      <th scope="col">Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+    {{range .Sessions}}
+    <tr>
+      <td>{{.Name}}</td>
+      <td>{{if .ReadOnly}}<span class="badge badge-neutral">read-only</span>{{else}}<span class="badge badge-mock">editable</span>{{end}}</td>
+      <td><a href="/_admin{{if and .ID (ne .ID "default")}}?session={{.ID}}{{end}}">View rules</a></td>
+    </tr>
+    {{end}}
+  </tbody>
+</table>
+</div>
+{{else}}
+<div class="empty">
+  <p>No session list is available.</p>
+  <p class="hint">This dashboard is the default session. Test sessions appear here when the proxy opens them.</p>
+</div>
+{{end}}
+{{template "foot" .}}
+{{end}}
