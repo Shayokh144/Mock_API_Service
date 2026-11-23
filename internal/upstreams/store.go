@@ -42,6 +42,7 @@ type Route struct {
 	ForwardedPath string
 	Prefixed      bool
 	ViaReferer    bool
+	ViaCookie     bool
 }
 
 // Store is the in-memory upstream collection. The mutex guards items.
@@ -359,6 +360,21 @@ func (s *Store) MatchReferer(requestPath, referer string) (Route, bool) {
 	route.Prefixed = false
 	route.ViaReferer = true
 	return route, true
+}
+
+// MatchID routes requestPath, unchanged, to the upstream with id.
+// It is used for the sticky upstream cookie. An unknown id does not match.
+func (s *Store) MatchID(requestPath, id string) (Route, bool) {
+	if requestPath == "" {
+		requestPath = "/"
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	index := s.index(id)
+	if id == "" || index < 0 {
+		return Route{}, false
+	}
+	return Route{Upstream: s.items[index], ForwardedPath: requestPath, ViaCookie: true}, true
 }
 
 // List returns copies in creation order.

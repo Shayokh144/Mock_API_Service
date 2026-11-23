@@ -7,8 +7,10 @@ import (
 )
 
 // rewriteUpstreamResponse points absolute upstream redirects back at this proxy
-// and strips cookie attributes that do not work on plain HTTP.
-func rewriteUpstreamResponse(resp *http.Response, proxyHost string, upstream *url.URL, prefix string) {
+// and strips cookie attributes that do not work on plain HTTP. cookiePrefix is
+// added to cookie paths. It is empty when the page was not served under the
+// prefix, so a cookie set by /login is still sent to the form post on /login.
+func rewriteUpstreamResponse(resp *http.Response, proxyHost string, upstream *url.URL, prefix, cookiePrefix string) {
 	if resp == nil || upstream == nil {
 		return
 	}
@@ -18,7 +20,7 @@ func rewriteUpstreamResponse(resp *http.Response, proxyHost string, upstream *ur
 	}
 	rewriteHeaderURL(resp.Header, "Location", proxyHost, upstream, prefix)
 	rewriteHeaderURL(resp.Header, "Content-Location", proxyHost, upstream, prefix)
-	rewriteSetCookies(resp.Header, upstream.Hostname(), prefix)
+	rewriteSetCookies(resp.Header, upstream.Hostname(), cookiePrefix)
 }
 
 func rewriteHeaderURL(header http.Header, name, proxyHost string, upstream *url.URL, prefix string) {

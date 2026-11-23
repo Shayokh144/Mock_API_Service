@@ -96,7 +96,7 @@ A named rule matches when the request resolves to that upstream. The path prefix
 
 Passthrough uses the resolved upstream. Its base URL path is joined in front of the forwarded path.
 
-An absolute `Location` or `Content-Location` that uses the matched upstream's scheme and host is rewritten to this proxy: the request's Host on that session port, plus the upstream's path prefix. A root-relative value such as `Location: /login` is rewritten the same way, so a prefixed upstream keeps its prefix (`/okya/login`). A path-relative value such as `next`, and a URL for any other host, stay as the upstream sent them. On `Set-Cookie`, a `Domain` that matches the upstream host is dropped, `Secure` is dropped because the proxy is plain HTTP, and `Path` is prefixed. A mocked rule response keeps the headers the rule saved. The default session and test sessions both do this.
+An absolute `Location` or `Content-Location` that uses the matched upstream's scheme and host is rewritten to this proxy: the request's Host on that session port, plus the upstream's path prefix. A root-relative value such as `Location: /login` is rewritten the same way, so a prefixed upstream keeps its prefix (`/okya/login`). A path-relative value such as `next`, and a URL for any other host, stay as the upstream sent them. On `Set-Cookie`, a `Domain` that matches the upstream host is dropped, `Secure` is dropped because the proxy is plain HTTP, and `Path` is prefixed when the request used the prefix. A Referer or cookie routed page lives at an unprefixed path such as `/login`, so its cookie `Path` is kept as the upstream sent it. Otherwise the form post on `/login` would not send the CSRF or session cookie set by that page. A mocked rule response keeps the headers the rule saved. The default session and test sessions both do this.
 
 A WebSocket upgrade (`Connection: Upgrade` and an `Upgrade` header) is tunneled. The proxy does not buffer that response and does not apply `UPSTREAM_TIMEOUT` to the open socket. History records status 101 and does not store the messages. A path prefix is removed the same way as any other forwarded call.
 
@@ -117,7 +117,9 @@ The Upstreams page shows those two app addresses for each prefixed upstream. The
 
 A page served under a prefix often requests root-relative paths such as `/login`, `/favicon.ico`, or `/assets/app.js`. Those paths have no prefix. The proxy reads the `Referer` header and compares its path only. The host and port are ignored, because the Android emulator uses `10.0.2.2` and the iOS Simulator uses `127.0.0.1` or `localhost`. If that path matches a prefix, the request goes to that upstream and the path is not rewritten. History, the live feed, and the detail page show the upstream name followed by `(via Referer)`. `GET /login` with `Referer: http://10.0.2.2:8080/okya/login/otp` is forwarded to the `/okya` upstream as `/login`.
 
-If the `Referer` is missing, malformed, or its path matches no prefix, the proxy returns the 404 above. It does not guess an upstream.
+The Referer only works for one hop. Once the browser is on `/login`, the form post to `/login` and the images named by `/assets/app.css` carry a Referer with no prefix. So every response that resolved to an upstream also sets an `HttpOnly`, `SameSite=Lax` cookie named `mockproxy_upstream` on `Path=/`, holding that upstream's id. When the prefix and the Referer both miss, the proxy uses the upstream in that cookie and forwards the path unchanged. History shows `(via cookie)`. The cookie follows the last prefixed or Referer-routed request, so a browser that moves between two upstreams uses the newer one. The proxy removes this cookie before forwarding, so the upstream never sees it. Native API clients usually ignore cookies and should keep using the prefix.
+
+If the prefix, the `Referer`, and the cookie all miss, or the cookie names a deleted upstream, the proxy returns the 404 above. It does not guess an upstream. That rejection is always recorded in History with its method, headers, and body.
 
 Rules use the path after the prefix. A rule for `/api/v1/x` on OKYA matches `/okya/api/v1/x` and does not match `/easyhotel/api/v1/x`. The same rule also matches a Referer-routed request whose path is `/api/v1/x` and whose `Referer` path starts with `/okya`. An Any rule matches both apps, and it also matches a request that resolved to no upstream.
 
@@ -399,7 +401,7 @@ Open [http://localhost:8081/_admin/history](http://localhost:8081/_admin/history
 
 The list shows method, URL, status, source, upstream, and local time. The URL is the path plus the query string. Sources are `mock`, `upstream`, `upstream-error`, and `rejected`.
 
-The upstream column is the resolved upstream. A prefix match stores that upstream's id and name, including mocks. A Referer match stores the same id and name, and the list, the live feed, and the detail page add `(via Referer)`. A rejected request stores an empty upstream. The detail page shows the app path and the forwarded path, with the query string on both. New rows keep the column.
+The upstream column is the resolved upstream. A prefix match stores that upstream's id and name, including mocks. A Referer match stores the same id and name, and the list, the live feed, and the detail page add `(via Referer)`. A sticky cookie match adds `(via cookie)`. A rejected request stores an empty upstream. The detail page shows the app path and the forwarded path, with the query string on both. New rows keep the column.
 
 Notes about the filters, grouping, and fresh-request rows are in the closed **How this works** disclosure above the controls. The filters are one row. The summary line and **Clear all history** sit together above the table.
 

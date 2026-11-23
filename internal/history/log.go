@@ -50,6 +50,7 @@ type Entry struct {
 	UpstreamID            string
 	UpstreamName          string
 	ViaReferer            bool
+	ViaCookie             bool
 	RequestBodyTruncated  bool
 	ResponseBodyTruncated bool
 }
@@ -132,13 +133,16 @@ func ParseUpstream(raw string) (string, bool) {
 	return strings.ToLower(raw), true
 }
 
-// UpstreamLabel is the history name, with a Referer note when the path was routed that way.
+// UpstreamLabel is the history name, with a Referer or cookie note when the path was routed that way.
 func (e Entry) UpstreamLabel() string {
 	if e.UpstreamName == "" {
 		return ""
 	}
 	if e.ViaReferer {
 		return e.UpstreamName + " (via Referer)"
+	}
+	if e.ViaCookie {
+		return e.UpstreamName + " (via cookie)"
 	}
 	return e.UpstreamName
 }
