@@ -26,7 +26,7 @@ func dashboardCSP(script, connect bool) string {
 
 func templateAllowsScript(name string) bool {
 	switch name {
-	case "rule_form", "history_detail", "rules", "rules_list", "history", "history_live":
+	case "rule_form", "history_detail", "rules", "rules_list", "history", "history_live", "upstreams":
 		return true
 	default:
 		return false

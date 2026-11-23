@@ -86,7 +86,7 @@ func TestConditionFormListAndValidation(t *testing.T) {
 	}
 
 	page := get(t, client, srv.URL+"/_admin")
-	if !strings.Contains(page, "<th scope=\"col\">Conditions</th>") || !strings.Contains(page, "body grant_type=refresh_token") || !strings.Contains(page, "query refresh_token") {
+	if !strings.Contains(page, "<th scope=\"col\">Match</th>") || !strings.Contains(page, "body grant_type=refresh_token") || !strings.Contains(page, "query refresh_token") {
 		t.Fatalf("list = %s", page)
 	}
 	saved := store.List()

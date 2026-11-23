@@ -65,7 +65,7 @@ func TestUpstreamDashboardCRUDSwitchAndHistory(t *testing.T) {
 	if resp.Header.Get("Referrer-Policy") != "same-origin" {
 		t.Fatalf("referrer = %q", resp.Header.Get("Referrer-Policy"))
 	}
-	if !strings.Contains(resp.Header.Get("Content-Security-Policy"), "default-src 'none'") || strings.Contains(resp.Header.Get("Content-Security-Policy"), "script-src") {
+	if !strings.Contains(resp.Header.Get("Content-Security-Policy"), "default-src 'none'") || !strings.Contains(resp.Header.Get("Content-Security-Policy"), "script-src 'self'") || strings.Contains(resp.Header.Get("Content-Security-Policy"), "unsafe-inline") {
 		t.Fatalf("csp = %q", resp.Header.Get("Content-Security-Policy"))
 	}
 

@@ -10,8 +10,14 @@
   </ul>
 </details>
 {{if .Upstreams}}
-<table>
+<table class="upstreams stack">
   <caption>Saved upstreams</caption>
+  <colgroup>
+    <col class="col-name">
+    <col class="col-prefix">
+    <col class="col-base">
+    <col class="col-actions">
+  </colgroup>
   <thead>
     <tr>
       <th scope="col">Name</th>
@@ -23,18 +29,18 @@
   <tbody>
     {{range .Upstreams}}
     <tr>
-      <td>{{.Name}}</td>
-      <td>
+      <td data-label="Name"><span class="cell-title">{{.Name}}</span></td>
+      <td data-label="Prefix">
         <code>{{.Prefix}}</code>
-        <div>App: <code>{{.LocalURL}}</code></div>
-        <div>Android emulator: <code>{{.AndroidURL}}</code></div>
+        <span class="cell-sub">App <code>{{.LocalURL}}</code></span>
+        <span class="cell-sub">Android emulator <code>{{.AndroidURL}}</code></span>
       </td>
-      <td><code>{{.BaseURL}}</code></td>
-      <td>
+      <td data-label="Base URL"><code>{{.BaseURL}}</code></td>
+      <td data-label="Actions">
         <div class="actions">
-          <a href="/_admin/upstreams/{{.ID}}/edit">Edit</a>
-          <form class="inline" method="post" action="/_admin/upstreams/{{.ID}}/delete">
-            <button class="danger" type="submit">Delete</button>
+          <a class="button secondary small" href="/_admin/upstreams/{{.ID}}/edit">Edit</a>
+          <form class="inline" method="post" action="/_admin/upstreams/{{.ID}}/delete" data-confirm="Delete the upstream {{.Name}}? Rules that named it switch to Any upstream." data-confirm-title="Delete upstream" data-confirm-label="Delete upstream">
+            <button class="danger small" type="submit">Delete</button>
           </form>
         </div>
       </td>

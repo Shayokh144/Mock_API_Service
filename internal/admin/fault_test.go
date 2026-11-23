@@ -42,7 +42,7 @@ func TestFaultFormAndList(t *testing.T) {
 		t.Fatalf("create = %d rules %+v", resp.StatusCode, store.List())
 	}
 	page := get(t, client, srv.URL+"/_admin/rules")
-	if !strings.Contains(page, "<td>reset</td>") {
+	if !strings.Contains(page, `data-field="fault">reset<`) {
 		t.Fatalf("list missing fault\n%s", page)
 	}
 }

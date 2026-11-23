@@ -212,7 +212,7 @@ a:hover { text-decoration: none; }
 
 main {
   width: 100%;
-  max-width: 72rem;
+  max-width: 96rem;
   margin: 0 auto;
   padding: var(--space-5);
   box-sizing: border-box;
@@ -497,6 +497,36 @@ code {
   font-size: 0.92em;
 }
 
+/* Dense list tables. Fixed layout plus wrapping keeps them inside the
+   content column, so the page never scrolls sideways. */
+table.rules, table.upstreams { table-layout: fixed; }
+table.rules th, table.rules td,
+table.upstreams th, table.upstreams td { padding: 0.5rem 0.6rem; overflow-wrap: anywhere; }
+table.rules col.col-rule { width: 22%; }
+table.rules col.col-match { width: 30%; }
+table.rules col.col-response { width: 15%; }
+table.rules col.col-settings { width: 17%; }
+table.rules col.col-actions { width: 16%; }
+table.upstreams col.col-name { width: 18%; }
+table.upstreams col.col-prefix { width: 40%; }
+table.upstreams col.col-base { width: 27%; }
+table.upstreams col.col-actions { width: 15%; }
+td code { overflow-wrap: anywhere; word-break: normal; }
+.cell-title { display: block; font-weight: 650; }
+.cell-line { display: block; }
+.cell-sub { display: block; color: var(--color-muted); font-size: 0.85rem; margin-top: 0.15rem; }
+.cell-tags { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.25rem; }
+.cell-tags:first-child { margin-top: 0; }
+code.pattern { font-weight: 650; }
+.badge-method { background: var(--color-surface-muted); color: var(--color-text); font-family: var(--font-mono); }
+.badge-on { background: var(--color-2xx-bg); color: var(--color-2xx-text); }
+tr.rule-off .cell-title, tr.rule-off code.pattern { color: var(--color-muted); }
+ul.meta { list-style: none; margin: 0; padding: 0; font-size: 0.85rem; }
+ul.meta li { margin: 0 0 0.1rem; }
+.meta-k { color: var(--color-muted); }
+table.rules .actions, table.upstreams .actions { gap: 0.35rem; }
+td .actions form.inline { display: inline-flex; }
+
 table.history { table-layout: fixed; }
 table.history col.col-method { width: 9%; }
 table.history col.col-url { width: 20%; }
@@ -553,14 +583,17 @@ a[aria-current="page"] { font-weight: 700; text-decoration: underline; }
 dialog {
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
-  padding: var(--space-4) 1.2rem;
-  max-width: 28rem;
+  padding: var(--space-5);
+  width: min(28rem, calc(100vw - 2rem));
+  box-sizing: border-box;
   background: var(--color-surface);
   color: var(--color-text);
+  box-shadow: 0 12px 32px rgba(16, 35, 63, 0.25);
 }
 dialog::backdrop { background: rgba(16, 35, 63, 0.45); }
-dialog p { margin-top: 0; }
-dialog form { display: flex; gap: var(--space-2); justify-content: flex-end; }
+dialog h2 { margin: 0 0 var(--space-2); font-size: 1.15rem; }
+dialog p { margin: 0 0 var(--space-5); color: var(--color-muted); overflow-wrap: anywhere; }
+dialog form, .dialog-actions { display: flex; gap: var(--space-2); justify-content: flex-end; flex-wrap: wrap; }
 
 dl { display: grid; grid-template-columns: 10rem 1fr; gap: 0.35rem var(--space-3); max-width: 50rem; }
 dt { font-weight: 650; }
@@ -572,7 +605,43 @@ dd { margin: 0; font-family: var(--font-mono); font-size: 0.92rem; overflow-wrap
   .sidebar nav { flex-direction: row; flex-wrap: wrap; }
   .topbar { align-items: stretch; padding: var(--space-3); }
   main { padding: var(--space-4); }
-  main table { display: block; overflow-x: auto; }
+  main table:not(.stack) { display: block; overflow-x: auto; }
   dl { grid-template-columns: 1fr; }
   dd { margin-bottom: var(--space-2); }
+}
+
+/* Narrow screens: each row becomes a card with labelled fields. */
+@media (max-width: 820px) {
+  table.stack, table.stack tbody, table.stack tr, table.stack td { display: block; width: auto; }
+  table.stack { border: 0; box-shadow: none; background: transparent; }
+  table.stack thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  table.stack caption { display: block; padding-left: 0; }
+  table.stack tr {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    margin: 0 0 var(--space-3);
+    padding: var(--space-2) var(--space-3);
+  }
+  table.stack tr[hidden] { display: none; }
+  table.stack td {
+    position: relative;
+    min-height: 1.4rem;
+    border-bottom: 1px solid var(--color-border);
+    padding: 0.45rem 0 0.45rem 7.5rem;
+  }
+  table.stack td:last-child { border-bottom: 0; }
+  table.stack td[data-label]::before {
+    content: attr(data-label);
+    position: absolute;
+    left: 0;
+    top: 0.5rem;
+    width: 7rem;
+    font-weight: 650;
+    color: var(--color-muted);
+    font-size: 0.85rem;
+  }
+  table.stack td:empty { display: none; }
+  table.history .actions { flex-direction: row; }
 }

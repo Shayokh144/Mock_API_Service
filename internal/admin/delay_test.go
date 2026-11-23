@@ -100,7 +100,7 @@ func TestDelayFormListAndHistory(t *testing.T) {
 	zero.Body.Close()
 
 	page := get(t, client, srv.URL+"/_admin")
-	if !strings.Contains(page, "<th scope=\"col\">Delay</th>") || !strings.Contains(page, "<td>1500 ms</td>") || strings.Contains(page, "<td>0 ms</td>") {
+	if !strings.Contains(page, "<th scope=\"col\">Settings</th>") || !strings.Contains(page, `data-field="delay">1500 ms<`) || strings.Contains(page, ">0 ms<") {
 		t.Fatalf("rules page = %s", page)
 	}
 	var slow rules.Rule

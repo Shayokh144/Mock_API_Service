@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-//go:embed static/admin.css static/rule-form.js static/copy.js static/vendor/htmx-4.0.2/htmx.js static/vendor/htmx-4.0.2/LICENSE static/vendor/htmx-4.0.2/VERSION
+//go:embed static/admin.css static/rule-form.js static/copy.js static/confirm.js static/vendor/htmx-4.0.2/htmx.js static/vendor/htmx-4.0.2/LICENSE static/vendor/htmx-4.0.2/VERSION
 var assetFiles embed.FS
 
 func (s *Server) asset(w http.ResponseWriter, name, contentType string) {

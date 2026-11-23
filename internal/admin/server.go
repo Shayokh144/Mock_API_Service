@@ -99,6 +99,7 @@ type page struct {
 	CurrentSession      string
 	SessionQuery        string
 	UseHTMX             bool
+	UseConfirm          bool
 }
 
 type sessionChoice struct {
@@ -191,6 +192,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.sessionsPage(w, r)
 	case path == "/_admin/copy.js" && r.Method == http.MethodGet:
 		s.asset(w, "static/copy.js", "text/javascript; charset=utf-8")
+	case path == "/_admin/confirm.js" && r.Method == http.MethodGet:
+		s.asset(w, "static/confirm.js", "text/javascript; charset=utf-8")
 	case path == "/_admin/htmx.js" && r.Method == http.MethodGet:
 		s.asset(w, "static/vendor/htmx-4.0.2/htmx.js", "text/javascript; charset=utf-8")
 	case path == "/_admin/upstreams" && r.Method == http.MethodGet:
@@ -315,6 +318,7 @@ func (s *Server) rulesPage(w http.ResponseWriter, r *http.Request, status int) {
 	s.render(w, r, name, page{
 		Title:               "Rules",
 		UseHTMX:             true,
+		UseConfirm:          true,
 		PrimaryHref:         primaryHref,
 		PrimaryLabel:        primaryLabel,
 		Rules:               rows,
