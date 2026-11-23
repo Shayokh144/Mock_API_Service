@@ -49,7 +49,7 @@ func TestPriorityFormColumnAndHistoryName(t *testing.T) {
 		t.Fatalf("saved = %+v", list)
 	}
 	page := get(t, client, srv.URL+"/_admin/rules")
-	if !strings.Contains(page, "<td>-2</td>") {
+	if !strings.Contains(page, `data-field="priority">-2<`) {
 		t.Fatalf("list missing priority\n%s", page)
 	}
 

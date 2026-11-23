@@ -95,7 +95,7 @@ func TestRawRuleFormAndList(t *testing.T) {
 		t.Fatalf("create status = %d", created.StatusCode)
 	}
 	page := get(t, client, srv.URL+"/_admin")
-	if !strings.Contains(page, "<th scope=\"col\">Mode</th>") || !strings.Contains(page, "<td>Raw</td>") || !strings.Contains(page, `class="badge status-4xx">401</span>`) {
+	if !strings.Contains(page, "<th scope=\"col\">Response</th>") || !strings.Contains(page, `data-field="mode">Raw<`) || !strings.Contains(page, `class="badge status-4xx">401</span>`) {
 		t.Fatalf("list = %s", page)
 	}
 	saved := store.List()[0]

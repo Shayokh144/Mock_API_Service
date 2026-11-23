@@ -51,6 +51,7 @@ type historyPageData struct {
 	CurrentSession  string
 	SessionQuery    string
 	UseHTMX         bool
+	UseConfirm      bool
 	OpenKeys        []string
 }
 
@@ -130,6 +131,7 @@ func (s *Server) historyPage(w http.ResponseWriter, r *http.Request) {
 	_, data := s.historyView(r)
 	data.Title = "History"
 	data.UseHTMX = true
+	data.UseConfirm = true
 	if htmxRequest(r) {
 		s.renderHistory(w, "history_live", data, http.StatusOK, true, true)
 		return

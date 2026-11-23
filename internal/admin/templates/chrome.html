@@ -58,6 +58,17 @@
       </main>
     </div>
   </div>
+  {{if .UseConfirm}}
+  <dialog id="confirm-dialog" class="confirm" aria-labelledby="confirm-title" aria-describedby="confirm-message">
+    <h2 id="confirm-title">Are you sure?</h2>
+    <p id="confirm-message"></p>
+    <div class="dialog-actions">
+      <button class="secondary" type="button" id="confirm-cancel" autofocus>Cancel</button>
+      <button class="danger" type="button" id="confirm-ok">Confirm</button>
+    </div>
+  </dialog>
+  <script src="/_admin/confirm.js"></script>
+  {{end}}
   {{if .UseHTMX}}<script src="/_admin/htmx.js"></script>{{end}}
 </body>
 </html>

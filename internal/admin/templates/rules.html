@@ -39,53 +39,57 @@
 <section>
   <h2>{{.Heading}}</h2>
   <p>{{.Count}}</p>
-  <table>
+  <table class="rules stack">
     <caption>{{.Heading}}</caption>
+    <colgroup>
+      <col class="col-rule">
+      <col class="col-match">
+      <col class="col-response">
+      <col class="col-settings">
+      <col class="col-actions">
+    </colgroup>
     <thead>
       <tr>
-        <th scope="col">Name</th>
-        <th scope="col">Stable name</th>
-        <th scope="col">Method</th>
-        <th scope="col">Pattern</th>
-        <th scope="col">Conditions</th>
-        <th scope="col">Kind</th>
-        <th scope="col">Enabled</th>
-        <th scope="col">Request</th>
-        <th scope="col">Status</th>
-        <th scope="col">Priority</th>
-        <th scope="col">Delay</th>
-        <th scope="col">Fault</th>
-        <th scope="col">Uses</th>
-        <th scope="col">Mode</th>
+        <th scope="col">Rule</th>
+        <th scope="col">Match</th>
+        <th scope="col">Response</th>
+        <th scope="col">Settings</th>
         <th scope="col">Actions</th>
       </tr>
     </thead>
     <tbody>
       {{range .Rules}}
-      <tr>
-        <td>{{.Name}}</td>
-        <td>{{.APIName}}</td>
-        <td>{{.Method}}</td>
-        <td><code>{{.Pattern}}</code></td>
-        <td>{{.Conditions}}</td>
-        <td>{{.Kind}}</td>
-        <td>{{if .Enabled}}enabled{{else}}disabled{{end}}</td>
-        <td><span class="{{if .Fresh}}badge badge-neutral{{else}}badge badge-mock{{end}}">{{if .Fresh}}fresh{{else}}mock{{end}}</span></td>
-        <td><span class="{{statusClass .Status}}">{{.Status}}</span></td>
-        <td>{{.Priority}}</td>
-        <td>{{.Delay}}</td>
-        <td>{{if .Fault}}{{.Fault}}{{else}}none{{end}}</td>
-        <td>{{if .Uses}}{{.Uses}}{{else}}unlimited{{end}}</td>
-        <td>{{.Mode}}</td>
-        <td>
+      <tr{{if not .Enabled}} class="rule-off"{{end}}>
+        <td data-label="Rule">
+          <span class="cell-title">{{.Name}}</span>
+          {{if .APIName}}<span class="cell-sub">Stable name <code>{{.APIName}}</code></span>{{end}}
+          <span class="cell-tags"><span class="badge {{if .Enabled}}badge-on{{else}}badge-neutral{{end}}">{{if .Enabled}}enabled{{else}}disabled{{end}}</span></span>
+        </td>
+        <td data-label="Match">
+          <span class="cell-line"><span class="badge badge-method">{{.Method}}</span> <code class="pattern">{{.Pattern}}</code></span>
+          <span class="cell-sub">{{.Kind}} match{{if .Conditions}} · {{.Conditions}}{{end}}</span>
+        </td>
+        <td data-label="Response">
+          <span class="cell-tags"><span class="{{statusClass .Status}}">{{.Status}}</span> <span class="{{if .Fresh}}badge badge-neutral{{else}}badge badge-mock{{end}}">{{if .Fresh}}fresh{{else}}mock{{end}}</span></span>
+          <span class="cell-sub">Mode <span data-field="mode">{{.Mode}}</span></span>
+        </td>
+        <td data-label="Settings">
+          <ul class="meta">
+            <li><span class="meta-k">Priority</span> <span data-field="priority">{{.Priority}}</span></li>
+            {{if .Delay}}<li><span class="meta-k">Delay</span> <span data-field="delay">{{.Delay}}</span></li>{{end}}
+            {{if .Fault}}<li><span class="meta-k">Fault</span> <span data-field="fault">{{.Fault}}</span></li>{{end}}
+            <li><span class="meta-k">Uses</span> <span data-field="uses">{{if .Uses}}{{.Uses}}{{else}}unlimited{{end}}</span></li>
+          </ul>
+        </td>
+        <td data-label="Actions">
           {{if not $.ReadOnly}}
           <div class="actions">
-            <a href="/_admin/rules/{{.ID}}/edit{{$.RuleFilterQuery}}">Edit</a>
+            <a class="button secondary small" href="/_admin/rules/{{.ID}}/edit{{$.RuleFilterQuery}}">Edit</a>
             <form class="inline" method="post" action="/_admin/rules/{{.ID}}/toggle{{$.RuleFilterQuery}}" data-hx-post="/_admin/rules/{{.ID}}/toggle{{$.RuleFilterQuery}}" data-hx-target="#rules-list" data-hx-swap="outerHTML">
-              <button type="submit">{{if .Enabled}}Disable{{else}}Enable{{end}}</button>
+              <button class="secondary small" type="submit">{{if .Enabled}}Disable{{else}}Enable{{end}}</button>
             </form>
-            <form class="inline" method="post" action="/_admin/rules/{{.ID}}/delete{{$.RuleFilterQuery}}">
-              <button class="danger" type="submit">Delete</button>
+            <form class="inline" method="post" action="/_admin/rules/{{.ID}}/delete{{$.RuleFilterQuery}}" data-confirm="Delete the rule {{.Name}}? This cannot be undone." data-confirm-title="Delete rule" data-confirm-label="Delete rule">
+              <button class="danger small" type="submit">Delete</button>
             </form>
           </div>
           {{end}}

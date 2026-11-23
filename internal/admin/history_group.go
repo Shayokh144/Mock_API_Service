@@ -96,6 +96,10 @@ func markGroupOpen(groups []historyGroup, open []string, source, upstream, text,
 	for i := range groups {
 		groups[i].Open = selected[groups[i].Key]
 		groups[i].ToggleQuery = template.URL(historyQueryString(source, upstream, text, sessionID, grouped, toggleOpenKeys(open, groups[i].Key, groups[i].Open)))
+		// A group of one renders as a plain row, so it must stay visible.
+		if len(groups[i].Rows) < 2 {
+			continue
+		}
 		for j := range groups[i].Rows {
 			groups[i].Rows[j].Child = true
 			groups[i].Rows[j].Hidden = !groups[i].Open

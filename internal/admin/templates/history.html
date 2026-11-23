@@ -15,7 +15,7 @@
 {{end}}
 
 {{define "history_live"}}
-<div id="history-live" data-hx-get="/_admin/history" data-hx-trigger="every 1s" data-hx-include="#history-filters" data-hx-swap="outerHTML" data-hx-history-elt>
+<div id="history-live" data-hx-history-elt>
 <div class="filter-bar">
 <nav class="segmented" aria-label="History source">
   <a data-source="" href="/_admin/history{{.SourceAll}}" data-hx-get="/_admin/history{{.SourceAll}}" data-hx-target="#history-live" data-hx-swap="outerHTML" data-hx-push-url="true"{{if eq .FilterKey "all"}} aria-current="page"{{end}}>All</a>
@@ -49,19 +49,15 @@
   <button type="submit">Apply</button>
 </form>
 </div>
+{{/* Only the results poll. The filter form stays outside this element, so a
+     live refresh never replaces a select the user is choosing from. */}}
+<div id="history-results" data-hx-get="/_admin/history" data-hx-trigger="every 1s" data-hx-include="#history-filters" data-hx-select="#history-results" data-hx-swap="outerHTML">
 <div class="list-meta">
   <p id="history-summary" data-label="{{.FilterLabel}}" data-total="{{.Total}}" data-grouped="{{if .Grouped}}1{{else}}0{{end}}" data-readonly="{{if .ReadOnly}}1{{else}}0{{end}}">{{.Summary}} <span id="history-upstream">Upstream: {{.UpstreamLabel}}.</span></p>
-  {{if not .ReadOnly}}<a class="button danger small" id="history-clear" href="/_admin/history/clear{{.FilterQuery}}">Clear all history</a>
-<dialog id="history-clear-dialog">
-  <p id="history-clear-message">Delete all recorded requests? Rules are kept.</p>
-  <form id="history-clear-form" method="post" action="/_admin/history/clear{{.FilterQuery}}">
-    <button type="button" id="history-clear-cancel">Cancel</button>
-    <button class="danger" type="submit">Clear all</button>
-  </form>
-</dialog>{{end}}
+  {{if not .ReadOnly}}<a class="button danger small" id="history-clear" href="/_admin/history/clear{{.FilterQuery}}" data-confirm="Delete every recorded request, including entries hidden by the current filter? Rules are kept." data-confirm-title="Clear all history" data-confirm-label="Clear history" data-confirm-post="/_admin/history/clear{{.FilterQuery}}">Clear all history</a>{{end}}
 </div>
 {{if .Entries}}
-<table class="history">
+<table class="history stack">
   <caption>Recorded requests</caption>
   <colgroup>
     <col class="col-method">
@@ -94,21 +90,21 @@
           {{template "historyRow" (index .Rows 0)}}
         {{else}}
         <tr class="history-group" data-kind="group" data-group="{{.Key}}" data-open="{{if .Open}}1{{else}}0{{end}}">
-          <td>{{.Method}}</td>
-          <td>
+          <td data-label="Method">{{.Method}}</td>
+          <td data-label="URL">
             <a class="history-toggle" href="/_admin/history{{.ToggleQuery}}" data-hx-get="/_admin/history{{.ToggleQuery}}" data-hx-target="#history-live" data-hx-swap="outerHTML" data-hx-push-url="true" aria-expanded="{{if .Open}}true{{else}}false{{end}}">
               <span class="history-arrow" data-field="arrow">{{if .Open}}▼{{else}}▶{{end}}</span>
               <span class="history-path" data-field="path">{{.Path}}</span>
               <span class="history-count" data-field="count">{{.CountLabel}}</span>
             </a>
           </td>
-          <td data-field="status">{{range $i, $line := .StatusLines}}{{if $i}}<br>{{end}}<span class="{{statusClass $line}}">{{$line}}</span>{{end}}</td>
-          <td data-field="sources">{{range $i, $line := .SourceLines}}{{if $i}}<br>{{end}}<span class="{{sourceClass $line}}">{{$line}}</span>{{end}}</td>
-          <td data-field="upstream">{{.Upstream}}</td>
-          <td data-field="delay">{{.Delay}}</td>
-          <td data-field="rule">{{.Rule}}</td>
-          <td data-field="when">{{.When}}</td>
-          <td></td>
+          <td data-label="Status" data-field="status">{{range $i, $line := .StatusLines}}{{if $i}}<br>{{end}}<span class="{{statusClass $line}}">{{$line}}</span>{{end}}</td>
+          <td data-label="Source" data-field="sources">{{range $i, $line := .SourceLines}}{{if $i}}<br>{{end}}<span class="{{sourceClass $line}}">{{$line}}</span>{{end}}</td>
+          <td data-label="Upstream" data-field="upstream">{{.Upstream}}</td>
+          <td data-label="Delay" data-field="delay">{{.Delay}}</td>
+          <td data-label="Rule" data-field="rule">{{.Rule}}</td>
+          <td data-label="Timestamp" data-field="when">{{.When}}</td>
+          <td data-label="Actions"></td>
         </tr>
         {{range .Rows}}{{template "historyRow" .}}{{end}}
         {{end}}
@@ -130,24 +126,25 @@
 </div>
 {{end}}
 </div>
+</div>
 {{end}}
 
 {{define "historyRow"}}
 <tr{{if .Child}} class="history-child"{{end}} data-id="{{.ID}}" data-group="{{.GroupKey}}"{{if .Hidden}} hidden{{end}}>
-  <td>{{.Method}}</td>
-  <td><a href="/_admin/history/{{.ID}}{{.FilterQuery}}">{{.URL}}</a></td>
-  <td><span class="{{statusClass .Status}}">{{.Status}}</span></td>
-  <td><span class="{{sourceClass .Source}}">{{.Source}}</span></td>
-  <td>{{.Upstream}}</td>
-  <td>{{.Delay}}</td>
-  <td>{{if .RuleID}}{{if .RuleName}}{{.RuleName}}{{else}}unnamed{{end}} ({{.RuleID}}){{else}}none{{end}}</td>
-  <td>{{.When}}</td>
-  <td>
+  <td data-label="Method">{{.Method}}</td>
+  <td data-label="URL"><a href="/_admin/history/{{.ID}}{{.FilterQuery}}">{{.URL}}</a></td>
+  <td data-label="Status"><span class="{{statusClass .Status}}">{{.Status}}</span></td>
+  <td data-label="Source"><span class="{{sourceClass .Source}}">{{.Source}}</span></td>
+  <td data-label="Upstream">{{.Upstream}}</td>
+  <td data-label="Delay">{{.Delay}}</td>
+  <td data-label="Rule">{{if .RuleID}}{{if .RuleName}}{{.RuleName}}{{else}}unnamed{{end}} ({{.RuleID}}){{else}}none{{end}}</td>
+  <td data-label="Timestamp">{{.When}}</td>
+  <td data-label="Actions">
     {{if not .ReadOnly}}
     <div class="actions">
-      <a href="/_admin/rules/new?from={{.ID}}">Create rule</a>
+      <a class="button secondary small" href="/_admin/rules/new?from={{.ID}}">Create rule</a>
       <form class="inline" method="post" action="/_admin/history/{{.ID}}/delete{{.FilterQuery}}">
-        <button class="danger" type="submit">Delete</button>
+        <button class="danger small" type="submit">Delete</button>
       </form>
     </div>
     {{end}}

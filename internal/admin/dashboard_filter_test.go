@@ -70,7 +70,7 @@ func TestHistoryTextFilter(t *testing.T) {
 	assertContains(t, combined, "source=mock")
 	assertContains(t, combined, "upstream="+other.ID)
 	assertContains(t, combined, `href="/_admin/history/clear?q=USER%2FME&amp;source=mock&amp;upstream=`+other.ID+`"`)
-	assertContains(t, combined, `action="/_admin/history/clear?q=USER%2FME&amp;source=mock&amp;upstream=`+other.ID+`"`)
+	assertContains(t, combined, `data-confirm-post="/_admin/history/clear?q=USER%2FME&amp;source=mock&amp;upstream=`+other.ID+`"`)
 
 	blank := get(t, client, srv.URL+"/_admin/history?q=%20%20")
 	assertContains(t, blank, "Filter: All. Showing 4 of 4 requests in 4 groups.")
