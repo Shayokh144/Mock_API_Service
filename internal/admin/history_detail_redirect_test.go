@@ -26,7 +26,7 @@ func TestHistoryDetailShowsRedirectAndSentUpstream(t *testing.T) {
 		Source:          history.SourceUpstream,
 		RequestHeaders:  http.Header{"Cookie": {"_okya_session=secret-value"}},
 		ResponseHeaders: http.Header{"Location": {"/okya-auth/dashboard"}},
-		UpstreamHeaders: http.Header{"Host": {"auth.okya.example"}, "Origin": {"https://auth.okya.example"}, "Referer": {"https://auth.okya.example/login"}},
+		UpstreamHeaders: http.Header{"Cookie-Names": {"_okya_auth_session"}, "Host": {"auth.okya.example"}, "Origin": {"https://auth.okya.example"}, "Referer": {"https://auth.okya.example/login"}},
 	})
 	dashboard, err := New(store, log, nil)
 	if err != nil {
@@ -40,6 +40,7 @@ func TestHistoryDetailShowsRedirectAndSentUpstream(t *testing.T) {
 		`<code id="detail-location">/okya-auth/dashboard</code>`,
 		`id="detail-sent-upstream"`,
 		"https://auth.okya.example/login",
+		"<code>Cookie-Names: _okya_auth_session</code>",
 	} {
 		if !strings.Contains(page, want) {
 			t.Fatalf("detail page missing %q", want)
@@ -47,7 +48,7 @@ func TestHistoryDetailShowsRedirectAndSentUpstream(t *testing.T) {
 	}
 	sent := page[strings.Index(page, `id="detail-sent-upstream"`):]
 	sent = sent[:strings.Index(sent, "</details>")]
-	if strings.Contains(sent, "secret-value") || strings.Contains(sent, "Cookie") {
+	if strings.Contains(sent, "secret-value") || strings.Contains(sent, "<code>Cookie:") {
 		t.Fatal("cookies must not appear under Sent upstream")
 	}
 	if strings.Index(page, `id="detail-sent-upstream"`) > strings.Index(page, "<summary>Request headers</summary>") {
