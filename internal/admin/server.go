@@ -98,6 +98,7 @@ type page struct {
 	PrimaryLabel        string
 	CurrentSession      string
 	SessionQuery        string
+	UseHTMX             bool
 }
 
 type sessionChoice struct {
@@ -190,6 +191,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.sessionsPage(w, r)
 	case path == "/_admin/copy.js" && r.Method == http.MethodGet:
 		s.asset(w, "static/copy.js", "text/javascript; charset=utf-8")
+	case path == "/_admin/htmx.js" && r.Method == http.MethodGet:
+		s.asset(w, "static/vendor/htmx-4.0.2/htmx.js", "text/javascript; charset=utf-8")
 	case path == "/_admin/upstreams" && r.Method == http.MethodGet:
 		s.upstreamsPage(w, r, http.StatusOK, "")
 	case path == "/_admin/upstreams/new" && r.Method == http.MethodGet:
@@ -250,6 +253,9 @@ func (s *Server) ruleRoute(w http.ResponseWriter, r *http.Request, rest string) 
 }
 
 func (s *Server) rulesPage(w http.ResponseWriter, r *http.Request, status int) {
+	if rejectCrossOriginHTMX(w, r) {
+		return
+	}
 	store, _, _, readOnly, found := s.scope(r)
 	if !found {
 		s.render(w, r, "rules", page{Title: "Rules", Error: "That session is not open."}, http.StatusNotFound)
@@ -302,8 +308,13 @@ func (s *Server) rulesPage(w http.ResponseWriter, r *http.Request, status int) {
 		primaryHref = "/_admin/rules/new"
 		primaryLabel = "New rule"
 	}
-	s.render(w, r, "rules", page{
+	name := "rules"
+	if htmxRequest(r) {
+		name = "rules_list"
+	}
+	s.render(w, r, name, page{
 		Title:               "Rules",
+		UseHTMX:             true,
 		PrimaryHref:         primaryHref,
 		PrimaryLabel:        primaryLabel,
 		Rules:               rows,
@@ -615,6 +626,10 @@ func (s *Server) toggleRule(w http.ResponseWriter, r *http.Request, id string) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	if htmxRequest(r) {
+		s.rulesPage(w, r, http.StatusOK)
+		return
+	}
 	http.Redirect(w, r, s.rulesHome(r), http.StatusSeeOther)
 }
 
@@ -713,7 +728,7 @@ func (s *Server) readOnlyPost(w http.ResponseWriter, r *http.Request) bool {
 
 func (s *Server) render(w http.ResponseWriter, r *http.Request, name string, data page, status int) {
 	data = s.decorate(r, data)
-	writeHTMLHeaders(w, name == "rule_form", false)
+	writeHTMLHeaders(w, templateAllowsScript(name), templateAllowsConnect(name))
 	w.WriteHeader(status)
 	if err := s.tmpl.ExecuteTemplate(w, name, data); err != nil {
 		http.Error(w, "template error", http.StatusInternalServerError)

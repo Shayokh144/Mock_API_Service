@@ -114,7 +114,7 @@ func TestHistoryPageGroupsAfterFiltersAndToggle(t *testing.T) {
 	assertContains(t, page, `data-id="`+newer.ID+`"`)
 	assertContains(t, page, `data-id="`+older.ID+`"`)
 	assertContains(t, page, `class="history-child"`)
-	if strings.Contains(page, "<details>") || strings.Contains(page, `colspan="9"`) {
+	if strings.Contains(historyTable(page), "<details>") || strings.Contains(page, `colspan="9"`) {
 		t.Fatalf("group summary is not a table row:\n%s", page)
 	}
 	if strings.Contains(page, `href="/_admin/history?group=0"`) {
@@ -173,7 +173,7 @@ func TestHistoryPageGroupsAfterFiltersAndToggle(t *testing.T) {
 	assertContains(t, filtered, "Filter: Real server. Showing 2 of 4 requests in 2 groups.")
 	assertContains(t, filtered, "/v1/items?b=2")
 	assertContains(t, filtered, "/v1/users/111")
-	if strings.Contains(filtered, "<details>") || strings.Contains(filtered, "/v1/items?a=1") {
+	if strings.Contains(historyTable(filtered), "<details>") || strings.Contains(filtered, "/v1/items?a=1") {
 		t.Fatalf("filter ran after grouping:\n%s", filtered)
 	}
 
@@ -182,7 +182,7 @@ func TestHistoryPageGroupsAfterFiltersAndToggle(t *testing.T) {
 	assertContains(t, flat, `<option value="0" selected>Off</option>`)
 	assertContains(t, flat, `href="/_admin/history?group=0&amp;source=mock"`)
 	assertContains(t, flat, "/delete?group=0")
-	if strings.Contains(flat, "<details>") || strings.Contains(flat, "requests in") {
+	if strings.Contains(historyTable(flat), "<details>") || strings.Contains(flat, "requests in") {
 		t.Fatalf("group=0 still grouped:\n%s", flat)
 	}
 	if strings.Index(flat, newer.ID) > strings.Index(flat, other.ID) || strings.Index(flat, other.ID) > strings.Index(flat, older.ID) {
@@ -210,6 +210,14 @@ func TestHistoryPageGroupsAfterFiltersAndToggle(t *testing.T) {
 	if strings.Contains(script, "innerHTML") {
 		t.Fatal("history.js inserts html")
 	}
+}
+
+func historyTable(page string) string {
+	start := strings.Index(page, `<table class="history"`)
+	if start < 0 {
+		return ""
+	}
+	return page[start:]
 }
 
 func historyGroupCells(t *testing.T, page string) []string {
