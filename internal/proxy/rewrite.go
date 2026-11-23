@@ -6,24 +6,34 @@ import (
 	"strings"
 )
 
-// rewriteUpstreamResponse points absolute upstream redirects back at this proxy
-// and strips cookie attributes that do not work on plain HTTP. cookiePrefix is
-// added to cookie paths. It is empty when the page was not served under the
-// prefix, so a cookie set by /login is still sent to the form post on /login.
-func rewriteUpstreamResponse(resp *http.Response, proxyHost string, upstream *url.URL, prefix, cookiePrefix string) {
-	if resp == nil || upstream == nil {
+// redirectTarget is one upstream a redirect may point at, and the proxy
+// prefix that reaches it.
+type redirectTarget struct {
+	prefix string
+	base   *url.URL
+}
+
+// rewriteUpstreamResponse points upstream redirects back at this proxy and
+// strips cookie attributes that do not work on plain HTTP. targets[0] is the
+// upstream that answered. The rest are the other configured upstreams, so a
+// sign-in server that redirects to another configured host stays on the proxy.
+// cookiePrefix is added to cookie paths. It is empty when the page was not
+// served under the prefix, so a cookie set by /login is still sent to the form
+// post on /login.
+func rewriteUpstreamResponse(resp *http.Response, proxyHost string, targets []redirectTarget, cookiePrefix string) {
+	if resp == nil || len(targets) == 0 || targets[0].base == nil {
 		return
 	}
 	proxyHost = strings.TrimSpace(proxyHost)
 	if proxyHost == "" {
 		return
 	}
-	rewriteHeaderURL(resp.Header, "Location", proxyHost, upstream, prefix)
-	rewriteHeaderURL(resp.Header, "Content-Location", proxyHost, upstream, prefix)
-	rewriteSetCookies(resp.Header, cookiePrefix)
+	rewriteHeaderURL(resp.Header, "Location", proxyHost, targets)
+	rewriteHeaderURL(resp.Header, "Content-Location", proxyHost, targets)
+	rewriteSetCookies(resp.Header, cookiePrefix, targets[0].base.Path)
 }
 
-func rewriteHeaderURL(header http.Header, name, proxyHost string, upstream *url.URL, prefix string) {
+func rewriteHeaderURL(header http.Header, name, proxyHost string, targets []redirectTarget) {
 	values := header.Values(name)
 	if len(values) == 0 {
 		return
@@ -31,7 +41,7 @@ func rewriteHeaderURL(header http.Header, name, proxyHost string, upstream *url.
 	next := make([]string, len(values))
 	changed := false
 	for i, value := range values {
-		rewritten, ok := rewriteLocation(value, proxyHost, upstream, prefix)
+		rewritten, ok := rewriteLocationTo(value, proxyHost, targets)
 		next[i] = rewritten
 		if ok {
 			changed = true
@@ -46,22 +56,32 @@ func rewriteHeaderURL(header http.Header, name, proxyHost string, upstream *url.
 	}
 }
 
+// rewriteLocation rewrites raw for a single upstream. Tests use it.
 func rewriteLocation(raw, proxyHost string, upstream *url.URL, prefix string) (string, bool) {
-	if rewritten, ok := rewriteRootRelative(strings.TrimSpace(raw), prefix); ok {
-		return rewritten, true
-	}
-	return rewriteAbsoluteURL(raw, proxyHost, upstream, prefix)
+	return rewriteLocationTo(raw, proxyHost, []redirectTarget{{prefix: prefix, base: upstream}})
 }
 
-func rewriteRootRelative(raw, prefix string) (string, bool) {
-	if prefix == "" || raw == "" || !strings.HasPrefix(raw, "/") || strings.HasPrefix(raw, "//") {
+func rewriteLocationTo(raw, proxyHost string, targets []redirectTarget) (string, bool) {
+	trimmed := strings.TrimSpace(raw)
+	if len(targets) == 0 || targets[0].base == nil || trimmed == "" {
 		return raw, false
 	}
+	if strings.HasPrefix(trimmed, "/") && !strings.HasPrefix(trimmed, "//") {
+		return rewriteRootRelative(trimmed, targets[0])
+	}
+	return rewriteAbsoluteTo(trimmed, proxyHost, targets)
+}
+
+// rewriteRootRelative maps a path on the answering upstream to the proxy.
+// The upstream never sees the prefix, so its paths get it added back. The
+// base URL path is removed first, because the proxy adds it when forwarding.
+func rewriteRootRelative(raw string, target redirectTarget) (string, bool) {
 	parsed, err := url.Parse(raw)
 	if err != nil || parsed.IsAbs() || parsed.Host != "" {
 		return raw, false
 	}
-	parsed.Path = joinRedirectPath(prefix, parsed.Path)
+	rel, _ := underBase(parsed.Path, target.base.Path)
+	parsed.Path = joinRedirectPath(target.prefix, rel)
 	parsed.RawPath = ""
 	rewritten := parsed.String()
 	if rewritten == raw {
@@ -71,15 +91,70 @@ func rewriteRootRelative(raw, prefix string) (string, bool) {
 }
 
 func rewriteAbsoluteURL(raw, proxyHost string, upstream *url.URL, prefix string) (string, bool) {
+	return rewriteAbsoluteTo(raw, proxyHost, []redirectTarget{{prefix: prefix, base: upstream}})
+}
+
+// rewriteAbsoluteTo handles https://host/path and //host/path. It picks the
+// upstream with the same origin whose base path holds the path, preferring
+// the answering upstream, then the longest base path. A URL for a host that
+// is not configured stays as the upstream sent it.
+func rewriteAbsoluteTo(raw, proxyHost string, targets []redirectTarget) (string, bool) {
 	parsed, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil || !sameUpstreamOrigin(parsed, upstream) {
+	if err != nil || parsed.Host == "" || parsed.Opaque != "" {
 		return raw, false
+	}
+	best := -1
+	bestRel := ""
+	fallback := -1
+	for i, target := range targets {
+		if target.base == nil {
+			continue
+		}
+		candidate := *parsed
+		if candidate.Scheme == "" {
+			candidate.Scheme = target.base.Scheme
+		}
+		if !sameUpstreamOrigin(&candidate, target.base) {
+			continue
+		}
+		if fallback < 0 {
+			fallback = i
+		}
+		rel, ok := underBase(parsed.Path, target.base.Path)
+		if !ok {
+			continue
+		}
+		if best < 0 || (best != 0 && len(target.base.Path) > len(targets[best].base.Path)) {
+			best, bestRel = i, rel
+		}
+	}
+	if best < 0 {
+		if fallback < 0 {
+			return raw, false
+		}
+		best, bestRel = fallback, parsed.Path
 	}
 	parsed.Scheme = "http"
 	parsed.Host = proxyHost
-	parsed.Path = joinRedirectPath(prefix, parsed.Path)
+	parsed.Path = joinRedirectPath(targets[best].prefix, bestRel)
 	parsed.RawPath = ""
 	return parsed.String(), true
+}
+
+// underBase removes the upstream base URL path. ok is false when path is
+// outside it, and path is then returned unchanged.
+func underBase(path, base string) (string, bool) {
+	base = strings.TrimSuffix(base, "/")
+	if base == "" {
+		return path, true
+	}
+	if path == base {
+		return "/", true
+	}
+	if strings.HasPrefix(path, base+"/") {
+		return path[len(base):], true
+	}
+	return path, false
 }
 
 func sameUpstreamOrigin(candidate, upstream *url.URL) bool {
@@ -128,7 +203,7 @@ func joinRedirectPath(prefix, path string) string {
 	return strings.TrimSuffix(prefix, "/") + path
 }
 
-func rewriteSetCookies(header http.Header, prefix string) {
+func rewriteSetCookies(header http.Header, prefix, basePath string) {
 	values := header.Values("Set-Cookie")
 	if len(values) == 0 {
 		return
@@ -136,7 +211,7 @@ func rewriteSetCookies(header http.Header, prefix string) {
 	next := make([]string, len(values))
 	changed := false
 	for i, value := range values {
-		rewritten := rewriteSetCookie(value, prefix)
+		rewritten := rewriteSetCookie(value, prefix, basePath)
 		next[i] = rewritten
 		if rewritten != value {
 			changed = true
@@ -155,7 +230,7 @@ func rewriteSetCookies(header http.Header, prefix string) {
 // origin, such as http://10.0.2.2:8080. A browser drops a cookie whose Domain
 // is another host, a SameSite=None cookie without Secure, and a __Host- or
 // __Secure- cookie without Secure. The value is not changed or logged.
-func rewriteSetCookie(raw, prefix string) string {
+func rewriteSetCookie(raw, prefix, basePath string) string {
 	cookie, err := http.ParseSetCookie(raw)
 	if err != nil || cookie.Name == "" {
 		return raw
@@ -167,7 +242,10 @@ func rewriteSetCookie(raw, prefix string) string {
 		cookie.SameSite = http.SameSiteLaxMode
 	}
 	cookie.Name = browserCookieName(cookie.Name)
-	cookie.Path = prefixCookiePath(prefix, cookie.Path)
+	if cookie.Path != "" {
+		rel, _ := underBase(cookie.Path, basePath)
+		cookie.Path = prefixCookiePath(prefix, rel)
+	}
 	serialized := cookie.String()
 	if serialized == "" {
 		return raw

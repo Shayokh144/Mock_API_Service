@@ -419,7 +419,7 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, upstream *url.
 		},
 		Transport: h.transport,
 		ModifyResponse: func(resp *http.Response) error {
-			rewriteUpstreamResponse(resp, r.Host, upstream, t.prefix, t.cookiePrefix())
+			rewriteUpstreamResponse(resp, r.Host, h.redirectTargets(upstream, t), t.cookiePrefix())
 			if upgrade || resp.StatusCode == http.StatusSwitchingProtocols {
 				return nil
 			}
@@ -557,6 +557,26 @@ func (h *Handler) record(started time.Time, r *http.Request, reqHeaders http.Hea
 		RequestBodyTruncated:  reqTrunc,
 		ResponseBodyTruncated: respTrunc,
 	})
+}
+
+// redirectTargets lists the answering upstream first, then every other
+// configured upstream, for rewriting redirects.
+func (h *Handler) redirectTargets(dest *url.URL, t target) []redirectTarget {
+	targets := []redirectTarget{{prefix: t.prefix, base: dest}}
+	if h.upstreams == nil {
+		return targets
+	}
+	for _, item := range h.upstreams.List() {
+		if item.ID == t.id {
+			continue
+		}
+		parsed, err := url.Parse(item.BaseURL)
+		if err != nil || parsed.Host == "" {
+			continue
+		}
+		targets = append(targets, redirectTarget{prefix: item.Prefix, base: parsed})
+	}
+	return targets
 }
 
 func upstreamTimedOut(r *http.Request, err error) bool {
