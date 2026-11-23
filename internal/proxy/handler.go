@@ -109,19 +109,23 @@ func (h *Handler) serveAPI(w http.ResponseWriter, r *http.Request) {
 		return io.NopCloser(bytes.NewReader(payload)), nil
 	}
 
-	name, id, forwarded, prefix, viaReferer, dest, hasTarget := h.resolve(r)
+	t := h.resolve(r)
+	name, id, forwarded, dest, hasTarget := t.name, t.id, t.forwarded, t.dest, t.ok
 	capw := &bodyCapture{ResponseWriter: w, limit: h.maxBody}
+	if id != "" {
+		setStickyUpstream(capw, r, id)
+	}
 	if h.rules != nil {
 		if rule, ok := h.rules.MatchHTTP(r.Method, forwarded, id, r.URL.RawQuery, r.Header, payload); ok {
 			capw.step = rule.AppliedStep
 			if err := h.pause(r.Context(), rule.DelayMS); err != nil {
 				capw.unwritten = true
-				h.record(started, r, reqHeaders, payload, capw, history.SourceRejected, rule.ID, id, name, forwarded, rule.DelayMS, viaReferer)
+				h.record(started, r, reqHeaders, payload, capw, history.SourceRejected, rule.ID, id, name, forwarded, rule.DelayMS, t.via)
 				return
 			}
 			if rule.Fault != "" {
 				h.waitFault(capw, r, rule.Fault)
-				h.record(started, r, reqHeaders, payload, capw, history.SourceFault, rule.ID, id, name, forwarded, rule.DelayMS, viaReferer)
+				h.record(started, r, reqHeaders, payload, capw, history.SourceFault, rule.ID, id, name, forwarded, rule.DelayMS, t.via)
 				h.closeFault(capw)
 				return
 			}
@@ -131,16 +135,16 @@ func (h *Handler) serveAPI(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 				prepareFreshRequest(r.Header)
-				failed := h.forward(capw, r, dest, forwarded, prefix)
+				failed := h.forward(capw, r, dest, t)
 				source := history.SourceUpstream
 				if failed {
 					source = history.SourceUpstreamError
 				}
-				h.record(started, r, reqHeaders, payload, capw, source, rule.ID, id, name, forwarded, rule.DelayMS, viaReferer)
+				h.record(started, r, reqHeaders, payload, capw, source, rule.ID, id, name, forwarded, rule.DelayMS, t.via)
 				return
 			}
 			writeMock(capw, rule)
-			h.record(started, r, reqHeaders, payload, capw, history.SourceMock, rule.ID, id, name, forwarded, rule.DelayMS, viaReferer)
+			h.record(started, r, reqHeaders, payload, capw, history.SourceMock, rule.ID, id, name, forwarded, rule.DelayMS, t.via)
 			return
 		}
 	}
@@ -148,12 +152,12 @@ func (h *Handler) serveAPI(w http.ResponseWriter, r *http.Request) {
 		h.rejectUnmatched(capw, started, r, reqHeaders, payload, "", forwarded, 0)
 		return
 	}
-	failed := h.forward(capw, r, dest, forwarded, prefix)
+	failed := h.forward(capw, r, dest, t)
 	source := history.SourceUpstream
 	if failed {
 		source = history.SourceUpstreamError
 	}
-	h.record(started, r, reqHeaders, payload, capw, source, "", id, name, forwarded, 0, viaReferer)
+	h.record(started, r, reqHeaders, payload, capw, source, "", id, name, forwarded, 0, t.via)
 }
 
 func (h *Handler) waitFault(w *bodyCapture, r *http.Request, fault string) {
@@ -208,16 +212,26 @@ func sleepContext(ctx context.Context, d time.Duration) error {
 
 func (h *Handler) rejectUnmatched(w *bodyCapture, started time.Time, r *http.Request, reqHeaders http.Header, payload []byte, ruleID, forwarded string, delayMS int) {
 	writeJSONError(w, http.StatusNotFound, noUpstreamMessage)
-	h.record(started, r, reqHeaders, payload, w, history.SourceRejected, ruleID, "", "", forwarded, delayMS, false)
+	h.record(started, r, reqHeaders, payload, w, history.SourceRejected, ruleID, "", "", forwarded, delayMS, viaPrefix)
 }
 
 func (h *Handler) finish(w http.ResponseWriter, r *http.Request, started time.Time, reqHeaders http.Header, payload []byte, source history.Source, ruleID, upstreamID, upstreamName string, status int, reason string) {
 	capw := &bodyCapture{ResponseWriter: w, limit: h.maxBody}
 	writeJSONError(capw, status, reason)
-	h.record(started, r, reqHeaders, payload, capw, source, ruleID, upstreamID, upstreamName, r.URL.Path, 0, false)
+	h.record(started, r, reqHeaders, payload, capw, source, ruleID, upstreamID, upstreamName, r.URL.Path, 0, viaPrefix)
 }
 
-func (h *Handler) resolve(r *http.Request) (name, id, forwarded, prefix string, viaReferer bool, dest *url.URL, ok bool) {
+// target is the upstream chosen for one request.
+type target struct {
+	name, id, forwarded, prefix string
+	via                         routeVia
+	dest                        *url.URL
+	ok                          bool
+}
+
+// resolve tries the path prefix, then the Referer path, then the sticky
+// upstream cookie. The last two forward the path unchanged.
+func (h *Handler) resolve(r *http.Request) target {
 	path := r.URL.Path
 	if path == "" {
 		path = "/"
@@ -228,18 +242,36 @@ func (h *Handler) resolve(r *http.Request) (name, id, forwarded, prefix string, 
 			route, found = h.upstreams.MatchReferer(path, r.Referer())
 		}
 		if !found {
-			return "", "", path, "", false, nil, false
+			if id, ok := stickyUpstream(r); ok {
+				route, found = h.upstreams.MatchID(path, id)
+			}
+		}
+		if !found {
+			return target{forwarded: path}
+		}
+		t := target{
+			name:      route.Upstream.Name,
+			id:        route.Upstream.ID,
+			forwarded: route.ForwardedPath,
+			prefix:    route.Upstream.Prefix,
+		}
+		switch {
+		case route.ViaReferer:
+			t.via = viaReferer
+		case route.ViaCookie:
+			t.via = viaCookie
 		}
 		parsed, err := url.Parse(route.Upstream.BaseURL)
 		if err != nil || parsed.Host == "" {
-			return route.Upstream.Name, route.Upstream.ID, route.ForwardedPath, route.Upstream.Prefix, route.ViaReferer, nil, false
+			return t
 		}
-		return route.Upstream.Name, route.Upstream.ID, route.ForwardedPath, route.Upstream.Prefix, route.ViaReferer, parsed, true
+		t.dest, t.ok = parsed, true
+		return t
 	}
 	if h.upstream != nil {
-		return "", "", path, "", false, h.upstream, true
+		return target{forwarded: path, dest: h.upstream, ok: true}
 	}
-	return "", "", path, "", false, nil, false
+	return target{forwarded: path}
 }
 
 func writeMock(w http.ResponseWriter, rule rules.Rule) {
@@ -338,8 +370,8 @@ func isAPI(path string) bool {
 	return path == "/_api" || strings.HasPrefix(path, "/_api/")
 }
 
-func (h *Handler) forward(w http.ResponseWriter, r *http.Request, upstream *url.URL, forwardedPath, prefix string) bool {
-	incomingPath := forwardedPath
+func (h *Handler) forward(w http.ResponseWriter, r *http.Request, upstream *url.URL, t target) bool {
+	incomingPath := t.forwarded
 	if incomingPath == "" {
 		incomingPath = r.URL.Path
 	}
@@ -380,10 +412,14 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, upstream *url.
 			req.URL.RawPath = ""
 			req.URL.RawQuery = incomingQuery
 			req.Host = upstream.Host
+			rewriteOutbound(req.Header, r.Host, upstream, t.prefix, t.id)
+			if capture, ok := w.(*bodyCapture); ok {
+				capture.sent = sentHeaders(req.Header, req.Host)
+			}
 		},
 		Transport: h.transport,
 		ModifyResponse: func(resp *http.Response) error {
-			rewriteUpstreamResponse(resp, r.Host, upstream, prefix)
+			rewriteUpstreamResponse(resp, r.Host, h.redirectTargets(upstream, t), t.id)
 			if upgrade || resp.StatusCode == http.StatusSwitchingProtocols {
 				return nil
 			}
@@ -467,7 +503,7 @@ func isProtocolUpgrade(h http.Header) bool {
 	return false
 }
 
-func (h *Handler) record(started time.Time, r *http.Request, reqHeaders http.Header, payload []byte, capw *bodyCapture, source history.Source, ruleID, upstreamID, upstreamName, forwardedPath string, delayMS int, viaReferer bool) {
+func (h *Handler) record(started time.Time, r *http.Request, reqHeaders http.Header, payload []byte, capw *bodyCapture, source history.Source, ruleID, upstreamID, upstreamName, forwardedPath string, delayMS int, via routeVia) {
 	if h.history == nil {
 		return
 	}
@@ -501,6 +537,7 @@ func (h *Handler) record(started time.Time, r *http.Request, reqHeaders http.Hea
 		RawQuery:              r.URL.RawQuery,
 		ForwardedPath:         forwardedPath,
 		RequestHeaders:        reqHeaders,
+		UpstreamHeaders:       capw.sent,
 		RequestBody:           reqBody,
 		Status:                status,
 		ResponseHeaders:       respHeaders,
@@ -515,10 +552,31 @@ func (h *Handler) record(started time.Time, r *http.Request, reqHeaders http.Hea
 		DelayMS:               delayMS,
 		UpstreamID:            upstreamID,
 		UpstreamName:          upstreamName,
-		ViaReferer:            viaReferer && upstreamName != "",
+		ViaReferer:            via == viaReferer && upstreamName != "",
+		ViaCookie:             via == viaCookie && upstreamName != "",
 		RequestBodyTruncated:  reqTrunc,
 		ResponseBodyTruncated: respTrunc,
 	})
+}
+
+// redirectTargets lists the answering upstream first, then every other
+// configured upstream, for rewriting redirects.
+func (h *Handler) redirectTargets(dest *url.URL, t target) []redirectTarget {
+	targets := []redirectTarget{{prefix: t.prefix, base: dest}}
+	if h.upstreams == nil {
+		return targets
+	}
+	for _, item := range h.upstreams.List() {
+		if item.ID == t.id {
+			continue
+		}
+		parsed, err := url.Parse(item.BaseURL)
+		if err != nil || parsed.Host == "" {
+			continue
+		}
+		targets = append(targets, redirectTarget{prefix: item.Prefix, base: parsed})
+	}
+	return targets
 }
 
 func upstreamTimedOut(r *http.Request, err error) bool {

@@ -59,8 +59,13 @@ func TestTestSessionRewritesUpstreamRedirect(t *testing.T) {
 	if got := resp.Header.Get("Location"); got != info.ProxyURL+"/okya/next" {
 		t.Fatalf("Location = %s", got)
 	}
-	cookies := resp.Cookies()
-	if len(cookies) != 1 || cookies[0].Name != "session" || cookies[0].Domain != "" || cookies[0].Secure || cookies[0].Path != "/okya" {
-		t.Fatalf("cookie = %+v", cookies)
+	var session *http.Cookie
+	for _, cookie := range resp.Cookies() {
+		if cookie.Name == "session" {
+			session = cookie
+		}
+	}
+	if session == nil || session.Domain != "" || session.Secure || session.Path != "/" {
+		t.Fatalf("cookie = %+v", resp.Cookies())
 	}
 }

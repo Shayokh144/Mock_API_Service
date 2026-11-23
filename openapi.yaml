@@ -2468,6 +2468,15 @@ components:
               type: string
         request_body:
           type: string
+        upstream_headers:
+          type: object
+          description: |
+            Host, Origin, and Referer as the proxy forwarded them upstream.
+            Omitted for mocks and rejected requests.
+          additionalProperties:
+            type: array
+            items:
+              type: string
         response_headers:
           type: object
           additionalProperties:

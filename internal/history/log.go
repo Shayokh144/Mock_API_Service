@@ -27,14 +27,17 @@ const UpstreamAny = "any"
 
 // Entry is one recorded request and response. Bodies are previews.
 type Entry struct {
-	ID                    string
-	StartedAt             time.Time
-	DurationMS            int
-	Method                string
-	Path                  string
-	RawQuery              string
-	ForwardedPath         string
-	RequestHeaders        http.Header
+	ID             string
+	StartedAt      time.Time
+	DurationMS     int
+	Method         string
+	Path           string
+	RawQuery       string
+	ForwardedPath  string
+	RequestHeaders http.Header
+	// UpstreamHeaders holds Host, Origin, and Referer as sent upstream.
+	// It is empty for mocks and rejections.
+	UpstreamHeaders       http.Header
 	RequestBody           string
 	Status                int
 	ResponseHeaders       http.Header
@@ -50,6 +53,7 @@ type Entry struct {
 	UpstreamID            string
 	UpstreamName          string
 	ViaReferer            bool
+	ViaCookie             bool
 	RequestBodyTruncated  bool
 	ResponseBodyTruncated bool
 }
@@ -96,6 +100,7 @@ func (l *Log) Add(entry Entry) Entry {
 	}
 	entry.RequestHeaders = cloneHeader(entry.RequestHeaders)
 	entry.ResponseHeaders = cloneHeader(entry.ResponseHeaders)
+	entry.UpstreamHeaders = cloneHeader(entry.UpstreamHeaders)
 	l.entries = append(l.entries, entry)
 	if len(l.entries) > l.limit {
 		l.entries = append([]Entry(nil), l.entries[len(l.entries)-l.limit:]...)
@@ -132,13 +137,16 @@ func ParseUpstream(raw string) (string, bool) {
 	return strings.ToLower(raw), true
 }
 
-// UpstreamLabel is the history name, with a Referer note when the path was routed that way.
+// UpstreamLabel is the history name, with a Referer or cookie note when the path was routed that way.
 func (e Entry) UpstreamLabel() string {
 	if e.UpstreamName == "" {
 		return ""
 	}
 	if e.ViaReferer {
 		return e.UpstreamName + " (via Referer)"
+	}
+	if e.ViaCookie {
+		return e.UpstreamName + " (via cookie)"
 	}
 	return e.UpstreamName
 }
