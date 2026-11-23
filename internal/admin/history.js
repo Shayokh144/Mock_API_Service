@@ -150,6 +150,43 @@
     return td;
   }
 
+  function badge(className, text) {
+    var span = document.createElement("span");
+    span.className = className;
+    span.textContent = text;
+    return span;
+  }
+
+  function statusClassName(text) {
+    var code = parseInt(text, 10);
+    if (code >= 200 && code < 300) {
+      return "badge status-2xx";
+    }
+    if (code >= 300 && code < 400) {
+      return "badge status-3xx";
+    }
+    if (code >= 400 && code < 500) {
+      return "badge status-4xx";
+    }
+    if (code >= 500 && code < 600) {
+      return "badge status-5xx";
+    }
+    return "badge status-rejected";
+  }
+
+  function sourceClassName(text) {
+    if (text === "mock") {
+      return "badge badge-mock";
+    }
+    if (text.indexOf("upstream-error") === 0) {
+      return "badge status-5xx";
+    }
+    if (text === "rejected" || text.indexOf("fault") === 0) {
+      return "badge badge-rejected";
+    }
+    return "badge badge-neutral";
+  }
+
   function headerRow() {
     var headRow = document.createElement("tr");
     headers.forEach(function (label) {
@@ -199,8 +236,12 @@
     link.textContent = entry.url;
     linkCell.appendChild(link);
     tr.appendChild(linkCell);
-    tr.appendChild(cell(String(entry.status)));
-    tr.appendChild(cell(entry.source));
+    var statusCell = document.createElement("td");
+    statusCell.appendChild(badge(statusClassName(String(entry.status)), String(entry.status)));
+    tr.appendChild(statusCell);
+    var sourceCell = document.createElement("td");
+    sourceCell.appendChild(badge(sourceClassName(entry.source || ""), entry.source || ""));
+    tr.appendChild(sourceCell);
     tr.appendChild(cell(entry.upstream || ""));
     tr.appendChild(cell(entry.delay || ""));
     tr.appendChild(cell(ruleText(entry)));
@@ -364,7 +405,13 @@
       if (n) {
         cell.appendChild(document.createElement("br"));
       }
-      cell.appendChild(document.createTextNode(lines[n]));
+      if (name === "status") {
+        cell.appendChild(badge(statusClassName(lines[n]), lines[n]));
+      } else if (name === "sources") {
+        cell.appendChild(badge(sourceClassName(lines[n]), lines[n]));
+      } else {
+        cell.appendChild(document.createTextNode(lines[n]));
+      }
     }
   }
 
