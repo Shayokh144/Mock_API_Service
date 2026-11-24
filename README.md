@@ -37,7 +37,7 @@ The process reads environment variables. It also accepts `--scenario` and `--sce
 | `ADMIN_LISTEN_ADDR` | no | `127.0.0.1:8081` | Dashboard loopback address. Same host rules as `LISTEN_ADDR`. It must differ from the proxy address. |
 | `RULES_PATH` | no | `data/rules.json` | Rule file. A missing file means there are no rules. |
 | `HISTORY_LIMIT` | no | `500` | Newest history entries kept in memory. |
-| `UPSTREAM_TIMEOUT` | no | `30s` | Time allowed for the upstream to send response headers. When it expires the proxy returns `504` with `{"error":"upstream timed out"}`. A WebSocket upgrade is not limited by this timeout. A stream that has already started is not cut off. |
+| `UPSTREAM_TIMEOUT` | no | `30s` | Time allowed for the upstream to send response headers. A body that is still arriving after the headers is not cut off. When it expires the proxy returns `504` with `{"error":"upstream timed out"}`. A WebSocket upgrade is not limited by this timeout. A stream that has already started is not cut off. |
 | `MAX_BODY_BYTES` | no | `8388608` | Largest request body and fully buffered upstream response. A request over the cap is `413`. A known-length upstream response over the cap is `502` with `{"error":"upstream response too large"}`. Zero, a negative value, or a non-integer fails startup. Rule bodies and body-condition matching stay at 1 MiB. |
 
 ```sh
