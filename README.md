@@ -439,7 +439,7 @@ Delete one row from the list or the detail page. The list returns to the same fi
 
 The API listens only on the admin address, `http://127.0.0.1:8081` by default. The proxy port returns 404 for `/_api`. Scripts that create, edit, or delete rules and upstreams use `/_api` with the bearer token. The dashboard forms are for a browser on the admin origin and do not accept a token. The practical guide is [docs/API.md](docs/API.md). Every route is described in [openapi.yaml](openapi.yaml).
 
-On the first start the process writes a 32-byte token to `data/admin.token` (or next to `RULES_PATH`). The directory is mode `0700` and the file is mode `0600`. Later starts reuse that file. The log prints the file path and never the token.
+On the first start the process writes a 32-byte token to `data/admin.token` (or next to `RULES_PATH`). The file is mode `0600`. A directory the process creates for it is mode `0700`. An existing directory keeps its mode, so a `RULES_PATH` in the repo root or `/tmp` does not change that folder. Later starts reuse that file. The log prints the file path and never the token.
 
 Send it on every API call:
 
