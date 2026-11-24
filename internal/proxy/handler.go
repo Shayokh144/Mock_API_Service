@@ -36,6 +36,8 @@ type Options struct {
 	Upstream  *url.URL
 	Upstreams *upstreams.Store
 	Timeout   time.Duration
+	// Transport sends upstream requests. Nil uses one shared pool that keeps
+	// up to 256 idle connections per upstream host.
 	Transport http.RoundTripper
 	Rules     *rules.Store
 	History   *history.Log
@@ -70,11 +72,15 @@ func New(opts Options) *Handler {
 	if maxBody <= 0 {
 		maxBody = config.MaxBufferedBody
 	}
+	transport := opts.Transport
+	if transport == nil {
+		transport = sharedTransport
+	}
 	return &Handler{
 		upstream:  opts.Upstream,
 		upstreams: opts.Upstreams,
 		timeout:   timeout,
-		transport: opts.Transport,
+		transport: transport,
 		rules:     opts.Rules,
 		history:   opts.History,
 		maxBody:   maxBody,
