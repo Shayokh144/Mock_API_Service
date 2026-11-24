@@ -79,6 +79,7 @@ The process listens on `127.0.0.1:8080` by default. Startup accepts only a loopb
 | `RULES_PATH` | no | `data/rules.json` | Rule file, relative to the working directory |
 | `HISTORY_LIMIT` | no | `500` | Newest history entries kept in memory |
 | `UPSTREAM_TIMEOUT` | no | `30s` | Time allowed for the upstream to send response headers |
+| `PROXY_ALLOWED_HOSTS` | no | none | Extra Host names the proxy answers besides localhost, loopback IPs, `10.0.2.2`, and `10.0.3.2` |
 
 `UPSTREAM_BASE_URL` must include a scheme and host. A path prefix is allowed. A query string or fragment is rejected at startup.
 

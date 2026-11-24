@@ -362,7 +362,7 @@ func TestScenarioFlagMergesWithoutWritingRules(t *testing.T) {
 		t.Fatal("proxy did not start")
 	}
 	rr := httptest.NewRecorder()
-	proxy.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/v1/ping", nil))
+	proxy.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "http://127.0.0.1:8080/v1/ping", nil))
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d", rr.Code)
 	}
@@ -436,7 +436,7 @@ func TestScenarioWithoutPersistStaysOutOfLaterSave(t *testing.T) {
 		t.Fatalf("saved rule missing: %s", text)
 	}
 	ping := httptest.NewRecorder()
-	proxy.ServeHTTP(ping, httptest.NewRequest(http.MethodGet, "/v1/ping", nil))
+	proxy.ServeHTTP(ping, httptest.NewRequest(http.MethodGet, "http://127.0.0.1:8080/v1/ping", nil))
 	if ping.Code != http.StatusOK {
 		t.Fatalf("temporary rule status = %d", ping.Code)
 	}
@@ -479,5 +479,48 @@ func TestScenarioPersistWritesRulesFile(t *testing.T) {
 	}
 	if strings.Contains(text, "temporary") {
 		t.Fatalf("temporary flag was serialized: %s", text)
+	}
+}
+
+func TestRunProxyChecksHost(t *testing.T) {
+	dir := t.TempDir()
+	handlers := map[string]http.Handler{}
+	var mu sync.Mutex
+	err := run(func(key string) string {
+		switch key {
+		case "UPSTREAM_BASE_URL":
+			return "http://127.0.0.1:9"
+		case "RULES_PATH":
+			return filepath.Join(dir, "rules.json")
+		case "PROXY_ALLOWED_HOSTS":
+			return "mac.tunnel.test"
+		default:
+			return ""
+		}
+	}, io.Discard, func(addr string, h http.Handler) error {
+		mu.Lock()
+		handlers[addr] = h
+		mu.Unlock()
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	proxyHandler := handlers["127.0.0.1:8080"]
+	if proxyHandler == nil {
+		t.Fatalf("handlers = %v", handlers)
+	}
+	for host, want := range map[string]int{
+		"evil.example:8080":    http.StatusForbidden,
+		"localhost:8080":       http.StatusNotFound,
+		"mac.tunnel.test:8080": http.StatusNotFound,
+	} {
+		req := httptest.NewRequest(http.MethodGet, "/nowhere", nil)
+		req.Host = host
+		rec := httptest.NewRecorder()
+		proxyHandler.ServeHTTP(rec, req)
+		if rec.Code != want {
+			t.Errorf("Host %s = %d, want %d", host, rec.Code, want)
+		}
 	}
 }

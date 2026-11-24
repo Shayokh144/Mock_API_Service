@@ -27,6 +27,8 @@ import (
 
 const noUpstreamMessage = "no upstream matches this path"
 
+const hostRejectedMessage = "this Host is not allowed on the proxy; add it to PROXY_ALLOWED_HOSTS"
+
 var errResponseTooLarge = errors.New("upstream response too large")
 
 // Options configures the proxy handler.
@@ -40,6 +42,9 @@ type Options struct {
 	// MaxBody is the proxy buffer for request bodies and fully buffered upstream
 	// responses. Zero uses config.MaxBufferedBody. It does not change rule bodies.
 	MaxBody int
+	// HostAllowed checks the request Host. A request it refuses gets 403 and
+	// is recorded as rejected. Nil allows every Host. See LocalHosts.
+	HostAllowed func(host string) bool
 }
 
 // Handler is the local proxy. /_admin is never forwarded.
@@ -52,6 +57,7 @@ type Handler struct {
 	history   *history.Log
 	maxBody   int
 	wait      func(context.Context, time.Duration) error
+	hostOK    func(string) bool
 }
 
 // New returns a handler that forwards every non-admin request.
@@ -72,11 +78,19 @@ func New(opts Options) *Handler {
 		rules:     opts.Rules,
 		history:   opts.History,
 		maxBody:   maxBody,
+		hostOK:    opts.HostAllowed,
 	}
 }
 
 // ServeHTTP reserves /_admin, serves an enabled rule, and forwards the rest.
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if h.hostOK != nil && !h.hostOK(r.Host) {
+		if r.Body != nil {
+			_ = r.Body.Close()
+		}
+		h.finish(w, r, time.Now().UTC(), r.Header.Clone(), nil, history.SourceRejected, "", "", "", http.StatusForbidden, hostRejectedMessage)
+		return
+	}
 	if isAdmin(r.URL.Path) {
 		http.Error(w, "the dashboard is not served on the proxy port", http.StatusNotFound)
 		return

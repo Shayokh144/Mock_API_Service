@@ -94,6 +94,7 @@ func run(getenv func(string) string, stderr io.Writer, listen func(string, http.
 	}
 	dashboard.UseListenAddr(cfg.AdminListenAddr)
 	dashboard.UseProxyAddr(cfg.ListenAddr)
+	hostAllowed := proxy.LocalHosts(cfg.ProxyAllowedHosts)
 	manager := sessions.New(sessions.Options{
 		Rules:        store,
 		History:      log,
@@ -103,6 +104,7 @@ func run(getenv func(string) string, stderr io.Writer, listen func(string, http.
 		Timeout:      cfg.UpstreamTimeout,
 		HistoryLimit: cfg.HistoryLimit,
 		MaxBody:      cfg.MaxBufferedBody,
+		HostAllowed:  hostAllowed,
 	})
 	defer manager.Close()
 	dashboard.UseSessions(manager)
@@ -115,11 +117,12 @@ func run(getenv func(string) string, stderr io.Writer, listen func(string, http.
 	apiServer.UseSessions(manager)
 	adminHandler := api.Mount(dashboard, apiServer)
 	handler := proxy.New(proxy.Options{
-		Upstreams: ups,
-		Timeout:   cfg.UpstreamTimeout,
-		Rules:     store,
-		History:   log,
-		MaxBody:   cfg.MaxBufferedBody,
+		Upstreams:   ups,
+		Timeout:     cfg.UpstreamTimeout,
+		Rules:       store,
+		History:     log,
+		MaxBody:     cfg.MaxBufferedBody,
+		HostAllowed: hostAllowed,
 	})
 	return listenBoth(listen, cfg.AdminListenAddr, adminHandler, cfg.ListenAddr, handler)
 }

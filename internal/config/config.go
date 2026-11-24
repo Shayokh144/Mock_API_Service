@@ -39,6 +39,9 @@ type Config struct {
 	HistoryLimit    int
 	UpstreamTimeout time.Duration
 	MaxBufferedBody int
+	// ProxyAllowedHosts are extra Host names the proxy answers, besides
+	// localhost, loopback IPs, and the Android emulator aliases.
+	ProxyAllowedHosts []string
 }
 
 // Load reads configuration from getenv. Empty optional variables use defaults.
@@ -80,23 +83,49 @@ func Load(getenv func(string) string) (Config, error) {
 		return Config{}, err
 	}
 
+	allowedHosts, err := parseAllowedHosts(getenv("PROXY_ALLOWED_HOSTS"))
+	if err != nil {
+		return Config{}, err
+	}
+
 	rulesPath := getenv("RULES_PATH")
 	if strings.TrimSpace(rulesPath) == "" {
 		rulesPath = DefaultRulesPath
 	}
 
 	return Config{
-		Upstream:        upstream,
-		UpstreamPrefix:  prefix,
-		ListenAddr:      listenAddr,
-		AdminListenAddr: adminAddr,
-		RulesPath:       rulesPath,
-		UpstreamsPath:   UpstreamsPath(rulesPath),
-		TokenPath:       TokenPath(rulesPath),
-		HistoryLimit:    historyLimit,
-		UpstreamTimeout: timeout,
-		MaxBufferedBody: maxBody,
+		Upstream:          upstream,
+		UpstreamPrefix:    prefix,
+		ListenAddr:        listenAddr,
+		AdminListenAddr:   adminAddr,
+		RulesPath:         rulesPath,
+		UpstreamsPath:     UpstreamsPath(rulesPath),
+		TokenPath:         TokenPath(rulesPath),
+		HistoryLimit:      historyLimit,
+		UpstreamTimeout:   timeout,
+		MaxBufferedBody:   maxBody,
+		ProxyAllowedHosts: allowedHosts,
 	}, nil
+}
+
+// parseAllowedHosts reads a comma-separated list of host names or IPs,
+// without ports. "*" is refused, because it would undo the Host check.
+func parseAllowedHosts(raw string) ([]string, error) {
+	var out []string
+	for _, part := range strings.Split(raw, ",") {
+		name := strings.ToLower(strings.TrimSpace(part))
+		if name == "" {
+			continue
+		}
+		bare := strings.TrimSuffix(strings.TrimPrefix(name, "["), "]")
+		if net.ParseIP(bare) == nil {
+			if strings.ContainsAny(name, "*/:@ ") {
+				return nil, fmt.Errorf("PROXY_ALLOWED_HOSTS must list host names or IPs without ports, such as 192.168.1.20")
+			}
+		}
+		out = append(out, bare)
+	}
+	return out, nil
 }
 
 // UpstreamsPath is the upstream file stored next to the rules file.
