@@ -50,6 +50,41 @@ func TestTokenFilePermissionsAndReuse(t *testing.T) {
 	}
 }
 
+func TestTokenKeepsExistingDirectoryMode(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "admin.token")
+	if _, err := LoadToken(path); err != nil {
+		t.Fatal(err)
+	}
+	dirInfo, err := os.Stat(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dirInfo.Mode().Perm() != 0o755 {
+		t.Fatalf("existing dir mode changed to %o", dirInfo.Mode().Perm())
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("file mode = %o", info.Mode().Perm())
+	}
+}
+
+func TestTokenDirectoryThatIsAFileFails(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "rules.json")
+	if err := os.WriteFile(file, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadToken(filepath.Join(file, "admin.token")); err == nil {
+		t.Fatal("LoadToken accepted a file as its directory")
+	}
+}
+
 func TestAPIAuthHostOriginAndJSON(t *testing.T) {
 	dir := t.TempDir()
 	tokens, err := LoadToken(filepath.Join(dir, "admin.token"))

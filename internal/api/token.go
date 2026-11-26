@@ -19,17 +19,15 @@ type TokenFile struct {
 	token string
 }
 
-// LoadToken reads the token file or creates one. The directory is 0700 and the file is 0600.
+// LoadToken reads the token file or creates one. The file is 0600. A directory
+// it creates is 0700. An existing directory keeps its mode, because RULES_PATH
+// may point into a folder the proxy does not own, such as the repo root or /tmp.
 // The token itself is not returned to logs.
 func LoadToken(path string) (*TokenFile, error) {
 	if strings.TrimSpace(path) == "" {
 		return nil, errors.New("admin token path is empty")
 	}
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return nil, err
-	}
-	if err := os.Chmod(dir, 0o700); err != nil {
+	if err := ensureTokenDir(filepath.Dir(path)); err != nil {
 		return nil, err
 	}
 	raw, err := os.ReadFile(path)
@@ -79,6 +77,26 @@ func (t *TokenFile) Rotate() error {
 	t.token = next
 	t.mu.Unlock()
 	return nil
+}
+
+// ensureTokenDir creates dir as 0700 when it is missing. It never changes the
+// mode of a directory that already exists.
+func ensureTokenDir(dir string) error {
+	info, err := os.Stat(dir)
+	if err == nil {
+		if !info.IsDir() {
+			return &os.PathError{Op: "mkdir", Path: dir, Err: errors.New("not a directory")}
+		}
+		return nil
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	// MkdirAll applies the umask. Chmod sets 0700 on the directory just created.
+	return os.Chmod(dir, 0o700)
 }
 
 func newToken() (string, error) {
