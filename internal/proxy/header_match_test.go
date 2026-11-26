@@ -18,7 +18,7 @@ func TestHeaderRuleSeesPathAfterPrefix(t *testing.T) {
 	}))
 	defer upstream.Close()
 	ups := upstreams.NewMemory()
-	okya, err := ups.Create("OKYA", upstream.URL, "/okya")
+	shop, err := ups.Create("SHOP", upstream.URL, "/shop")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -29,7 +29,7 @@ func TestHeaderRuleSeesPathAfterPrefix(t *testing.T) {
 	}
 	if _, err := store.Create(rules.Draft{
 		Name: "token", Enabled: true, Method: "POST", PathPattern: "/v1/oauth/token",
-		StatusCode: 401, UpstreamID: okya.ID, Body: `{"error":"unauthorized"}`,
+		StatusCode: 401, UpstreamID: shop.ID, Body: `{"error":"unauthorized"}`,
 		Match: rules.MatchSpec{Headers: headers},
 	}); err != nil {
 		t.Fatal(err)
@@ -37,7 +37,7 @@ func TestHeaderRuleSeesPathAfterPrefix(t *testing.T) {
 	proxySrv := httptest.NewServer(New(Options{Upstreams: ups, Rules: store, Timeout: time.Second}))
 	defer proxySrv.Close()
 
-	req, err := http.NewRequest(http.MethodPost, proxySrv.URL+"/okya/v1/oauth/token", nil)
+	req, err := http.NewRequest(http.MethodPost, proxySrv.URL+"/shop/v1/oauth/token", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

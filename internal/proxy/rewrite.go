@@ -140,7 +140,7 @@ func rewriteAbsoluteTo(raw, proxyHost string, targets []redirectTarget) (string,
 }
 
 // webScheme is true for http, https, and a scheme-relative URL. An app
-// callback such as co.okya.pos.dev://callback, intent://, or mailto: is never
+// callback such as com.example.pos.dev://callback, intent://, or mailto: is never
 // rewritten, so the browser can hand it to the app unchanged.
 func webScheme(scheme string) bool {
 	switch strings.ToLower(scheme) {

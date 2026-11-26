@@ -40,7 +40,7 @@ func TestStickyCookieRoutesLoginFormPost(t *testing.T) {
 	defer upstream.Close()
 
 	ups := upstreams.NewMemory()
-	okya, err := ups.Create("OKYA_AUTH_DEV", upstream.URL, "/okya-auth")
+	shop, err := ups.Create("SHOP_AUTH_DEV", upstream.URL, "/shop-auth")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,10 +79,10 @@ func TestStickyCookieRoutesLoginFormPost(t *testing.T) {
 		return resp
 	}
 
-	if resp := send("GET", "/okya-auth/start", "", ""); resp.StatusCode != http.StatusOK {
+	if resp := send("GET", "/shop-auth/start", "", ""); resp.StatusCode != http.StatusOK {
 		t.Fatalf("start status = %d", resp.StatusCode)
 	}
-	login := send("GET", "/login", "/okya-auth/start", "")
+	login := send("GET", "/login", "/shop-auth/start", "")
 	if login.StatusCode != http.StatusOK {
 		t.Fatalf("login status = %d", login.StatusCode)
 	}
@@ -101,7 +101,7 @@ func TestStickyCookieRoutesLoginFormPost(t *testing.T) {
 	if post.StatusCode != http.StatusFound {
 		t.Fatalf("post status = %d", post.StatusCode)
 	}
-	if got := post.Header.Get("Location"); got != "/okya-auth/home" {
+	if got := post.Header.Get("Location"); got != "/shop-auth/home" {
 		t.Fatalf("Location = %s", got)
 	}
 	if !strings.Contains(postCookie, "csrf=tok") {
@@ -114,17 +114,17 @@ func TestStickyCookieRoutesLoginFormPost(t *testing.T) {
 	entries := log.List()
 	labels := map[string]string{}
 	for _, entry := range entries {
-		if entry.UpstreamID != okya.ID {
+		if entry.UpstreamID != shop.ID {
 			t.Fatalf("%s %s upstream = %q", entry.Method, entry.Path, entry.UpstreamID)
 		}
 		labels[entry.Method+" "+entry.Path] = entry.UpstreamLabel()
 	}
 	want := map[string]string{
-		"GET /okya-auth/start":      "OKYA_AUTH_DEV",
-		"GET /login":                "OKYA_AUTH_DEV (via Referer)",
-		"GET /assets/app.css":       "OKYA_AUTH_DEV (via cookie)",
-		"GET /assets/flags@2x.webp": "OKYA_AUTH_DEV (via cookie)",
-		"POST /login":               "OKYA_AUTH_DEV (via cookie)",
+		"GET /shop-auth/start":      "SHOP_AUTH_DEV",
+		"GET /login":                "SHOP_AUTH_DEV (via Referer)",
+		"GET /assets/app.css":       "SHOP_AUTH_DEV (via cookie)",
+		"GET /assets/flags@2x.webp": "SHOP_AUTH_DEV (via cookie)",
+		"POST /login":               "SHOP_AUTH_DEV (via cookie)",
 	}
 	for key, label := range want {
 		if labels[key] != label {
@@ -135,7 +135,7 @@ func TestStickyCookieRoutesLoginFormPost(t *testing.T) {
 
 func TestStickyCookieFollowsLastPrefix(t *testing.T) {
 	ups := upstreams.NewMemory()
-	okya, err := ups.Create("OKYA", "http://127.0.0.1:9", "/okya")
+	shop, err := ups.Create("SHOP", "http://127.0.0.1:9", "/shop")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,7 +145,7 @@ func TestStickyCookieFollowsLastPrefix(t *testing.T) {
 	}
 	h := New(Options{Upstreams: ups, Timeout: time.Second})
 	req := httptest.NewRequest("GET", "/hotel/x", nil)
-	req.AddCookie(&http.Cookie{Name: stickyCookieName, Value: okya.ID})
+	req.AddCookie(&http.Cookie{Name: stickyCookieName, Value: shop.ID})
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 	set := rec.Result().Cookies()
@@ -164,7 +164,7 @@ func TestStickyCookieFollowsLastPrefix(t *testing.T) {
 
 func TestUnknownStickyCookieIsRejectedAndRecorded(t *testing.T) {
 	ups := upstreams.NewMemory()
-	if _, err := ups.Create("OKYA", "http://127.0.0.1:9", "/okya"); err != nil {
+	if _, err := ups.Create("SHOP", "http://127.0.0.1:9", "/shop"); err != nil {
 		t.Fatal(err)
 	}
 	log := history.New(5)

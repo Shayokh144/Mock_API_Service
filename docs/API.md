@@ -158,7 +158,7 @@ Other filters are `path` (substring), `upstream`, `status`, `rule_name`, and `ru
 ```sh
 curl -s -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/yaml' \
-  --data-binary @scenarios/okya-auth-refresh-failure.yaml \
+  --data-binary @scenarios/shop-auth-refresh-failure.yaml \
   "http://127.0.0.1:8081/_api/sessions/$SESSION/scenarios/load?mode=merge"
 ```
 

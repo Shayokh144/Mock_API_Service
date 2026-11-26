@@ -279,17 +279,17 @@ func TestRunReportsLoadedUpstreams(t *testing.T) {
 	  "upstreams": [
 	    {
 	      "id": "0123456789abcdef",
-	      "name": "okya",
-	      "base_url": "https://okya.example",
-	      "prefix": "/okya",
+	      "name": "shop",
+	      "base_url": "https://shop.example",
+	      "prefix": "/shop",
 	      "created_at": "2026-11-05T05:00:00Z",
 	      "updated_at": "2026-11-05T05:00:00Z"
 	    },
 	    {
 	      "id": "fedcba9876543210",
-	      "name": "okya-auth",
+	      "name": "shop-auth",
 	      "base_url": "https://auth.example",
-	      "prefix": "/okya-auth",
+	      "prefix": "/shop-auth",
 	      "created_at": "2026-11-05T05:00:00Z",
 	      "updated_at": "2026-11-05T05:00:00Z"
 	    },
@@ -317,7 +317,7 @@ func TestRunReportsLoadedUpstreams(t *testing.T) {
 		t.Fatal(err)
 	}
 	logged := stderr.String()
-	if !strings.Contains(logged, "3 upstreams loaded: /okya, /okya-auth, /easyhotel") {
+	if !strings.Contains(logged, "3 upstreams loaded: /shop, /shop-auth, /easyhotel") {
 		t.Fatalf("stderr = %q", logged)
 	}
 	if strings.Contains(logged, "no upstream configured") {

@@ -16,47 +16,47 @@ import (
 	"github.com/Shayokh144/Mock_API_Service/internal/upstreams"
 )
 
-const authorizeQuery = "response_type=code&client_id=pos&redirect_uri=co.okya.pos.dev%3A%2F%2Fcallback&scope=openid+profile+email&prompt=login"
+const authorizeQuery = "response_type=code&client_id=pos&redirect_uri=com.example.pos.dev%3A%2F%2Fcallback&scope=openid+profile+email&prompt=login"
 
-// okyaAuth behaves like the OKYA Rails auth server. The session cookie
+// shopAuth behaves like the SHOP Rails auth server. The session cookie
 // stores return_to on /oauth/authorize. Without that session, a sign-in
 // redirects to /, which is a 404, which is what the user saw.
-type okyaAuth struct {
+type shopAuth struct {
 	mu       sync.Mutex
-	sessions map[string]*okyaSession
+	sessions map[string]*shopSession
 	next     int
 	base     string
 	posts    []string
 }
 
-type okyaSession struct {
+type shopSession struct {
 	returnTo string
 	user     bool
 }
 
-func (a *okyaAuth) session(w http.ResponseWriter, r *http.Request) *okyaSession {
+func (a *shopAuth) session(w http.ResponseWriter, r *http.Request) *shopSession {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if cookie, err := r.Cookie("_okya_auth_session"); err == nil {
+	if cookie, err := r.Cookie("_shop_auth_session"); err == nil {
 		if s, ok := a.sessions[cookie.Value]; ok {
 			return s
 		}
 	}
 	a.next++
 	id := fmt.Sprintf("sid-%d", a.next)
-	s := &okyaSession{}
+	s := &shopSession{}
 	a.sessions[id] = s
-	http.SetCookie(w, &http.Cookie{Name: "_okya_auth_session", Value: id, Path: "/", HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+	http.SetCookie(w, &http.Cookie{Name: "_shop_auth_session", Value: id, Path: "/", HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
 	return s
 }
 
-func (a *okyaAuth) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (a *shopAuth) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{Name: "AWSALB", Value: "lb", Path: "/"})
 	switch {
 	case r.URL.Path == "/oauth/authorize":
 		s := a.session(w, r)
 		if s.user {
-			w.Header().Set("Location", "co.okya.pos.dev://callback?code=abc&state=xyz")
+			w.Header().Set("Location", "com.example.pos.dev://callback?code=abc&state=xyz")
 		} else {
 			s.returnTo = r.URL.RequestURI()
 			w.Header().Set("Location", "/login/otp")
@@ -72,7 +72,7 @@ func (a *okyaAuth) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		a.mu.Lock()
 		a.posts = append(a.posts, r.Header.Get("Cookie"))
 		a.mu.Unlock()
-		if strings.Count(r.Header.Get("Cookie"), "_okya_auth_session=") > 1 {
+		if strings.Count(r.Header.Get("Cookie"), "_shop_auth_session=") > 1 {
 			http.Error(w, "two session cookies", http.StatusBadRequest)
 			return
 		}
@@ -89,14 +89,14 @@ func (a *okyaAuth) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func TestOkyaSignInReturnsToAuthorizeAndApp(t *testing.T) {
-	auth := &okyaAuth{sessions: map[string]*okyaSession{}}
+func TestShopSignInReturnsToAuthorizeAndApp(t *testing.T) {
+	auth := &shopAuth{sessions: map[string]*shopSession{}}
 	upstream := httptest.NewServer(auth)
 	defer upstream.Close()
 	auth.base = upstream.URL
 
 	ups := upstreams.NewMemory()
-	if _, err := ups.Create("OKYA_AUTH_DEV", upstream.URL, "/okya-auth"); err != nil {
+	if _, err := ups.Create("SHOP_AUTH_DEV", upstream.URL, "/shop-auth"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := ups.Create("EasyHotel_STAGING", "http://127.0.0.1:9", "/easyhotel"); err != nil {
@@ -134,8 +134,8 @@ func TestOkyaSignInReturnsToAuthorizeAndApp(t *testing.T) {
 	}
 
 	// 1. The app opens the prefixed authorize URL.
-	resp := step("GET", "/okya-auth/oauth/authorize?"+authorizeQuery, "", nil)
-	if resp.StatusCode != http.StatusFound || resp.Header.Get("Location") != "/okya-auth/login/otp" {
+	resp := step("GET", "/shop-auth/oauth/authorize?"+authorizeQuery, "", nil)
+	if resp.StatusCode != http.StatusFound || resp.Header.Get("Location") != "/shop-auth/login/otp" {
 		t.Fatalf("authorize: %d %s", resp.StatusCode, resp.Header.Get("Location"))
 	}
 	for _, cookie := range resp.Cookies() {
@@ -144,22 +144,22 @@ func TestOkyaSignInReturnsToAuthorizeAndApp(t *testing.T) {
 		}
 	}
 	// 2. Prefixed OTP page, then 3. /login via Referer.
-	if resp := step("GET", "/okya-auth/login/otp", "", nil); resp.StatusCode != http.StatusOK {
+	if resp := step("GET", "/shop-auth/login/otp", "", nil); resp.StatusCode != http.StatusOK {
 		t.Fatalf("otp: %d", resp.StatusCode)
 	}
-	if resp := step("GET", "/login", "/okya-auth/login/otp", nil); resp.StatusCode != http.StatusOK {
+	if resp := step("GET", "/login", "/shop-auth/login/otp", nil); resp.StatusCode != http.StatusOK {
 		t.Fatalf("login page: %d", resp.StatusCode)
 	}
 	// 4. The cookie-routed form post must carry the session from step 1.
 	resp = step("POST", "/login", "/login", url.Values{"email": {"a@b.c"}, "password": {"x"}})
-	want := base + "/okya-auth/oauth/authorize?" + authorizeQuery
+	want := base + "/shop-auth/oauth/authorize?" + authorizeQuery
 	if resp.StatusCode != http.StatusFound || resp.Header.Get("Location") != want {
 		t.Fatalf("post: %d Location=%q, want %q (upstream cookies %q)", resp.StatusCode, resp.Header.Get("Location"), want, auth.posts)
 	}
 	// 5. Back to authorize, which hands the code to the app untouched.
 	u, _ := url.Parse(resp.Header.Get("Location"))
 	resp = step("GET", u.RequestURI(), "/login", nil)
-	if resp.StatusCode != http.StatusFound || resp.Header.Get("Location") != "co.okya.pos.dev://callback?code=abc&state=xyz" {
+	if resp.StatusCode != http.StatusFound || resp.Header.Get("Location") != "com.example.pos.dev://callback?code=abc&state=xyz" {
 		t.Fatalf("callback: %d %q", resp.StatusCode, resp.Header.Get("Location"))
 	}
 	if len(auth.sessions) != 1 {
@@ -172,7 +172,7 @@ func TestOkyaSignInReturnsToAuthorizeAndApp(t *testing.T) {
 			post = entry
 		}
 	}
-	if names := post.UpstreamHeaders.Get("Cookie-Names"); !strings.Contains(names, "_okya_auth_session") || strings.Contains(names, stickyCookieName) {
+	if names := post.UpstreamHeaders.Get("Cookie-Names"); !strings.Contains(names, "_shop_auth_session") || strings.Contains(names, stickyCookieName) {
 		t.Fatalf("Cookie-Names = %q", names)
 	}
 	if strings.Contains(post.UpstreamHeaders.Get("Cookie-Names"), "sid-") {
@@ -196,12 +196,12 @@ func TestUpstreamCookiesAreIsolated(t *testing.T) {
 			mu.Unlock()
 		}))
 	}
-	okyaSrv := makeUpstream("okya")
-	defer okyaSrv.Close()
+	shopSrv := makeUpstream("shop")
+	defer shopSrv.Close()
 	hotelSrv := makeUpstream("hotel")
 	defer hotelSrv.Close()
 	ups := upstreams.NewMemory()
-	if _, err := ups.Create("OKYA", okyaSrv.URL, "/okya"); err != nil {
+	if _, err := ups.Create("SHOP", shopSrv.URL, "/shop"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := ups.Create("Hotel", hotelSrv.URL, "/hotel"); err != nil {
@@ -213,15 +213,15 @@ func TestUpstreamCookiesAreIsolated(t *testing.T) {
 	client := &http.Client{Jar: jar}
 	pu, _ := url.Parse(proxySrv.URL)
 	jar.SetCookies(pu, []*http.Cookie{{Name: "_session", Value: "stale", Path: "/"}})
-	for _, path := range []string{"/okya/set", "/hotel/set", "/okya/read", "/hotel/read"} {
+	for _, path := range []string{"/shop/set", "/hotel/set", "/shop/read", "/hotel/read"} {
 		resp, err := client.Get(proxySrv.URL + path)
 		if err != nil {
 			t.Fatal(err)
 		}
 		_ = resp.Body.Close()
 	}
-	if seen["okya"] != "_session=okya" {
-		t.Fatalf("okya saw %q", seen["okya"])
+	if seen["shop"] != "_session=shop" {
+		t.Fatalf("shop saw %q", seen["shop"])
 	}
 	if seen["hotel"] != "_session=hotel" {
 		t.Fatalf("hotel saw %q", seen["hotel"])

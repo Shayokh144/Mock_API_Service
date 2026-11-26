@@ -10,13 +10,13 @@ func TestHeaderOperatorsAndJSONIndex(t *testing.T) {
 	store := NewMemory()
 	if _, err := store.Create(Draft{
 		Name: "Auth", Enabled: true, Method: "POST", PathPattern: "/v1/**", StatusCode: 200,
-		Match: MatchSpec{Headers: mustConds(t, "header", "Authorization:absent\nAccept-Language:prefix=th\nX-Request-Id:contains=okya")},
+		Match: MatchSpec{Headers: mustConds(t, "header", "Authorization:absent\nAccept-Language:prefix=th\nX-Request-Id:contains=shop")},
 	}); err != nil {
 		t.Fatal(err)
 	}
 	header := http.Header{}
 	header.Set("Accept-Language", "th-TH")
-	header.Set("X-Request-Id", "okya-1")
+	header.Set("X-Request-Id", "shop-1")
 	if _, ok := store.MatchHTTP(http.MethodPost, "/v1/oauth/token", "", "", header, nil); !ok {
 		t.Fatal("expected header match after a ** path")
 	}
@@ -36,12 +36,12 @@ func TestHeaderOperatorsAndJSONIndex(t *testing.T) {
 	}
 	if _, err := store.Create(Draft{
 		Name: "Mail", Enabled: true, Method: "POST", PathPattern: "/v1/mail", StatusCode: 200,
-		Match: MatchSpec{Body: mustConds(t, "body", `user.email:regex=@okya\.test$`)},
+		Match: MatchSpec{Body: mustConds(t, "body", `user.email:regex=@shop\.test$`)},
 	}); err != nil {
 		t.Fatal(err)
 	}
 	bodyHeader := http.Header{"Content-Type": []string{"application/json"}}
-	if _, ok := store.MatchHTTP(http.MethodPost, "/v1/mail", "", "", bodyHeader, []byte(`{"user":{"email":"a@okya.test"}}`)); !ok {
+	if _, ok := store.MatchHTTP(http.MethodPost, "/v1/mail", "", "", bodyHeader, []byte(`{"user":{"email":"a@shop.test"}}`)); !ok {
 		t.Fatal("regex body missed")
 	}
 	if _, ok := store.MatchHTTP(http.MethodPost, "/v1/mail", "", "", bodyHeader, []byte(`{"user":{"email":"a@other.test"}}`)); ok {

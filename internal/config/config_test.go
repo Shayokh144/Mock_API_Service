@@ -74,7 +74,7 @@ func TestLoadOverrides(t *testing.T) {
 		"HISTORY_LIMIT":     "12",
 		"UPSTREAM_TIMEOUT":  "2s",
 		"MAX_BODY_BYTES":    "4096",
-		"UPSTREAM_PREFIX":   "/okya",
+		"UPSTREAM_PREFIX":   "/shop",
 	}))
 	if err != nil {
 		t.Fatal(err)
@@ -94,7 +94,7 @@ func TestLoadOverrides(t *testing.T) {
 	if cfg.RulesPath != "tmp/rules.json" || cfg.HistoryLimit != 12 || cfg.UpstreamTimeout != 2*time.Second || cfg.MaxBufferedBody != 4096 {
 		t.Fatalf("cfg = %+v", cfg)
 	}
-	if cfg.UpstreamPrefix != "/okya" {
+	if cfg.UpstreamPrefix != "/shop" {
 		t.Fatalf("prefix = %s", cfg.UpstreamPrefix)
 	}
 	if cfg.UpstreamsPath != filepath.Join("tmp", "upstreams.json") {
@@ -164,7 +164,7 @@ func TestLoadRejectsBadSettings(t *testing.T) {
 		{"zero body", map[string]string{"MAX_BODY_BYTES": "0"}, "MAX_BODY_BYTES"},
 		{"negative body", map[string]string{"MAX_BODY_BYTES": "-1"}, "MAX_BODY_BYTES"},
 		{"text body", map[string]string{"MAX_BODY_BYTES": "eight"}, "MAX_BODY_BYTES"},
-		{"bad prefix", map[string]string{"UPSTREAM_PREFIX": "/okya/"}, "UPSTREAM_PREFIX"},
+		{"bad prefix", map[string]string{"UPSTREAM_PREFIX": "/shop/"}, "UPSTREAM_PREFIX"},
 		{"admin prefix", map[string]string{"UPSTREAM_PREFIX": "/_admin"}, "UPSTREAM_PREFIX"},
 	}
 	for _, tc := range cases {

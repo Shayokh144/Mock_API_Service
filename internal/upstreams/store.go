@@ -408,11 +408,11 @@ func normalizePrefix(raw string) (string, error) {
 		return "", fmt.Errorf("prefix must not use /_admin")
 	}
 	if !strings.HasPrefix(raw, "/") || strings.HasSuffix(raw, "/") || strings.Count(raw, "/") != 1 {
-		return "", fmt.Errorf("prefix must be one path segment, such as /okya")
+		return "", fmt.Errorf("prefix must be one path segment, such as /shop")
 	}
 	segment := raw[1:]
 	if segment == "" {
-		return "", fmt.Errorf("prefix must be one path segment, such as /okya")
+		return "", fmt.Errorf("prefix must be one path segment, such as /shop")
 	}
 	for _, r := range segment {
 		switch {

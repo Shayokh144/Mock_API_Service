@@ -41,7 +41,7 @@ func TestParseParityAndErrors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"scenarios/okya-auth-refresh-failure.yaml", "scenarios/easyhotel-offline.json"} {
+	for _, name := range []string{"scenarios/shop-auth-refresh-failure.yaml", "scenarios/easyhotel-offline.json"} {
 		raw, err := os.ReadFile(filepath.Join(root, name))
 		if err != nil {
 			t.Fatal(err)

@@ -47,7 +47,7 @@
       <summary>Header conditions{{template "countbadge" .Form.HeaderMatchCount}}</summary>
       <label for="header_conditions">Header conditions</label>
       <textarea id="header_conditions" name="header_conditions">{{.Form.HeaderMatch}}</textarea>
-      <p class="hint">Optional. One condition per line. Authorization means the header is present. Authorization:absent means it is missing or empty. Accept-Language:prefix=th matches a prefix. X-Request-Id:contains=okya matches text inside the value. user.email:regex=@okya\.test$ uses a regular expression. Header names ignore case. ** in a path is only a whole trailing segment and matches the rest of the path.</p>
+      <p class="hint">Optional. One condition per line. Authorization means the header is present. Authorization:absent means it is missing or empty. Accept-Language:prefix=th matches a prefix. X-Request-Id:contains=shop matches text inside the value. user.email:regex=@shop\.test$ uses a regular expression. Header names ignore case. ** in a path is only a whole trailing segment and matches the rest of the path.</p>
     </details>
     <details class="opt" id="rule-body-match"{{if .Form.BodyMatchOpen .Error}} open{{end}}>
       <summary>Body conditions{{template "countbadge" .Form.BodyMatchCount}}</summary>

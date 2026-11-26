@@ -288,7 +288,7 @@ func TestHistoryRejectsUnknownUpstreamName(t *testing.T) {
 	_, srv, manager := testAPI(t, t.TempDir())
 	defer manager.Close()
 	token := readToken(t, srv.tokens)
-	okya, err := manager.Upstreams().Create("OKYA", "https://okya.example", "/okya")
+	shop, err := manager.Upstreams().Create("SHOP", "https://shop.example", "/shop")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -296,14 +296,14 @@ func TestHistoryRejectsUnknownUpstreamName(t *testing.T) {
 	info := mustSession(t, manager, session.ID)
 	info.History.Add(history.Entry{
 		Method: "GET", Path: "/v1/ok", Status: 200, Source: history.SourceUpstream,
-		UpstreamID: okya.ID, UpstreamName: "OKYA",
+		UpstreamID: shop.ID, UpstreamName: "SHOP",
 	})
 	info.History.Add(history.Entry{
 		Method: "GET", Path: "/v1/any", Status: 200, Source: history.SourceMock,
 		UpstreamID: history.UpstreamAny, UpstreamName: "any",
 	})
 
-	named := apiJSON(t, srv, http.MethodGet, "/_api/sessions/"+session.ID+"/history?upstream=OKYA", token, "")
+	named := apiJSON(t, srv, http.MethodGet, "/_api/sessions/"+session.ID+"/history?upstream=SHOP", token, "")
 	if named.Code != http.StatusOK || !strings.Contains(named.Body, "/v1/ok") || strings.Contains(named.Body, "/v1/any") {
 		t.Fatalf("name = %d %s", named.Code, named.Body)
 	}
@@ -311,22 +311,22 @@ func TestHistoryRejectsUnknownUpstreamName(t *testing.T) {
 	if anyCase.Code != http.StatusOK || !strings.Contains(anyCase.Body, "/v1/any") || strings.Contains(anyCase.Body, "/v1/ok") {
 		t.Fatalf("any = %d %s", anyCase.Code, anyCase.Body)
 	}
-	unknown := apiJSON(t, srv, http.MethodGet, "/_api/sessions/"+session.ID+"/history?upstream=OKYAA", token, "")
-	if unknown.Code != http.StatusBadRequest || !strings.Contains(unknown.Body, `"code":"unknown_upstream"`) || !strings.Contains(unknown.Body, `unknown upstream \"OKYAA\"`) {
+	unknown := apiJSON(t, srv, http.MethodGet, "/_api/sessions/"+session.ID+"/history?upstream=SHOPP", token, "")
+	if unknown.Code != http.StatusBadRequest || !strings.Contains(unknown.Body, `"code":"unknown_upstream"`) || !strings.Contains(unknown.Body, `unknown upstream \"SHOPP\"`) {
 		t.Fatalf("unknown = %d %s", unknown.Code, unknown.Body)
 	}
-	byID := apiJSON(t, srv, http.MethodGet, "/_api/sessions/"+session.ID+"/history?upstream="+okya.ID, token, "")
+	byID := apiJSON(t, srv, http.MethodGet, "/_api/sessions/"+session.ID+"/history?upstream="+shop.ID, token, "")
 	if byID.Code != http.StatusOK || !strings.Contains(byID.Body, "/v1/ok") {
 		t.Fatalf("id = %d %s", byID.Code, byID.Body)
 	}
-	if err := manager.Upstreams().Delete(okya.ID); err != nil {
+	if err := manager.Upstreams().Delete(shop.ID); err != nil {
 		t.Fatal(err)
 	}
-	deletedName := apiJSON(t, srv, http.MethodGet, "/_api/sessions/"+session.ID+"/history?upstream=OKYA", token, "")
+	deletedName := apiJSON(t, srv, http.MethodGet, "/_api/sessions/"+session.ID+"/history?upstream=SHOP", token, "")
 	if deletedName.Code != http.StatusBadRequest || !strings.Contains(deletedName.Body, "unknown_upstream") {
 		t.Fatalf("deleted name = %d %s", deletedName.Code, deletedName.Body)
 	}
-	deletedID := apiJSON(t, srv, http.MethodGet, "/_api/sessions/"+session.ID+"/history?upstream="+okya.ID, token, "")
+	deletedID := apiJSON(t, srv, http.MethodGet, "/_api/sessions/"+session.ID+"/history?upstream="+shop.ID, token, "")
 	if deletedID.Code != http.StatusOK || !strings.Contains(deletedID.Body, "/v1/ok") {
 		t.Fatalf("deleted id = %d %s", deletedID.Code, deletedID.Body)
 	}

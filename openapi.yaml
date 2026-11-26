@@ -709,7 +709,7 @@ paths:
               example:
                 error:
                   code: unknown_upstream
-                  message: unknown upstream "OKYAA"
+                  message: unknown upstream "SHOPP"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -1355,7 +1355,7 @@ paths:
             deleted. Any other value is 400 `unknown_upstream`.
           schema:
             type: string
-            examples: ["OKYA"]
+            examples: ["SHOP"]
         - name: status
           in: query
           description: Response status. Must be an integer when set.
@@ -1456,7 +1456,7 @@ paths:
                   value:
                     error:
                       code: unknown_upstream
-                      message: unknown upstream "OKYAA"
+                      message: unknown upstream "SHOPP"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -1610,7 +1610,7 @@ paths:
               $ref: "#/components/schemas/Scenario"
             example:
               version: 1
-              name: okya-auth-refresh-failure
+              name: shop-auth-refresh-failure
               description: The refresh call fails with a dummy error. No real tokens.
               rules:
                 - name: refresh-fail
@@ -1631,7 +1631,7 @@ paths:
               type: string
             example: |
               version: 1
-              name: okya-auth-refresh-failure
+              name: shop-auth-refresh-failure
               description: The refresh call fails with a dummy error. No real tokens.
               rules:
                 - name: refresh-fail
@@ -1769,7 +1769,7 @@ components:
         `unknown_upstream`.
       schema:
         type: string
-        examples: ["OKYA"]
+        examples: ["SHOP"]
     UpstreamId:
       name: id
       in: path

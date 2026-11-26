@@ -24,7 +24,7 @@ func TestHistoryTextFilter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	okya, err := ups.Create("OKYA_AUTH_DEV", "http://127.0.0.1:9", "/okya-auth")
+	shop, err := ups.Create("SHOP_AUTH_DEV", "http://127.0.0.1:9", "/shop-auth")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,8 +34,8 @@ func TestHistoryTextFilter(t *testing.T) {
 	}
 	log := history.New(10)
 	start := time.Date(2026, 11, 11, 12, 0, 0, 0, time.UTC)
-	log.Add(history.Entry{StartedAt: start, Method: "GET", Path: "/API/User/Me", Status: 200, Source: history.SourceMock, UpstreamID: okya.ID, UpstreamName: okya.Name})
-	log.Add(history.Entry{StartedAt: start.Add(time.Second), Method: "GET", Path: "/oauth/token", Status: 200, Source: history.SourceUpstream, UpstreamID: okya.ID, UpstreamName: okya.Name})
+	log.Add(history.Entry{StartedAt: start, Method: "GET", Path: "/API/User/Me", Status: 200, Source: history.SourceMock, UpstreamID: shop.ID, UpstreamName: shop.Name})
+	log.Add(history.Entry{StartedAt: start.Add(time.Second), Method: "GET", Path: "/oauth/token", Status: 200, Source: history.SourceUpstream, UpstreamID: shop.ID, UpstreamName: shop.Name})
 	log.Add(history.Entry{StartedAt: start.Add(2 * time.Second), Method: "GET", Path: "/v1/items", RawQuery: "name=user/me", Status: 200, Source: history.SourceMock, UpstreamID: other.ID, UpstreamName: other.Name})
 	log.Add(history.Entry{StartedAt: start.Add(3 * time.Second), Method: "GET", Path: "/api/users", Status: 200, Source: history.SourceMock, UpstreamID: other.ID, UpstreamName: other.Name})
 
@@ -108,7 +108,7 @@ func TestRulesUpstreamFilter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	okya, err := ups.Create("OKYA_AUTH_DEV", "http://127.0.0.1:9", "/okya-auth")
+	shop, err := ups.Create("SHOP_AUTH_DEV", "http://127.0.0.1:9", "/shop-auth")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +117,7 @@ func TestRulesUpstreamFilter(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, draft := range []rules.Draft{
-		{Name: "Refresh", Enabled: true, Method: "POST", PathPattern: "/oauth/token", StatusCode: 401, UpstreamID: okya.ID},
+		{Name: "Refresh", Enabled: true, Method: "POST", PathPattern: "/oauth/token", StatusCode: 401, UpstreamID: shop.ID},
 		{Name: "Shared", Enabled: true, Method: "GET", PathPattern: "/v1/health", StatusCode: 200},
 		{Name: "Develop only", Enabled: true, Method: "GET", PathPattern: "/v1/dev", StatusCode: 200, UpstreamID: other.ID},
 	} {
@@ -133,12 +133,12 @@ func TestRulesUpstreamFilter(t *testing.T) {
 	defer srv.Close()
 	client := dashboardClient()
 
-	named := get(t, client, srv.URL+"/_admin?upstream="+url.QueryEscape("OKYA_AUTH_DEV"))
-	assertContains(t, named, "Upstream: OKYA_AUTH_DEV. Showing 2 of 3.")
+	named := get(t, client, srv.URL+"/_admin?upstream="+url.QueryEscape("SHOP_AUTH_DEV"))
+	assertContains(t, named, "Upstream: SHOP_AUTH_DEV. Showing 2 of 3.")
 	assertContains(t, named, "Refresh")
 	assertContains(t, named, "Shared")
 	assertContains(t, named, `method="get"`)
-	assertContains(t, named, `value="OKYA_AUTH_DEV" selected`)
+	assertContains(t, named, `value="SHOP_AUTH_DEV" selected`)
 	assertContains(t, named, "includes rules set to Any")
 	assertContains(t, named, `<details class="help">`)
 	assertContains(t, named, `<summary>How this works</summary>`)
@@ -166,9 +166,9 @@ func TestRulesUpstreamFilter(t *testing.T) {
 		t.Fatalf("ANY filter showed a named rule:\n%s", anyCase)
 	}
 
-	unknown := get(t, client, srv.URL+"/_admin?upstream=OKYAA")
-	assertContains(t, unknown, "Upstream: Unknown upstream OKYAA. Showing 0 of 3.")
-	assertContains(t, unknown, "Unknown upstream OKYAA")
+	unknown := get(t, client, srv.URL+"/_admin?upstream=SHOPP")
+	assertContains(t, unknown, "Upstream: Unknown upstream SHOPP. Showing 0 of 3.")
+	assertContains(t, unknown, "Unknown upstream SHOPP")
 	assertContains(t, unknown, "No rules for this upstream.")
 	if strings.Contains(unknown, "Refresh") || strings.Contains(unknown, "Develop only") || strings.Contains(unknown, "Shared") {
 		t.Fatalf("unknown upstream filter showed rules:\n%s", unknown)
@@ -178,17 +178,17 @@ func TestRulesUpstreamFilter(t *testing.T) {
 	}
 
 	all := get(t, client, srv.URL+"/_admin")
-	okyaAt := strings.Index(all, "<h2>OKYA_AUTH_DEV · /okya-auth</h2>")
+	shopAt := strings.Index(all, "<h2>SHOP_AUTH_DEV · /shop-auth</h2>")
 	developAt := strings.Index(all, "<h2>develop · /develop</h2>")
 	anyAt := strings.Index(all, "<h2>Any upstream</h2>")
-	if okyaAt < 0 || developAt < okyaAt || anyAt < developAt {
+	if shopAt < 0 || developAt < shopAt || anyAt < developAt {
 		t.Fatalf("blocks are not in upstream order:\n%s", all)
 	}
 	if strings.Contains(all, `scope="col">Upstream<`) {
 		t.Fatal("grouped tables still have an Upstream column")
 	}
 
-	assertContains(t, named, "<h2>OKYA_AUTH_DEV · /okya-auth</h2>")
+	assertContains(t, named, "<h2>SHOP_AUTH_DEV · /shop-auth</h2>")
 	assertContains(t, named, "<h2>Any upstream</h2>")
 	assertContains(t, named, "1 rule")
 	if strings.Contains(named, "<h2>develop · /develop</h2>") {
@@ -206,7 +206,7 @@ func TestRuleGroupsKeepOrderAndFilter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	okya, err := ups.Create("OKYA_AUTH_DEV", "http://127.0.0.1:9", "/okya-auth")
+	shop, err := ups.Create("SHOP_AUTH_DEV", "http://127.0.0.1:9", "/shop-auth")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -216,8 +216,8 @@ func TestRuleGroupsKeepOrderAndFilter(t *testing.T) {
 	gone := "0123456789abcdef"
 	var first, second rules.Rule
 	for _, draft := range []rules.Draft{
-		{Name: "First", Enabled: true, Method: "GET", PathPattern: "/first", StatusCode: 200, UpstreamID: okya.ID},
-		{Name: "Second", Enabled: true, Method: "GET", PathPattern: "/second", StatusCode: 200, UpstreamID: okya.ID},
+		{Name: "First", Enabled: true, Method: "GET", PathPattern: "/first", StatusCode: 200, UpstreamID: shop.ID},
+		{Name: "Second", Enabled: true, Method: "GET", PathPattern: "/second", StatusCode: 200, UpstreamID: shop.ID},
 		{Name: "Shared", Enabled: true, Method: "GET", PathPattern: "/shared", StatusCode: 200},
 		{Name: "Orphan", Enabled: true, Method: "GET", PathPattern: "/orphan", StatusCode: 200, UpstreamID: gone},
 	} {
@@ -241,10 +241,10 @@ func TestRuleGroupsKeepOrderAndFilter(t *testing.T) {
 	client := dashboardClient()
 
 	page := get(t, client, srv.URL+"/_admin")
-	okyaAt := strings.Index(page, "<h2>OKYA_AUTH_DEV · /okya-auth</h2>")
+	shopAt := strings.Index(page, "<h2>SHOP_AUTH_DEV · /shop-auth</h2>")
 	unknownAt := strings.Index(page, "<h2>Unknown upstream: "+gone+"</h2>")
 	anyAt := strings.Index(page, "<h2>Any upstream</h2>")
-	if okyaAt < 0 || unknownAt < okyaAt || anyAt < unknownAt {
+	if shopAt < 0 || unknownAt < shopAt || anyAt < unknownAt {
 		t.Fatalf("block order:\n%s", page)
 	}
 	if strings.Index(page, "First") > strings.Index(page, "Second") {
@@ -255,7 +255,7 @@ func TestRuleGroupsKeepOrderAndFilter(t *testing.T) {
 		t.Fatal("empty upstream block was shown")
 	}
 
-	filter := "?upstream=" + url.QueryEscape("OKYA_AUTH_DEV")
+	filter := "?upstream=" + url.QueryEscape("SHOP_AUTH_DEV")
 	filtered := get(t, client, srv.URL+"/_admin"+filter)
 	assertContains(t, filtered, "Showing 3 of 4.")
 	assertContains(t, filtered, "First")
@@ -285,7 +285,7 @@ func TestRuleGroupsKeepOrderAndFilter(t *testing.T) {
 		"method":       {"GET"},
 		"path_pattern": {"/second"},
 		"status_code":  {"201"},
-		"upstream_id":  {okya.ID},
+		"upstream_id":  {shop.ID},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -304,7 +304,7 @@ func TestRuleGroupsKeepOrderAndFilter(t *testing.T) {
 		t.Fatalf("delete location = %q", deleted.Header.Get("Location"))
 	}
 	after := get(t, client, srv.URL+"/_admin"+filter)
-	assertContains(t, after, "Upstream: OKYA_AUTH_DEV. Showing 2 of 3.")
+	assertContains(t, after, "Upstream: SHOP_AUTH_DEV. Showing 2 of 3.")
 	if strings.Contains(after, "Second") {
 		t.Fatal("deleted rule stayed on the filtered page")
 	}

@@ -26,7 +26,7 @@ func TestRuleCRUDIsolationAndPersistence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ups.Create("OKYA", "http://127.0.0.1:9", "/okya"); err != nil {
+	if _, err := ups.Create("SHOP", "http://127.0.0.1:9", "/shop"); err != nil {
 		t.Fatal(err)
 	}
 	tokens, err := LoadToken(filepath.Join(dir, "admin.token"))
@@ -44,7 +44,7 @@ func TestRuleCRUDIsolationAndPersistence(t *testing.T) {
 
 	session := postSession(t, srv, token, `{"name":"a"}`)
 	other := postSession(t, srv, token, `{"name":"b"}`)
-	body := `{"description":"profile","upstream":"OKYA","method":"GET","path":"/v1/profile","query_conditions":["page=2"],"status":201,"headers":{"Content-Type":"application/json"},"body":{"ok":true},"delay_ms":0,"enabled":true}`
+	body := `{"description":"profile","upstream":"SHOP","method":"GET","path":"/v1/profile","query_conditions":["page=2"],"status":201,"headers":{"Content-Type":"application/json"},"body":{"ok":true},"delay_ms":0,"enabled":true}`
 	created := apiJSON(t, srv, http.MethodPost, "/_api/sessions/"+session.ID+"/rules", token, body)
 	if created.Code != http.StatusCreated {
 		t.Fatalf("create = %d %s", created.Code, created.Body)
@@ -53,10 +53,10 @@ func TestRuleCRUDIsolationAndPersistence(t *testing.T) {
 	if err := json.Unmarshal([]byte(created.Body), &rule); err != nil {
 		t.Fatal(err)
 	}
-	if rule.ID == "" || rule.Upstream != "OKYA" || rule.Path != "/v1/profile" || !rule.Enabled {
+	if rule.ID == "" || rule.Upstream != "SHOP" || rule.Path != "/v1/profile" || !rule.Enabled {
 		t.Fatalf("rule = %+v", rule)
 	}
-	resp, err := http.Get(session.ProxyURL + "/okya/v1/profile?page=2")
+	resp, err := http.Get(session.ProxyURL + "/shop/v1/profile?page=2")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +64,7 @@ func TestRuleCRUDIsolationAndPersistence(t *testing.T) {
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("proxied status = %d", resp.StatusCode)
 	}
-	miss, err := http.Get(other.ProxyURL + "/okya/v1/profile?page=2")
+	miss, err := http.Get(other.ProxyURL + "/shop/v1/profile?page=2")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +99,7 @@ func TestRuleCRUDIsolationAndPersistence(t *testing.T) {
 		t.Fatalf("upstream = %d %s", unknownUp.Code, unknownUp.Body)
 	}
 
-	filtered := apiJSON(t, srv, http.MethodGet, "/_api/sessions/"+session.ID+"/rules?upstream=OKYA", token, "")
+	filtered := apiJSON(t, srv, http.MethodGet, "/_api/sessions/"+session.ID+"/rules?upstream=SHOP", token, "")
 	if filtered.Code != http.StatusOK || !strings.Contains(filtered.Body, "profile") {
 		t.Fatalf("filter = %s", filtered.Body)
 	}
@@ -107,8 +107,8 @@ func TestRuleCRUDIsolationAndPersistence(t *testing.T) {
 	if anyCase.Code != http.StatusOK || strings.Contains(anyCase.Body, "profile") || !strings.Contains(anyCase.Body, `"upstream":"Any"`) {
 		t.Fatalf("ANY filter = %d %s", anyCase.Code, anyCase.Body)
 	}
-	unknownFilter := apiJSON(t, srv, http.MethodGet, "/_api/sessions/"+session.ID+"/rules?upstream=OKYAA", token, "")
-	if unknownFilter.Code != http.StatusBadRequest || !strings.Contains(unknownFilter.Body, `"code":"unknown_upstream"`) || !strings.Contains(unknownFilter.Body, `unknown upstream \"OKYAA\"`) {
+	unknownFilter := apiJSON(t, srv, http.MethodGet, "/_api/sessions/"+session.ID+"/rules?upstream=SHOPP", token, "")
+	if unknownFilter.Code != http.StatusBadRequest || !strings.Contains(unknownFilter.Body, `"code":"unknown_upstream"`) || !strings.Contains(unknownFilter.Body, `unknown upstream \"SHOPP\"`) {
 		t.Fatalf("unknown filter = %d %s", unknownFilter.Code, unknownFilter.Body)
 	}
 	if id := ups.List()[0].ID; id != "" {

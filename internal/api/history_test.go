@@ -16,7 +16,7 @@ func TestResetAndHistory(t *testing.T) {
 	_, srv, manager := testAPI(t, t.TempDir())
 	defer manager.Close()
 	token := readToken(t, srv.tokens)
-	if _, err := manager.Upstreams().Create("OKYA", "https://okya.example", "/okya"); err != nil {
+	if _, err := manager.Upstreams().Create("SHOP", "https://shop.example", "/shop"); err != nil {
 		t.Fatal(err)
 	}
 	a := postSession(t, srv, token, `{"name":"a"}`)
@@ -34,17 +34,17 @@ func TestResetAndHistory(t *testing.T) {
 	}
 	older := mustSession(t, manager, a.ID).History.Add(history.Entry{
 		Method: "POST", Path: "/v1/other", Status: 500, Source: history.SourceUpstream,
-		UpstreamName: "OKYA", RequestHeaders: http.Header{"Accept": {"json"}},
+		UpstreamName: "SHOP", RequestHeaders: http.Header{"Accept": {"json"}},
 	})
 	newer := mustSession(t, manager, a.ID).History.Add(history.Entry{
 		Method: "GET", Path: "/v1/profile", RawQuery: "page=2", Status: 200,
-		Source: history.SourceMock, RuleID: rule.ID, UpstreamName: "OKYA",
+		Source: history.SourceMock, RuleID: rule.ID, UpstreamName: "SHOP",
 		RequestHeaders: http.Header{"Authorization": {"secret-token"}, "Accept": {"json"}},
 		RequestBody:    "hello", ResponseBody: "world",
 	})
 	mustSession(t, manager, b.ID).History.Add(history.Entry{Method: "GET", Path: "/v1/keep", Status: 200, Source: history.SourceMock})
 
-	list := apiJSON(t, srv, http.MethodGet, "/_api/sessions/"+a.ID+"/history?method=GET&path=profile&path_exact=/v1/profile&upstream=OKYA&status=200&mocked=true&rule_name=profile&rule_id="+rule.ID, token, "")
+	list := apiJSON(t, srv, http.MethodGet, "/_api/sessions/"+a.ID+"/history?method=GET&path=profile&path_exact=/v1/profile&upstream=SHOP&status=200&mocked=true&rule_name=profile&rule_id="+rule.ID, token, "")
 	if list.Code != http.StatusOK || !strings.Contains(list.Body, newer.ID) || strings.Contains(list.Body, older.ID) {
 		t.Fatalf("filter = %d %s", list.Code, list.Body)
 	}
