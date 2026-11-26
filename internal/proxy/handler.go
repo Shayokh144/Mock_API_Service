@@ -227,6 +227,8 @@ type target struct {
 	via                         routeVia
 	dest                        *url.URL
 	ok                          bool
+	// prefixed is true when forwarded is the request path without prefix.
+	prefixed bool
 }
 
 // resolve tries the path prefix, then the Referer path, then the sticky
@@ -254,6 +256,7 @@ func (h *Handler) resolve(r *http.Request) target {
 			id:        route.Upstream.ID,
 			forwarded: route.ForwardedPath,
 			prefix:    route.Upstream.Prefix,
+			prefixed:  route.Prefixed,
 		}
 		switch {
 		case route.ViaReferer:
@@ -409,7 +412,7 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, upstream *url.
 			req.URL.Scheme = upstream.Scheme
 			req.URL.Host = upstream.Host
 			req.URL.Path = joinPath(upstream.Path, incomingPath)
-			req.URL.RawPath = ""
+			req.URL.RawPath = escapedForwardPath(r.URL, upstream, t, req.URL.Path)
 			req.URL.RawQuery = incomingQuery
 			req.Host = upstream.Host
 			rewriteOutbound(req.Header, r.Host, upstream, t.prefix, t.id)
@@ -466,6 +469,33 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, upstream *url.
 	}
 	reverse.ServeHTTP(w, outbound)
 	return failed
+}
+
+// escapedForwardPath keeps the client's escaping, such as %2F inside a
+// segment, on the path sent upstream. It returns "" when the default escaping
+// of path is already right, or when the escaped form cannot be lined up with
+// the decoded one. url.URL then falls back to escaping path itself.
+func escapedForwardPath(in *url.URL, upstream *url.URL, t target, path string) string {
+	if in == nil || in.RawPath == "" {
+		return ""
+	}
+	escaped := in.EscapedPath()
+	if t.prefixed {
+		switch {
+		case escaped == t.prefix:
+			escaped = "/"
+		case strings.HasPrefix(escaped, t.prefix+"/"):
+			escaped = escaped[len(t.prefix):]
+		default:
+			// The prefix itself was escaped, such as /%61pp. Use the decoded path.
+			return ""
+		}
+	}
+	raw := joinPath(upstream.EscapedPath(), escaped)
+	if unescaped, err := url.PathUnescape(raw); err != nil || unescaped != path {
+		return ""
+	}
+	return raw
 }
 
 // isStreamResponse reports a body that should be forwarded as it arrives.
