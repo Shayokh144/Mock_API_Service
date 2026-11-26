@@ -387,8 +387,10 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, upstream *url.
 	}
 	ctx := r.Context()
 	var cancel context.CancelFunc
+	// answered is set once response headers arrive. UPSTREAM_TIMEOUT covers
+	// only the wait for headers, so a slow body is not cut off.
 	var gate sync.Mutex
-	streaming := false
+	answered := false
 	var timer *time.Timer
 	if !upgrade {
 		var stop context.CancelCauseFunc
@@ -398,7 +400,7 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, upstream *url.
 		timer = time.AfterFunc(h.timeout, func() {
 			gate.Lock()
 			defer gate.Unlock()
-			if !streaming {
+			if !answered {
 				cancel()
 			}
 		})
@@ -422,17 +424,17 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, upstream *url.
 		},
 		Transport: h.transport,
 		ModifyResponse: func(resp *http.Response) error {
+			gate.Lock()
+			answered = true
+			gate.Unlock()
+			if timer != nil {
+				timer.Stop()
+			}
 			rewriteUpstreamResponse(resp, r.Host, h.redirectTargets(upstream, t), t.id)
 			if upgrade || resp.StatusCode == http.StatusSwitchingProtocols {
 				return nil
 			}
 			if isStreamResponse(resp) {
-				gate.Lock()
-				streaming = true
-				gate.Unlock()
-				if timer != nil {
-					timer.Stop()
-				}
 				if capture, ok := w.(*bodyCapture); ok {
 					capture.previewLimit = config.HistoryBodyPreview
 				}

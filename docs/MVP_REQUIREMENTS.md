@@ -78,7 +78,7 @@ The process listens on `127.0.0.1:8080` by default. Startup accepts only a loopb
 | `ADMIN_LISTEN_ADDR` | no | `127.0.0.1:8081` | Dashboard loopback address and port |
 | `RULES_PATH` | no | `data/rules.json` | Rule file, relative to the working directory |
 | `HISTORY_LIMIT` | no | `500` | Newest history entries kept in memory |
-| `UPSTREAM_TIMEOUT` | no | `30s` | Time allowed for one upstream call |
+| `UPSTREAM_TIMEOUT` | no | `30s` | Time allowed for the upstream to send response headers |
 
 `UPSTREAM_BASE_URL` must include a scheme and host. A path prefix is allowed. A query string or fragment is rejected at startup.
 

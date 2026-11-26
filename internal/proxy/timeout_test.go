@@ -37,6 +37,34 @@ func TestUpstreamTimeoutReturns504(t *testing.T) {
 	}
 }
 
+func TestSlowKnownLengthBodyOutlivesUpstreamTimeout(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", "10")
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, "12345")
+		w.(http.Flusher).Flush()
+		time.Sleep(400 * time.Millisecond)
+		_, _ = io.WriteString(w, "67890")
+	}))
+	defer upstream.Close()
+	base, err := url.Parse(upstream.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proxySrv := httptest.NewServer(New(Options{Upstream: base, Timeout: 100 * time.Millisecond}))
+	defer proxySrv.Close()
+
+	resp, err := http.Get(proxySrv.URL + "/v1/download")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK || string(body) != "1234567890" {
+		t.Fatalf("slow body = %d %s", resp.StatusCode, body)
+	}
+}
+
 func TestSmallMaxBodyRejectsRequestAndBufferedResponse(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Length", "8")
