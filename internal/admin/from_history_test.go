@@ -23,7 +23,7 @@ func TestCreateRuleFromHistory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	okya, err := ups.Create("OKYA", "http://127.0.0.1:9", "/okya")
+	shop, err := ups.Create("SHOP", "http://127.0.0.1:9", "/shop")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,13 +32,13 @@ func TestCreateRuleFromHistory(t *testing.T) {
 	entry := log.Add(history.Entry{
 		StartedAt:       start,
 		Method:          http.MethodGet,
-		Path:            "/okya/api/user/me",
+		Path:            "/shop/api/user/me",
 		RawQuery:        "page=2&name=A%20B&flag",
 		ForwardedPath:   "/api/user/me",
 		Status:          http.StatusOK,
 		Source:          history.SourceUpstream,
-		UpstreamID:      okya.ID,
-		UpstreamName:    okya.Name,
+		UpstreamID:      shop.ID,
+		UpstreamName:    shop.Name,
 		ResponseDecoded: true,
 		ResponsePlain:   `{"ok":true}`,
 		ResponseBody:    "{\n  \"ok\": true\n}",
@@ -55,11 +55,11 @@ func TestCreateRuleFromHistory(t *testing.T) {
 	failed := log.Add(history.Entry{
 		StartedAt:    start.Add(time.Second),
 		Method:       http.MethodPost,
-		Path:         "/okya/v1/down",
+		Path:         "/shop/v1/down",
 		Status:       http.StatusBadGateway,
 		Source:       history.SourceUpstreamError,
-		UpstreamID:   okya.ID,
-		UpstreamName: okya.Name,
+		UpstreamID:   shop.ID,
+		UpstreamName: shop.Name,
 		ResponseBody: `{"error":"upstream unavailable"}`,
 	})
 	gone := log.Add(history.Entry{
@@ -92,7 +92,7 @@ func TestCreateRuleFromHistory(t *testing.T) {
 	for _, want := range []string{
 		`value="GET /api/user/me"`,
 		`value="/api/user/me"`,
-		`value="` + okya.ID + `" selected`,
+		`value="` + shop.ID + `" selected`,
 		`checked`,
 		`value="0"`,
 		`class="mode-raw"`,
@@ -111,7 +111,7 @@ func TestCreateRuleFromHistory(t *testing.T) {
 		}
 	}
 	for _, absent := range []string{
-		"/okya/api/user/me",
+		"/shop/api/user/me",
 		`&#34;ok&#34;: true`,
 		"Content-Length: 99",
 		"Transfer-Encoding: chunked",

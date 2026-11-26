@@ -8,14 +8,14 @@ import (
 // Every upstream shares one browser origin, such as http://10.0.2.2:8080, so
 // the proxy decides where an upstream cookie lives and which upstream gets it.
 //
-// Path is always /. The same upstream is reached at /okya-auth/... and, via
-// the Referer or sticky cookie, at /login. A cookie stored on /okya-auth was
+// Path is always /. The same upstream is reached at /shop-auth/... and, via
+// the Referer or sticky cookie, at /login. A cookie stored on /shop-auth was
 // not sent to POST /login, so Rails lost the session holding return_to and
 // sent the user to its 404 root page.
 //
 // An HttpOnly cookie is stored as mp_<upstream id>_<name>. Page scripts
 // cannot read it, so the rename is invisible to them. On the way upstream
-// only that upstream's cookies are restored, so OKYA and EasyHotel can both
+// only that upstream's cookies are restored, so SHOP and EasyHotel can both
 // set _session without seeing each other's. A cookie scripts can read keeps
 // its name, because the page may look it up, and is shared between upstreams.
 const cookieNamespace = "mp_"

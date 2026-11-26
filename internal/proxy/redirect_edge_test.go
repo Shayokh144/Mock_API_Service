@@ -23,9 +23,9 @@ func mustURL(t *testing.T, raw string) *url.URL {
 }
 
 func TestLocationRewriteEdgeCases(t *testing.T) {
-	auth := redirectTarget{prefix: "/okya-auth", base: mustURL(t, "https://auth.okya.example")}
-	api := redirectTarget{prefix: "/okya", base: mustURL(t, "https://api.okya.example/api/v1")}
-	app := redirectTarget{prefix: "/okya-app", base: mustURL(t, "https://app.okya.example")}
+	auth := redirectTarget{prefix: "/shop-auth", base: mustURL(t, "https://auth.shop.example")}
+	api := redirectTarget{prefix: "/shop", base: mustURL(t, "https://api.shop.example/api/v1")}
+	app := redirectTarget{prefix: "/shop-app", base: mustURL(t, "https://app.shop.example")}
 	proxy := "10.0.2.2:8080"
 	cases := []struct {
 		name    string
@@ -34,22 +34,22 @@ func TestLocationRewriteEdgeCases(t *testing.T) {
 		want    string
 		changed bool
 	}{
-		{"root relative gets prefix once", "/dashboard", []redirectTarget{auth}, "/okya-auth/dashboard", true},
-		{"root path maps to the bare prefix", "/", []redirectTarget{auth}, "/okya-auth", true},
-		{"already prefixed is not doubled", "/okya-auth/dashboard", []redirectTarget{auth}, "/okya-auth/dashboard", false},
-		{"prefix-like segment is not treated as the prefix", "/okya-authx/a", []redirectTarget{auth}, "/okya-auth/okya-authx/a", true},
-		{"query and fragment kept", "/home?x=1#top", []redirectTarget{auth}, "/okya-auth/home?x=1#top", true},
-		{"absolute same host", "https://auth.okya.example/dashboard?x=1", []redirectTarget{auth}, "http://10.0.2.2:8080/okya-auth/dashboard?x=1", true},
-		{"absolute already prefixed is not doubled", "https://auth.okya.example/okya-auth/x", []redirectTarget{auth}, "http://10.0.2.2:8080/okya-auth/x", true},
-		{"scheme-relative same host", "//auth.okya.example/dashboard", []redirectTarget{auth}, "http://10.0.2.2:8080/okya-auth/dashboard", true},
-		{"base path is not doubled on absolute", "https://api.okya.example/api/v1/me", []redirectTarget{api}, "http://10.0.2.2:8080/okya/me", true},
-		{"base path is not doubled on root relative", "/api/v1/me", []redirectTarget{api}, "/okya/me", true},
-		{"path outside base keeps its path", "/health", []redirectTarget{api}, "/okya/health", true},
-		{"redirect to another configured upstream", "https://app.okya.example/home", []redirectTarget{auth, app}, "http://10.0.2.2:8080/okya-app/home", true},
-		{"answering upstream wins a shared host", "https://auth.okya.example/x", []redirectTarget{auth, {prefix: "/other", base: mustURL(t, "https://auth.okya.example")}}, "http://10.0.2.2:8080/okya-auth/x", true},
+		{"root relative gets prefix once", "/dashboard", []redirectTarget{auth}, "/shop-auth/dashboard", true},
+		{"root path maps to the bare prefix", "/", []redirectTarget{auth}, "/shop-auth", true},
+		{"already prefixed is not doubled", "/shop-auth/dashboard", []redirectTarget{auth}, "/shop-auth/dashboard", false},
+		{"prefix-like segment is not treated as the prefix", "/shop-authx/a", []redirectTarget{auth}, "/shop-auth/shop-authx/a", true},
+		{"query and fragment kept", "/home?x=1#top", []redirectTarget{auth}, "/shop-auth/home?x=1#top", true},
+		{"absolute same host", "https://auth.shop.example/dashboard?x=1", []redirectTarget{auth}, "http://10.0.2.2:8080/shop-auth/dashboard?x=1", true},
+		{"absolute already prefixed is not doubled", "https://auth.shop.example/shop-auth/x", []redirectTarget{auth}, "http://10.0.2.2:8080/shop-auth/x", true},
+		{"scheme-relative same host", "//auth.shop.example/dashboard", []redirectTarget{auth}, "http://10.0.2.2:8080/shop-auth/dashboard", true},
+		{"base path is not doubled on absolute", "https://api.shop.example/api/v1/me", []redirectTarget{api}, "http://10.0.2.2:8080/shop/me", true},
+		{"base path is not doubled on root relative", "/api/v1/me", []redirectTarget{api}, "/shop/me", true},
+		{"path outside base keeps its path", "/health", []redirectTarget{api}, "/shop/health", true},
+		{"redirect to another configured upstream", "https://app.shop.example/home", []redirectTarget{auth, app}, "http://10.0.2.2:8080/shop-app/home", true},
+		{"answering upstream wins a shared host", "https://auth.shop.example/x", []redirectTarget{auth, {prefix: "/other", base: mustURL(t, "https://auth.shop.example")}}, "http://10.0.2.2:8080/shop-auth/x", true},
 		{"unknown host untouched", "https://elsewhere.example/x", []redirectTarget{auth, app}, "https://elsewhere.example/x", false},
-		{"scheme mismatch untouched", "http://auth.okya.example/x", []redirectTarget{auth}, "http://auth.okya.example/x", false},
-		{"app scheme untouched", "okya://callback?code=1", []redirectTarget{auth}, "okya://callback?code=1", false},
+		{"scheme mismatch untouched", "http://auth.shop.example/x", []redirectTarget{auth}, "http://auth.shop.example/x", false},
+		{"app scheme untouched", "shop://callback?code=1", []redirectTarget{auth}, "shop://callback?code=1", false},
 		{"path relative untouched", "dashboard", []redirectTarget{auth}, "dashboard", false},
 	}
 	for _, tc := range cases {
@@ -64,7 +64,7 @@ func TestSetCookieAlwaysUsesRootPath(t *testing.T) {
 	id := "0123456789abcdef"
 	cases := map[string]string{
 		"s=1; Path=/api/v1":                  "mp_" + id + "_s=1; Path=/; HttpOnly",
-		"s=1; Path=/okya-auth; HttpOnly":     "mp_" + id + "_s=1; Path=/; HttpOnly",
+		"s=1; Path=/shop-auth; HttpOnly":     "mp_" + id + "_s=1; Path=/; HttpOnly",
 		"js=1; Path=/assets":                 "js=1; Path=/",
 		"js=1":                               "js=1; Path=/",
 		"__Host-x=1; Path=/; Secure":         "__mp_Host-x=1; Path=/",
@@ -115,10 +115,10 @@ func TestLoginRedirectStaysOnProxy(t *testing.T) {
 	authURL = auth.URL
 
 	ups := upstreams.NewMemory()
-	if _, err := ups.Create("OKYA_AUTH", auth.URL, "/okya-auth"); err != nil {
+	if _, err := ups.Create("SHOP_AUTH", auth.URL, "/shop-auth"); err != nil {
 		t.Fatal(err)
 	}
-	appUp, err := ups.Create("OKYA_APP", app.URL, "/okya-app")
+	appUp, err := ups.Create("SHOP_APP", app.URL, "/shop-app")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,17 +143,17 @@ func TestLoginRedirectStaysOnProxy(t *testing.T) {
 		return resp, string(body)
 	}
 
-	do("GET", "/okya-auth/start", "")
-	if resp, _ := do("GET", "/login", "/okya-auth/start"); resp.StatusCode != http.StatusOK {
+	do("GET", "/shop-auth/start", "")
+	if resp, _ := do("GET", "/login", "/shop-auth/start"); resp.StatusCode != http.StatusOK {
 		t.Fatalf("login status = %d", resp.StatusCode)
 	}
 	resp, body := do("POST", "/login", "/login")
-	if resp.StatusCode != http.StatusOK || body != "dashboard" || resp.Request.URL.Path != "/okya-auth/dashboard" {
+	if resp.StatusCode != http.StatusOK || body != "dashboard" || resp.Request.URL.Path != "/shop-auth/dashboard" {
 		t.Fatalf("after login: status=%d body=%q url=%s auth=%v", resp.StatusCode, body, resp.Request.URL, authPaths)
 	}
 
 	resp, body = do("POST", "/login?to=app", "/login")
-	if resp.StatusCode != http.StatusOK || body != "app home" || resp.Request.URL.Path != "/okya-app/home" {
+	if resp.StatusCode != http.StatusOK || body != "app home" || resp.Request.URL.Path != "/shop-app/home" {
 		t.Fatalf("cross upstream: status=%d body=%q url=%s", resp.StatusCode, body, resp.Request.URL)
 	}
 	if len(appPaths) == 0 || appPaths[len(appPaths)-1] != "/home" {

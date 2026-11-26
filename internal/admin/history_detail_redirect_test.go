@@ -24,9 +24,9 @@ func TestHistoryDetailShowsRedirectAndSentUpstream(t *testing.T) {
 		Path:            "/login",
 		Status:          http.StatusSeeOther,
 		Source:          history.SourceUpstream,
-		RequestHeaders:  http.Header{"Cookie": {"_okya_session=secret-value"}},
-		ResponseHeaders: http.Header{"Location": {"/okya-auth/dashboard"}},
-		UpstreamHeaders: http.Header{"Cookie-Names": {"_okya_auth_session"}, "Host": {"auth.okya.example"}, "Origin": {"https://auth.okya.example"}, "Referer": {"https://auth.okya.example/login"}},
+		RequestHeaders:  http.Header{"Cookie": {"_shop_session=secret-value"}},
+		ResponseHeaders: http.Header{"Location": {"/shop-auth/dashboard"}},
+		UpstreamHeaders: http.Header{"Cookie-Names": {"_shop_auth_session"}, "Host": {"auth.shop.example"}, "Origin": {"https://auth.shop.example"}, "Referer": {"https://auth.shop.example/login"}},
 	})
 	dashboard, err := New(store, log, nil)
 	if err != nil {
@@ -37,10 +37,10 @@ func TestHistoryDetailShowsRedirectAndSentUpstream(t *testing.T) {
 	page := get(t, dashboardClient(), srv.URL+"/_admin/history/"+entry.ID)
 	for _, want := range []string{
 		`<dt>Redirects to</dt>`,
-		`<code id="detail-location">/okya-auth/dashboard</code>`,
+		`<code id="detail-location">/shop-auth/dashboard</code>`,
 		`id="detail-sent-upstream"`,
-		"https://auth.okya.example/login",
-		"<code>Cookie-Names: _okya_auth_session</code>",
+		"https://auth.shop.example/login",
+		"<code>Cookie-Names: _shop_auth_session</code>",
 	} {
 		if !strings.Contains(page, want) {
 			t.Fatalf("detail page missing %q", want)

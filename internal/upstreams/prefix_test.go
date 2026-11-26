@@ -10,28 +10,28 @@ import (
 
 func TestPrefixValidationAndUniqueness(t *testing.T) {
 	store := NewMemory()
-	okya, err := store.Create("okya", "https://okya.example", " /okya ")
+	shop, err := store.Create("shop", "https://shop.example", " /shop ")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if okya.Prefix != "/okya" {
-		t.Fatalf("prefix = %q", okya.Prefix)
+	if shop.Prefix != "/shop" {
+		t.Fatalf("prefix = %q", shop.Prefix)
 	}
-	otherCase, err := store.Create("okya-upper", "https://okya.example/v2", "/Okya")
+	otherCase, err := store.Create("shop-upper", "https://shop.example/v2", "/Shop")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if otherCase.Prefix != "/Okya" {
+	if otherCase.Prefix != "/Shop" {
 		t.Fatalf("case = %q", otherCase.Prefix)
 	}
-	if _, err := store.Create("again", "https://again.example", "/okya"); err == nil || !strings.Contains(err.Error(), "/okya") {
+	if _, err := store.Create("again", "https://again.example", "/shop"); err == nil || !strings.Contains(err.Error(), "/shop") {
 		t.Fatalf("duplicate = %v", err)
 	}
-	updated, err := store.Update(okya.ID, "okya", "https://okya.example", "/okya")
-	if err != nil || updated.Prefix != "/okya" {
+	updated, err := store.Update(shop.ID, "shop", "https://shop.example", "/shop")
+	if err != nil || updated.Prefix != "/shop" {
 		t.Fatalf("same prefix update = %+v %v", updated, err)
 	}
-	if _, err := store.Update(otherCase.ID, "okya-upper", "https://okya.example/v2", "/okya"); err == nil {
+	if _, err := store.Update(otherCase.ID, "shop-upper", "https://shop.example/v2", "/shop"); err == nil {
 		t.Fatal("update stole a prefix")
 	}
 	if _, err := store.Create("plain", "https://plain.example", ""); err == nil || !strings.Contains(err.Error(), "prefix is required") {
@@ -41,7 +41,7 @@ func TestPrefixValidationAndUniqueness(t *testing.T) {
 		t.Fatal("blank prefix was accepted")
 	}
 
-	bad := []string{"okya", "/", "/okya/", "/okya/api", "/ok ya", "/okya?", "/_admin", "/_admin/extra", "/_adminx", "/okya.", "/café"}
+	bad := []string{"shop", "/", "/shop/", "/shop/api", "/ok ya", "/shop?", "/_admin", "/_admin/extra", "/_adminx", "/shop.", "/café"}
 	for _, prefix := range bad {
 		if _, err := store.Create("bad-"+prefix, "https://bad.example", prefix); err == nil {
 			t.Fatalf("accepted %q", prefix)
@@ -55,7 +55,7 @@ func TestPrefixValidationAndUniqueness(t *testing.T) {
 
 func TestRouteStripsOnSegmentBoundary(t *testing.T) {
 	store := NewMemory()
-	okya, err := store.Create("okya", "https://okya.example/v1", "/okya")
+	shop, err := store.Create("shop", "https://shop.example/v1", "/shop")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,9 +71,9 @@ func TestRouteStripsOnSegmentBoundary(t *testing.T) {
 		prefixed  bool
 		ok        bool
 	}{
-		{"/okya/api/v1/x", okya.ID, "/api/v1/x", true, true},
-		{"/okya", okya.ID, "/", true, true},
-		{"/okya/", okya.ID, "/", true, true},
+		{"/shop/api/v1/x", shop.ID, "/api/v1/x", true, true},
+		{"/shop", shop.ID, "/", true, true},
+		{"/shop/", shop.ID, "/", true, true},
 		{"/easyhotel/v1/rooms", easy.ID, "/v1/rooms", true, true},
 	}
 	for _, tc := range cases {
@@ -82,7 +82,7 @@ func TestRouteStripsOnSegmentBoundary(t *testing.T) {
 			t.Fatalf("path %q route=%+v ok=%v", tc.path, route, ok)
 		}
 	}
-	for _, path := range []string{"/okyax", "/okyaX", "/other", ""} {
+	for _, path := range []string{"/shopx", "/shopX", "/other", ""} {
 		if _, ok := store.Route(path); ok {
 			t.Fatalf("unmatched path %q routed", path)
 		}
@@ -91,7 +91,7 @@ func TestRouteStripsOnSegmentBoundary(t *testing.T) {
 
 func TestRefererMatchesPrefixAndIgnoresHost(t *testing.T) {
 	store := NewMemory()
-	okya, err := store.Create("OKYA_AUTH_DEV", "https://okya.example", "/okya-auth")
+	shop, err := store.Create("SHOP_AUTH_DEV", "https://shop.example", "/shop-auth")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,16 +99,16 @@ func TestRefererMatchesPrefixAndIgnoresHost(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	route, ok := store.MatchReferer("/login", "http://10.0.2.2:8080/okya-auth/login/otp")
-	if !ok || route.Upstream.ID != okya.ID || route.ForwardedPath != "/login" || route.Prefixed || !route.ViaReferer {
+	route, ok := store.MatchReferer("/login", "http://10.0.2.2:8080/shop-auth/login/otp")
+	if !ok || route.Upstream.ID != shop.ID || route.ForwardedPath != "/login" || route.Prefixed || !route.ViaReferer {
 		t.Fatalf("emulator referer = %+v ok=%v", route, ok)
 	}
-	route, ok = store.MatchReferer("/favicon.ico", "http://evil.example/okya-auth/login/otp")
-	if !ok || route.Upstream.ID != okya.ID || route.ForwardedPath != "/favicon.ico" {
+	route, ok = store.MatchReferer("/favicon.ico", "http://evil.example/shop-auth/login/otp")
+	if !ok || route.Upstream.ID != shop.ID || route.ForwardedPath != "/favicon.ico" {
 		t.Fatalf("other host with matching path = %+v ok=%v", route, ok)
 	}
-	route, ok = store.MatchReferer("/assets/app.js", "http://127.0.0.1:8080/okya-auth")
-	if !ok || route.ForwardedPath != "/assets/app.js" || route.Upstream.Prefix != "/okya-auth" {
+	route, ok = store.MatchReferer("/assets/app.js", "http://127.0.0.1:8080/shop-auth")
+	if !ok || route.ForwardedPath != "/assets/app.js" || route.Upstream.Prefix != "/shop-auth" {
 		t.Fatalf("exact prefix referer = %+v ok=%v", route, ok)
 	}
 
@@ -118,7 +118,7 @@ func TestRefererMatchesPrefixAndIgnoresHost(t *testing.T) {
 		"http://evil.example/unrelated/page",
 		"http://[",
 		"not a url",
-		"http://127.0.0.1:8080/okya-auth-extra/login",
+		"http://127.0.0.1:8080/shop-auth-extra/login",
 	} {
 		if _, ok := store.MatchReferer("/login", referer); ok {
 			t.Fatalf("referer %q routed", referer)

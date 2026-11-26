@@ -48,7 +48,7 @@ func TestUpstreamRedirectAndCookieRewrite(t *testing.T) {
 		t.Fatal(err)
 	}
 	store := upstreams.NewMemory()
-	staging, err := store.Create("staging", upstreamBase.String(), "/okya")
+	staging, err := store.Create("staging", upstreamBase.String(), "/shop")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,31 +56,31 @@ func TestUpstreamRedirectAndCookieRewrite(t *testing.T) {
 	defer proxySrv.Close()
 	client := noRedirectClient()
 
-	abs := getNoRedirect(t, client, proxySrv.URL+"/okya/abs")
+	abs := getNoRedirect(t, client, proxySrv.URL+"/shop/abs")
 	if abs.StatusCode != http.StatusFound {
 		t.Fatalf("abs status = %d", abs.StatusCode)
 	}
-	if got := abs.Header.Get("Location"); got != proxySrv.URL+"/okya/next" {
+	if got := abs.Header.Get("Location"); got != proxySrv.URL+"/shop/next" {
 		t.Fatalf("Location = %s", got)
 	}
-	if got := abs.Header.Get("Content-Location"); got != proxySrv.URL+"/okya/file" {
+	if got := abs.Header.Get("Content-Location"); got != proxySrv.URL+"/shop/file" {
 		t.Fatalf("Content-Location = %s", got)
 	}
 
-	other := getNoRedirect(t, client, proxySrv.URL+"/okya/other")
+	other := getNoRedirect(t, client, proxySrv.URL+"/shop/other")
 	if other.Header.Get("Location") != "https://other.example/away" {
 		t.Fatalf("third-party Location = %s", other.Header.Get("Location"))
 	}
-	rel := getNoRedirect(t, client, proxySrv.URL+"/okya/rel")
-	if rel.Header.Get("Location") != "/okya/next" {
+	rel := getNoRedirect(t, client, proxySrv.URL+"/shop/rel")
+	if rel.Header.Get("Location") != "/shop/next" {
 		t.Fatalf("relative Location = %s", rel.Header.Get("Location"))
 	}
-	plain := getNoRedirect(t, client, proxySrv.URL+"/okya/plain")
+	plain := getNoRedirect(t, client, proxySrv.URL+"/shop/plain")
 	if plain.Header.Get("Location") != "next" {
 		t.Fatalf("scheme-relative Location = %s", plain.Header.Get("Location"))
 	}
 
-	cookies := getNoRedirect(t, client, proxySrv.URL+"/okya/cookie")
+	cookies := getNoRedirect(t, client, proxySrv.URL+"/shop/cookie")
 	found := map[string]*http.Cookie{}
 	for _, cookie := range cookies.Cookies() {
 		found[cookie.Name] = cookie
@@ -96,27 +96,27 @@ func TestUpstreamRedirectAndCookieRewrite(t *testing.T) {
 }
 
 func TestRootRelativeLocationKeepsPrefix(t *testing.T) {
-	upstream, err := url.Parse("https://okya.example")
+	upstream, err := url.Parse("https://shop.example")
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, ok := rewriteLocation("/login", "127.0.0.1:8080", upstream, "/okya-auth")
-	if !ok || got != "/okya-auth/login" {
+	got, ok := rewriteLocation("/login", "127.0.0.1:8080", upstream, "/shop-auth")
+	if !ok || got != "/shop-auth/login" {
 		t.Fatalf("location = %q ok=%v", got, ok)
 	}
-	got, ok = rewriteLocation("/login?next=/home", "127.0.0.1:8080", upstream, "/okya-auth")
-	if !ok || got != "/okya-auth/login?next=/home" {
+	got, ok = rewriteLocation("/login?next=/home", "127.0.0.1:8080", upstream, "/shop-auth")
+	if !ok || got != "/shop-auth/login?next=/home" {
 		t.Fatalf("query = %q ok=%v", got, ok)
 	}
-	got, ok = rewriteLocation("/okya-auth/login", "127.0.0.1:8080", upstream, "/okya-auth")
-	if ok || got != "/okya-auth/login" {
+	got, ok = rewriteLocation("/shop-auth/login", "127.0.0.1:8080", upstream, "/shop-auth")
+	if ok || got != "/shop-auth/login" {
 		t.Fatalf("already prefixed = %q ok=%v", got, ok)
 	}
-	got, ok = rewriteLocation("next", "127.0.0.1:8080", upstream, "/okya-auth")
+	got, ok = rewriteLocation("next", "127.0.0.1:8080", upstream, "/shop-auth")
 	if ok || got != "next" {
 		t.Fatalf("relative = %q ok=%v", got, ok)
 	}
-	got, ok = rewriteLocation("//cdn.example/login", "127.0.0.1:8080", upstream, "/okya-auth")
+	got, ok = rewriteLocation("//cdn.example/login", "127.0.0.1:8080", upstream, "/shop-auth")
 	if ok || got != "//cdn.example/login" {
 		t.Fatalf("protocol-relative = %q ok=%v", got, ok)
 	}
@@ -159,7 +159,7 @@ func TestRewriteLeavesDifferentSchemeAlone(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, ok := rewriteAbsoluteURL("https://staging.example.com/next", "127.0.0.1:8080", upstream, "/okya")
+	got, ok := rewriteAbsoluteURL("https://staging.example.com/next", "127.0.0.1:8080", upstream, "/shop")
 	if ok || got != "https://staging.example.com/next" {
 		t.Fatalf("rewritten = %q ok=%v", got, ok)
 	}

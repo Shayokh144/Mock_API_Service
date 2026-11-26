@@ -29,7 +29,7 @@ func TestTestSessionRewritesUpstreamRedirect(t *testing.T) {
 		t.Fatal(err)
 	}
 	ups := upstreams.NewMemory()
-	if _, err := ups.Create("staging", upstreamBase.String(), "/okya"); err != nil {
+	if _, err := ups.Create("staging", upstreamBase.String(), "/shop"); err != nil {
 		t.Fatal(err)
 	}
 	manager := New(Options{
@@ -47,7 +47,7 @@ func TestTestSessionRewritesUpstreamRedirect(t *testing.T) {
 	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
 		return http.ErrUseLastResponse
 	}}
-	resp, err := client.Get(info.ProxyURL + "/okya/login")
+	resp, err := client.Get(info.ProxyURL + "/shop/login")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +56,7 @@ func TestTestSessionRewritesUpstreamRedirect(t *testing.T) {
 	if resp.StatusCode != http.StatusFound {
 		t.Fatalf("status = %d", resp.StatusCode)
 	}
-	if got := resp.Header.Get("Location"); got != info.ProxyURL+"/okya/next" {
+	if got := resp.Header.Get("Location"); got != info.ProxyURL+"/shop/next" {
 		t.Fatalf("Location = %s", got)
 	}
 	var session *http.Cookie

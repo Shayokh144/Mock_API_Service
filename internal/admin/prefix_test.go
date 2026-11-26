@@ -48,7 +48,7 @@ func TestPrefixFormTableAndHistoryDetail(t *testing.T) {
 	client := dashboardClient()
 
 	bad, err := client.PostForm(adminSrv.URL+"/_admin/upstreams", url.Values{
-		"name": {"okya"}, "base_url": {upstreamSrv.URL}, "prefix": {"/okya/"},
+		"name": {"shop"}, "base_url": {upstreamSrv.URL}, "prefix": {"/shop/"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -59,7 +59,7 @@ func TestPrefixFormTableAndHistoryDetail(t *testing.T) {
 	}
 
 	created, err := client.PostForm(adminSrv.URL+"/_admin/upstreams", url.Values{
-		"name": {"OKYA"}, "base_url": {upstreamSrv.URL}, "prefix": {"/okya"},
+		"name": {"SHOP"}, "base_url": {upstreamSrv.URL}, "prefix": {"/shop"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -69,13 +69,13 @@ func TestPrefixFormTableAndHistoryDetail(t *testing.T) {
 		t.Fatalf("create status = %d", created.StatusCode)
 	}
 	dup, err := client.PostForm(adminSrv.URL+"/_admin/upstreams", url.Values{
-		"name": {"other"}, "base_url": {upstreamSrv.URL}, "prefix": {"/okya"},
+		"name": {"other"}, "base_url": {upstreamSrv.URL}, "prefix": {"/shop"},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	dupBody := readAll(t, dup)
-	if dup.StatusCode != http.StatusBadRequest || !strings.Contains(dupBody, "/okya") {
+	if dup.StatusCode != http.StatusBadRequest || !strings.Contains(dupBody, "/shop") {
 		t.Fatalf("duplicate status=%d body=%s", dup.StatusCode, dupBody)
 	}
 	plain, err := client.PostForm(adminSrv.URL+"/_admin/upstreams", url.Values{
@@ -97,9 +97,9 @@ func TestPrefixFormTableAndHistoryDetail(t *testing.T) {
 	for _, want := range []string{
 		"A request with no prefix uses the Referer path",
 		"<th scope=\"col\">Prefix</th>",
-		"/okya",
-		"http://127.0.0.1:" + port + "/okya",
-		"http://10.0.2.2:" + port + "/okya",
+		"/shop",
+		"http://127.0.0.1:" + port + "/shop",
+		"http://10.0.2.2:" + port + "/shop",
 	} {
 		if !strings.Contains(page, want) {
 			t.Fatalf("missing %q in %s", want, page)
@@ -115,11 +115,11 @@ func TestPrefixFormTableAndHistoryDetail(t *testing.T) {
 	}
 
 	form := get(t, client, adminSrv.URL+"/_admin/upstreams/"+item.ID+"/edit")
-	if !strings.Contains(form, `value="/okya"`) {
+	if !strings.Contains(form, `value="/shop"`) {
 		t.Fatalf("edit form = %s", form)
 	}
 
-	resp, err := http.Get(proxySrv.URL + "/okya/api/v1/x?page=2")
+	resp, err := http.Get(proxySrv.URL + "/shop/api/v1/x?page=2")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,11 +129,11 @@ func TestPrefixFormTableAndHistoryDetail(t *testing.T) {
 		t.Fatal("no history")
 	}
 	detail := get(t, client, adminSrv.URL+"/_admin/history/"+entries[0].ID)
-	if !strings.Contains(detail, "/okya/api/v1/x?page=2") || !strings.Contains(detail, "/api/v1/x?page=2") || !strings.Contains(detail, "Forwarded path") || !strings.Contains(detail, "OKYA") {
+	if !strings.Contains(detail, "/shop/api/v1/x?page=2") || !strings.Contains(detail, "/api/v1/x?page=2") || !strings.Contains(detail, "Forwarded path") || !strings.Contains(detail, "SHOP") {
 		t.Fatalf("detail = %s", detail)
 	}
 	filtered := get(t, client, adminSrv.URL+"/_admin/history?upstream="+item.ID)
-	if !strings.Contains(filtered, "/okya/api/v1/x") {
+	if !strings.Contains(filtered, "/shop/api/v1/x") {
 		t.Fatalf("filtered history = %s", filtered)
 	}
 }

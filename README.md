@@ -78,7 +78,7 @@ Rules are saved when you create, edit, enable, disable, or delete them. They are
 
 `data/rules.json` and `data/upstreams.json` are ignored by git. `data/.gitkeep` stays in the repository.
 
-If `UPSTREAM_BASE_URL` is unset and no upstream is saved, the process still listens. After the upstream file is loaded, the log adds `no upstream configured; add one at the dashboard`. When upstreams are saved, that line lists their prefixes in file order, for example `3 upstreams loaded: /okya, /okya-auth, /easyhotel`. One upstream uses the singular: `1 upstream loaded: /app`.
+If `UPSTREAM_BASE_URL` is unset and no upstream is saved, the process still listens. After the upstream file is loaded, the log adds `no upstream configured; add one at the dashboard`. When upstreams are saved, that line lists their prefixes in file order, for example `3 upstreams loaded: /shop, /shop-auth, /easyhotel`. One upstream uses the singular: `1 upstream loaded: /app`.
 
 ## Upstreams
 
@@ -87,7 +87,7 @@ Open [http://127.0.0.1:8081/_admin/upstreams](http://127.0.0.1:8081/_admin/upstr
 1. Choose **New upstream**.
 2. Name it, for example `staging`.
 3. Set the base URL to an absolute `http` or `https` URL. A path on that URL is kept and joined in front of the forwarded path. A query or fragment is rejected.
-4. Set a prefix. It is required, and it is one path segment such as `/okya`. It goes on the app base URL, not on the upstream URL. Two upstreams cannot share a prefix.
+4. Set a prefix. It is required, and it is one path segment such as `/shop`. It goes on the app base URL, not on the upstream URL. Two upstreams cannot share a prefix.
 5. Save. That upstream serves immediately. Do not restart the proxy.
 6. Add another upstream with a different prefix. Both serve at the same time.
 7. On **New rule** or **Edit**, choose that upstream, or **Any upstream**.
@@ -96,7 +96,7 @@ A named rule matches when the request resolves to that upstream. The path prefix
 
 Passthrough uses the resolved upstream. Its base URL path is joined in front of the forwarded path.
 
-An absolute `Location` or `Content-Location` that uses the matched upstream's scheme and host is rewritten to this proxy: the request's Host on that session port, plus the upstream's path prefix. A root-relative value such as `Location: /login` is rewritten the same way, so a prefixed upstream keeps its prefix (`/okya/login`). A scheme-relative `//host/path` for the upstream host is rewritten too. When the base URL has a path, such as `https://api.example.com/api/v1`, that path is removed before the prefix is added, so `Location: /api/v1/me` becomes `/okya/me` and is forwarded once to `/api/v1/me`. A path that already starts with the prefix is not prefixed again. An absolute URL for another configured upstream's host is rewritten to that upstream's prefix, so a sign-in server that redirects to a second app stays on the proxy. A path-relative value such as `next`, and a URL for any other host, stay as the upstream sent them. On `Set-Cookie`, `Domain` is dropped, because the browser would refuse a cookie for another host on `10.0.2.2` or `127.0.0.1`. `Secure` and `Partitioned` are dropped because the proxy is plain HTTP, and `SameSite=None` becomes `Lax`, because a browser drops `SameSite=None` without `Secure`. `Path` is always `/`. One upstream is reached both at `/okya-auth/...` and, through the Referer or the sticky cookie, at `/login`, so a cookie stored on `/okya-auth` would miss the sign-in form post and the app would lose its session. Every upstream shares the proxy's browser origin, so an `HttpOnly` cookie is stored as `mp_<upstream id>_<name>`, and each upstream gets back only its own cookies, under their real names. OKYA and EasyHotel can both use `_session` without seeing each other's. Page scripts cannot read `HttpOnly` cookies, so the rename is invisible to them. A cookie that scripts can read keeps its real name, because the page may look it up, so it is shared by every upstream on this origin. That is a known limitation. A `__Host-` or `__Secure-` cookie of that kind is renamed to `__mp_Host-` or `__mp_Secure-`, and the real name is restored upstream. If the browser still holds a plain cookie with the same name as a namespaced one, for example from an older version of the proxy, the namespaced cookie wins and the plain one is not forwarded. Clearing the browser's cookies for the proxy host is still the cleanest reset. On forwarded requests, an `Origin` or `Referer` that names this proxy is rewritten to the upstream's own scheme and host, and the `Referer` path loses the prefix. A Rails app compares `Origin` with the URL it sees, so without this a form post from `http://10.0.2.2:8080` fails with 422 Unprocessable Entity. `Forwarded` and `X-Forwarded-Host`, `-Proto`, `-Port`, `-Prefix`, and `-Ssl` from the client are dropped. The History detail page shows the forwarded `Host`, `Origin`, and `Referer` under **Sent upstream**, with `Cookie-Names` listing the names of the cookies sent upstream but not their values, and a redirect's `Location` as **Redirects to**. Cookie values are not copied there. A mocked rule response keeps the headers the rule saved. The default session and test sessions both do this.
+An absolute `Location` or `Content-Location` that uses the matched upstream's scheme and host is rewritten to this proxy: the request's Host on that session port, plus the upstream's path prefix. A root-relative value such as `Location: /login` is rewritten the same way, so a prefixed upstream keeps its prefix (`/shop/login`). A scheme-relative `//host/path` for the upstream host is rewritten too. When the base URL has a path, such as `https://api.example.com/api/v1`, that path is removed before the prefix is added, so `Location: /api/v1/me` becomes `/shop/me` and is forwarded once to `/api/v1/me`. A path that already starts with the prefix is not prefixed again. An absolute URL for another configured upstream's host is rewritten to that upstream's prefix, so a sign-in server that redirects to a second app stays on the proxy. A path-relative value such as `next`, and a URL for any other host, stay as the upstream sent them. On `Set-Cookie`, `Domain` is dropped, because the browser would refuse a cookie for another host on `10.0.2.2` or `127.0.0.1`. `Secure` and `Partitioned` are dropped because the proxy is plain HTTP, and `SameSite=None` becomes `Lax`, because a browser drops `SameSite=None` without `Secure`. `Path` is always `/`. One upstream is reached both at `/shop-auth/...` and, through the Referer or the sticky cookie, at `/login`, so a cookie stored on `/shop-auth` would miss the sign-in form post and the app would lose its session. Every upstream shares the proxy's browser origin, so an `HttpOnly` cookie is stored as `mp_<upstream id>_<name>`, and each upstream gets back only its own cookies, under their real names. SHOP and EasyHotel can both use `_session` without seeing each other's. Page scripts cannot read `HttpOnly` cookies, so the rename is invisible to them. A cookie that scripts can read keeps its real name, because the page may look it up, so it is shared by every upstream on this origin. That is a known limitation. A `__Host-` or `__Secure-` cookie of that kind is renamed to `__mp_Host-` or `__mp_Secure-`, and the real name is restored upstream. If the browser still holds a plain cookie with the same name as a namespaced one, for example from an older version of the proxy, the namespaced cookie wins and the plain one is not forwarded. Clearing the browser's cookies for the proxy host is still the cleanest reset. On forwarded requests, an `Origin` or `Referer` that names this proxy is rewritten to the upstream's own scheme and host, and the `Referer` path loses the prefix. A Rails app compares `Origin` with the URL it sees, so without this a form post from `http://10.0.2.2:8080` fails with 422 Unprocessable Entity. `Forwarded` and `X-Forwarded-Host`, `-Proto`, `-Port`, `-Prefix`, and `-Ssl` from the client are dropped. The History detail page shows the forwarded `Host`, `Origin`, and `Referer` under **Sent upstream**, with `Cookie-Names` listing the names of the cookies sent upstream but not their values, and a redirect's `Location` as **Redirects to**. Cookie values are not copied there. A mocked rule response keeps the headers the rule saved. The default session and test sessions both do this.
 
 A WebSocket upgrade (`Connection: Upgrade` and an `Upgrade` header) is tunneled. The proxy does not buffer that response and does not apply `UPSTREAM_TIMEOUT` to the open socket. History records status 101 and does not store the messages. A path prefix is removed the same way as any other forwarded call.
 
@@ -107,21 +107,21 @@ A request whose path matches no prefix, and whose `Referer` is missing, malforme
 Give each upstream its own prefix when two apps should use the proxy at the same time. The prefix is part of the app base URL. It is not part of the upstream base URL.
 
 1. Create an upstream named `easyHotel`. Set the base URL to the real API, for example `https://staging.example.com`. Set the prefix to `/easyhotel`.
-2. Create an upstream named `OKYA`. Set its base URL to that API, and its prefix to `/okya`.
+2. Create an upstream named `SHOP`. Set its base URL to that API, and its prefix to `/shop`.
 3. Point the easyHotel debug build at `http://127.0.0.1:8080/easyhotel`. On the Android emulator use `http://10.0.2.2:8080/easyhotel`.
-4. Point OKYA at `http://127.0.0.1:8080/okya`, or `http://10.0.2.2:8080/okya` on the emulator. The iOS Simulator uses `127.0.0.1`, same as the Mac.
+4. Point SHOP at `http://127.0.0.1:8080/shop`, or `http://10.0.2.2:8080/shop` on the emulator. The iOS Simulator uses `127.0.0.1`, same as the Mac.
 
-A call to `http://127.0.0.1:8080/okya/api/v1/x?page=2` is forwarded to the OKYA upstream as `/api/v1/x?page=2`. The proxy removes only the prefix. `/okyax` does not match `/okya`. A request to exactly `/okya` is forwarded as `/`.
+A call to `http://127.0.0.1:8080/shop/api/v1/x?page=2` is forwarded to the SHOP upstream as `/api/v1/x?page=2`. The proxy removes only the prefix. `/shopx` does not match `/shop`. A request to exactly `/shop` is forwarded as `/`.
 
 The Upstreams page shows those two app addresses for each prefixed upstream. The port is the proxy port, `8080` by default, not the dashboard port.
 
-A page served under a prefix often requests root-relative paths such as `/login`, `/favicon.ico`, or `/assets/app.js`. Those paths have no prefix. The proxy reads the `Referer` header and compares its path only. The host and port are ignored, because the Android emulator uses `10.0.2.2` and the iOS Simulator uses `127.0.0.1` or `localhost`. If that path matches a prefix, the request goes to that upstream and the path is not rewritten. History, the live feed, and the detail page show the upstream name followed by `(via Referer)`. `GET /login` with `Referer: http://10.0.2.2:8080/okya/login/otp` is forwarded to the `/okya` upstream as `/login`.
+A page served under a prefix often requests root-relative paths such as `/login`, `/favicon.ico`, or `/assets/app.js`. Those paths have no prefix. The proxy reads the `Referer` header and compares its path only. The host and port are ignored, because the Android emulator uses `10.0.2.2` and the iOS Simulator uses `127.0.0.1` or `localhost`. If that path matches a prefix, the request goes to that upstream and the path is not rewritten. History, the live feed, and the detail page show the upstream name followed by `(via Referer)`. `GET /login` with `Referer: http://10.0.2.2:8080/shop/login/otp` is forwarded to the `/shop` upstream as `/login`.
 
 The Referer only works for one hop. Once the browser is on `/login`, the form post to `/login` and the images named by `/assets/app.css` carry a Referer with no prefix. So every response that resolved to an upstream also sets an `HttpOnly`, `SameSite=Lax` cookie named `mockproxy_upstream` on `Path=/`, holding that upstream's id. When the prefix and the Referer both miss, the proxy uses the upstream in that cookie and forwards the path unchanged. History shows `(via cookie)`. The cookie follows the last prefixed or Referer-routed request, so a browser that moves between two upstreams uses the newer one. The proxy removes this cookie before forwarding, so the upstream never sees it. Native API clients usually ignore cookies and should keep using the prefix.
 
 If the prefix, the `Referer`, and the cookie all miss, or the cookie names a deleted upstream, the proxy returns the 404 above. It does not guess an upstream. That rejection is always recorded in History with its method, headers, and body.
 
-Rules use the path after the prefix. A rule for `/api/v1/x` on OKYA matches `/okya/api/v1/x` and does not match `/easyhotel/api/v1/x`. The same rule also matches a Referer-routed request whose path is `/api/v1/x` and whose `Referer` path starts with `/okya`. An Any rule matches both apps, and it also matches a request that resolved to no upstream.
+Rules use the path after the prefix. A rule for `/api/v1/x` on SHOP matches `/shop/api/v1/x` and does not match `/easyhotel/api/v1/x`. The same rule also matches a Referer-routed request whose path is `/api/v1/x` and whose `Referer` path starts with `/shop`. An Any rule matches both apps, and it also matches a request that resolved to no upstream.
 
 Deleting an upstream sets rules that named it to Any upstream. If that would duplicate an Any rule for the same method, path, and conditions, the delete is refused and those rules stay unchanged.
 
@@ -166,7 +166,7 @@ The default `LISTEN_ADDR` is `127.0.0.1:8080`. The dashboard listens on `127.0.0
 
 Keep any path from the real base URL on the app base URL in the platform steps below. Leave that path off `UPSTREAM_BASE_URL`. The proxy joins the `UPSTREAM_BASE_URL` path in front of the request path. A path on both sides is sent twice.
 
-An upstream prefix, such as `/okya`, is different. Put that prefix on the app base URL too, for example `http://10.0.2.2:8080/okya`. Leave it off the upstream base URL. The proxy removes it before forwarding. The Upstreams page shows the address to copy.
+An upstream prefix, such as `/shop`, is different. Put that prefix on the app base URL too, for example `http://10.0.2.2:8080/shop`. Leave it off the upstream base URL. The proxy removes it before forwarding. The Upstreams page shows the address to copy.
 
 Example: the app used `https://staging.example.com/v1`, and the seeded prefix is `/app`. The Android base URL is `http://10.0.2.2:8080/app/v1`. The iOS Simulator base URL is `http://127.0.0.1:8080/app/v1`. Start with `UPSTREAM_BASE_URL=https://staging.example.com`. The proxy removes `/app` and forwards `/v1/...`.
 
@@ -222,11 +222,44 @@ Keep that change debug-only, or check with the team before committing it. If `NS
 
 Run it with `flutter run -d <simulator>`, or run the same Simulator from Xcode.
 
-A physical device is out of scope for this loopback-only MVP.
+### Physical Android device
+
+A real phone cannot use `10.0.2.2`. That alias exists only inside the emulator, and the proxy listens only on the Mac's loopback. `adb reverse` closes the gap: it sends a port on the phone over the USB cable (or wireless debugging) to the same port on the Mac. The proxy stays loopback-only and nothing is opened on your Wi-Fi.
+
+1. Turn on USB debugging on the phone, connect it, and accept the prompt on the phone. `adb devices` lists it as `device`.
+2. Forward the proxy port. With an emulator also running, name the phone with `-s` and the serial from `adb devices`:
+
+```sh
+adb -s <serial> reverse tcp:8080 tcp:8080
+```
+
+3. Point the debug base URL at `http://localhost:8080/app`, plus any path from the real base URL. `/app` is the default `UPSTREAM_PREFIX`. Replace it with the prefix on the Upstreams page, for example `http://localhost:8080/shop`.
+
+```sh
+flutter run -d <serial> --dart-define=API_BASE_URL=http://localhost:8080/app
+```
+
+4. Allow cleartext to `localhost` in the debug network security config. A config that lists only `10.0.2.2` blocks the phone with `CLEARTEXT communication to localhost not permitted`. Add both names:
+
+```xml
+<domain-config cleartextTrafficPermitted="true">
+    <domain includeSubdomains="false">10.0.2.2</domain>
+    <domain includeSubdomains="false">localhost</domain>
+</domain-config>
+```
+
+5. Check the forward from the Mac. `adb -s <serial> shell curl -s http://localhost:8080/_admin` prints `the dashboard is not served on the proxy port`. That reply comes from the proxy, so the phone reaches it.
+
+The forward ends when the phone is unplugged or rebooted, or when the adb server restarts. Run step 2 again after any of those. `adb -s <serial> reverse --list` shows the active forwards, and `adb -s <serial> reverse --remove tcp:8080` removes one. A test session listens on its own port, so forward that port too, for example `adb -s <serial> reverse tcp:18090 tcp:18090`, and use `http://localhost:18090` instead of the session's `emulator_url`.
+
+`http://localhost:8080` also works on the emulator after `adb -s emulator-5554 reverse tcp:8080 tcp:8080`, so one base URL can serve both.
+
+A physical iPhone is not supported. iOS has no built-in equivalent of `adb reverse`, and the proxy does not listen on the LAN.
 
 ### If the app does not show traffic
 
-- Cleartext or ATS errors: the debug network security config must allow `10.0.2.2`, or `NSAllowsLocalNetworking` must be true.
+- Cleartext or ATS errors: the debug network security config must allow `10.0.2.2` (emulator) or `localhost` (physical Android device), or `NSAllowsLocalNetworking` must be true.
+- Works on the emulator but not on a physical Android phone: the phone cannot use `10.0.2.2`. Run `adb -s <serial> reverse tcp:8080 tcp:8080` and use `http://localhost:8080`. See Physical Android device.
 - The app still calls the old base URL: the debug define or flavor did not win. This run must be a debug build.
 - Connection refused or a timeout: the proxy is not running, or the app port is not the proxy port. The default port is `8080`.
 - The call works and history stays empty: the app is not reaching this proxy. Open [http://127.0.0.1:8081/_admin/history](http://127.0.0.1:8081/_admin/history) and check the base URL host.
@@ -241,7 +274,7 @@ In the Flutter debug build, drop an event in `beforeSend` when the HTTP response
 
 Open the dashboard. Choose **New rule**.
 
-The rules list has an **Upstream** menu, same idea as History, and it is a GET form. **All upstreams** is the default. **Any** (`?upstream=any`) shows only rules set to Any. A named upstream, such as `?upstream=OKYA_AUTH_DEV`, shows rules bound to that name and also rules set to Any, because Any matches every upstream. A name that is not saved is ignored. The page says how many rules are shown.
+The rules list has an **Upstream** menu, same idea as History, and it is a GET form. **All upstreams** is the default. **Any** (`?upstream=any`) shows only rules set to Any. A named upstream, such as `?upstream=SHOP_AUTH_DEV`, shows rules bound to that name and also rules set to Any, because Any matches every upstream. A name that is not saved is ignored. The page says how many rules are shown.
 
 Rules are grouped by upstream. Each block has the upstream name, its prefix, a rule count, and its own table. Named upstreams follow the Upstreams page. **Any upstream** comes after them. A rule whose upstream was deleted is in a block labelled `Unknown upstream:` plus the id. Blocks with no rules are left out. Edit, enable, disable, and delete return to the same filter.
 
@@ -311,17 +344,17 @@ An empty body is the right shape for `204`. Invalid JSON is rejected and the rul
 
 A path pattern still ignores the query string. Add **Query conditions** or **Body conditions** when calls that share one path should do different things. Each box takes one condition per line. `key=value` is an exact match. A bare `key` means that key is present, with any value. Every line must match. Keys are case-sensitive. The order of the lines does not matter.
 
-Header conditions read request headers. The name is case-insensitive. A bare name means the header is present. `Authorization:absent` means it is missing or empty. `Accept-Language:prefix=th`, `X-Request-Id:contains=okya`, and `user.email:regex=@okya\.test$` are the other operators. The same operators work on query and body lines. `page=2` stays an exact match. A path may end with `**`, which is one whole segment and matches the rest of the path, including nothing. `id*` is still rejected. A JSON condition can index an array, so `items.0.qty` reads the first item. An old rules file with no header conditions and no operator still matches exactly as before.
+Header conditions read request headers. The name is case-insensitive. A bare name means the header is present. `Authorization:absent` means it is missing or empty. `Accept-Language:prefix=th`, `X-Request-Id:contains=shop`, and `user.email:regex=@shop\.test$` are the other operators. The same operators work on query and body lines. `page=2` stays an exact match. A path may end with `**`, which is one whole segment and matches the rest of the path, including nothing. `id*` is still rejected. A JSON condition can index an array, so `items.0.qty` reads the first item. An old rules file with no header conditions and no operator still matches exactly as before.
 
 Query conditions read the URL query. Body conditions read a form body (`application/x-www-form-urlencoded`) or a JSON body. JSON can use a top-level key or a dot path such as `user.role=admin`. Numbers and booleans match their text, so `active=true` matches `true` and `count=1` matches `1`. The proxy reads the body once, up to 1 MiB, and puts the original bytes back. Passthrough and Fresh request forward those original bytes, including a gzip body. A body over 1 MiB, or one that cannot be decoded, does not satisfy body conditions. The request can still be forwarded when it is under `MAX_BODY_BYTES` (8 MiB unless you set that variable).
 
 A rule with more conditions wins over an otherwise equal rule with fewer. Two rules may share a method and path when their conditions differ. An older rules file has no `match` field and keeps matching only on method and path.
 
-On the `OKYA_AUTH_DEV` upstream, token refresh and login both `POST /oauth/token`. Mock only the refresh:
+On the `SHOP_AUTH_DEV` upstream, token refresh and login both `POST /oauth/token`. Mock only the refresh:
 
 | Field | Value |
 | --- | --- |
-| Upstream | `OKYA_AUTH_DEV` |
+| Upstream | `SHOP_AUTH_DEV` |
 | Method | POST |
 | Path pattern | `/oauth/token` |
 | Body conditions | `grant_type=refresh_token` |
@@ -335,7 +368,7 @@ Content-Type: application/json
 {"error":"unauthorized"}
 ```
 
-`grant_type=refresh_token` returns that 401. The login exchange `grant_type=authorization_code` does not match the rule, so it still passes through to `OKYA_AUTH_DEV`. The rules list shows `body grant_type=refresh_token`.
+`grant_type=refresh_token` returns that 401. The login exchange `grant_type=authorization_code` does not match the rule, so it still passes through to `SHOP_AUTH_DEV`. The rules list shows `body grant_type=refresh_token`.
 
 ## Delay
 
@@ -493,7 +526,7 @@ A scenario is a YAML or JSON file with `version: 1`, a name, a description, and 
 `POST /_api/sessions` can include a `scenario` object so the new session starts with those rules. `GET /_api/sessions/{id}/scenario` exports the current rules as JSON. `?format=yaml` returns YAML. The rules page also has an Export as scenario link.
 
 ```sh
-go run ./cmd/mockproxy --scenario scenarios/okya-auth-refresh-failure.yaml
+go run ./cmd/mockproxy --scenario scenarios/shop-auth-refresh-failure.yaml
 ```
 
 That merges the file into the default session. Without `--scenario-persist`, those rules are temporary. They stay in memory and are left out of every save of `data/rules.json`, including a later save of an unrelated rule. Editing a temporary rule in the dashboard keeps it temporary, so that edit is not written either. Add `--scenario-persist` to save the scenario rules into `data/rules.json`. Examples live in `scenarios/`. They use dummy data only. `upstream` is an upstream name or `Any`. `query_conditions` and `body_conditions` are `key=value` strings. `headers` is an object or a list of `Name: value` strings. `body` is JSON. A `raw_response` string switches the rule to raw mode. `GET` accepts `?upstream=` for `Any` or a saved upstream name, and the dashboard rules page uses that same filter. An unknown name is 400 `unknown_upstream` on the API. The dashboard shows no rules and a note that names it. A session holds at most 500 rules. Edits to `default` are written to `data/rules.json`, except temporary scenario rules. Test-session rules stay in memory.
@@ -545,11 +578,11 @@ Use this on a Mac after the automated tests pass. The implementation environment
 17. A rule with Fresh request checked returns a full upstream response with the cache validators removed. A rule without it still returns the saved mock.
 18. History can show All, Mocked, or Real server. A fresh-request row appears under Real server as `upstream (fresh rule)`. A bad source query shows All. Delete keeps the filter. Clear all still removes every entry.
 19. The Upstreams page can add two base URLs, each with its own prefix, without a restart. A rule for one upstream does not match requests that resolve to the other, including a request routed by Referer. An Any rule still matches, including a request that matches no upstream. History shows the upstream name. An old rules file still loads.
-20. Two prefixed upstreams can serve at once. `/okya/api/v1/x?page=2` is forwarded as `/api/v1/x?page=2`, and `/okyax` does not match `/okya`. `GET /login` with `Referer: http://10.0.2.2:8080/okya/login/otp` is forwarded as `/login` to the `/okya` upstream. A request with no prefix and no matching Referer returns 404 from the proxy. History keeps the original path and the forwarded path. An old upstreams file with an empty prefix still loads, and that upstream receives a prefix derived from its name.
+20. Two prefixed upstreams can serve at once. `/shop/api/v1/x?page=2` is forwarded as `/api/v1/x?page=2`, and `/shopx` does not match `/shop`. `GET /login` with `Referer: http://10.0.2.2:8080/shop/login/otp` is forwarded as `/login` to the `/shop` upstream. A request with no prefix and no matching Referer returns 404 from the proxy. History keeps the original path and the forwarded path. An old upstreams file with an empty prefix still loads, and that upstream receives a prefix derived from its name.
 21. A rule can wait before the response is written. `120000` ms is accepted. A negative delay is rejected. A delay that would overflow a duration is rejected. `0` does not wait. The rules list shows `1500 ms` and leaves `0` blank. History records the delay. An older rules file with no `delay_ms` field loads as `0`. Cancelling during the wait writes no response.
 22. A raw response rule sends the pasted status, headers, and body. `Connection: close` closes the connection. `X-Mock-Response` is omitted unless the checkbox is on. An older rules file stays in Fields mode. The delay still applies.
 23. A POST `/oauth/token` rule with body condition `grant_type=refresh_token` returns the raw 401. `grant_type=authorization_code` still passes through. The rules list shows the condition. An older rules file with no conditions still matches on method and path.
-24. History **URL contains** keeps `?q=user/me` and combines with the source tabs and the upstream menu. The rules **Upstream** menu keeps `?upstream=OKYA_AUTH_DEV`, includes Any rules for a named upstream, and shows only Any rules when Any is selected.
+24. History **URL contains** keeps `?q=user/me` and combines with the source tabs and the upstream menu. The rules **Upstream** menu keeps `?upstream=SHOP_AUTH_DEV`, includes Any rules for a named upstream, and shows only Any rules when Any is selected.
 25. **Create rule** on a history row or its detail page opens the new-rule form filled from that call. Nothing is saved until Create rule is pressed. A missing history id leaves the form empty.
 26. The rules list groups rules by upstream, in Upstreams-page order, then Any, then unknown ids. A named filter shows that block and the Any block. Edit, enable, disable, and delete return to the same filter.
 27. A rule can set fault to reset or hang. Reset closes with no HTTP status. Hang waits until the client leaves or `UPSTREAM_TIMEOUT`. A delay runs first. Fresh request plus a fault is rejected. History shows source fault and the matched rule. An older rules file with no fault field still loads.
@@ -562,7 +595,7 @@ Use this on a Mac after the automated tests pass. The implementation environment
 | Startup says `UPSTREAM_BASE_URL is required` | Export the upstream base URL in the same shell. |
 | Startup says `LISTEN_ADDR must be a loopback address` | Use `127.0.0.1`, `localhost`, or `[::1]`. |
 | Startup says the rules file contains invalid JSON | Fix or remove `data/rules.json`. Startup will not replace a broken file. |
-| The app gets a connection error | The proxy is running, and the debug base URL uses the proxy port plus the upstream prefix. On the Mac that is `http://localhost:8080/app`. On an Android emulator use `http://10.0.2.2:8080/app`. |
+| The app gets a connection error | The proxy is running, and the debug base URL uses the proxy port plus the upstream prefix. On the Mac that is `http://localhost:8080/app`. On an Android emulator use `http://10.0.2.2:8080/app`. On a physical Android phone run `adb reverse tcp:8080 tcp:8080` and use `http://localhost:8080/app`. |
 | A trailing slash hits the wrong upstream route | `/v1/users` and `/v1/users/` are different paths. |
 | `/_admin` shows an upstream page | The request did not reach this proxy. |
 | A mock does not match | The method and path are exact, the rule is enabled, and the pattern is not under `/_admin`. |
@@ -570,7 +603,7 @@ Use this on a Mac after the automated tests pass. The implementation environment
 | Rules vanished after restart | The save failed, or the process was started from a different working directory. |
 | History vanished after restart | That is the MVP. History is in memory. Rules stay in the JSON file. |
 | Sentry still shows a mock error | `beforeSend` is not dropping `X-Mock-Response: true`. |
-| Passthrough returns `no upstream matches this path` | The path has no prefix, and the Referer is missing or its path matches no prefix. Open the app from its prefixed base URL, such as `http://10.0.2.2:8080/okya`. |
+| Passthrough returns `no upstream matches this path` | The path has no prefix, and the Referer is missing or its path matches no prefix. Open the app from its prefixed base URL, such as `http://10.0.2.2:8080/shop`. |
 | Startup warns that an upstream had no prefix | An older `upstreams.json` had an empty prefix. The log line is the prefix that was saved and the app base URL to use. |
 | A mock stopped matching | The rule names an upstream that did not resolve this request. Call that upstream's prefix, or load the page from a URL whose Referer path has that prefix. Or set the rule to Any upstream. |
 | A refresh mock also hits login | Add a body condition such as `grant_type=refresh_token`. The path alone matches every call to that path. |

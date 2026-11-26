@@ -24,7 +24,7 @@ func railsLike(t *testing.T) *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/login":
-			http.SetCookie(w, &http.Cookie{Name: "_okya_session", Value: "sid-1", Path: "/", Domain: "okya.example", Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode})
+			http.SetCookie(w, &http.Cookie{Name: "_shop_session", Value: "sid-1", Path: "/", Domain: "shop.example", Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode})
 			http.SetCookie(w, &http.Cookie{Name: "__Host-csrf", Value: "c1", Path: "/", Secure: true, HttpOnly: true, SameSite: http.SameSiteNoneMode})
 			_, _ = io.WriteString(w, `<form method="post" action="/login"><input name="authenticity_token" value="tok-sid-1">`)
 		case r.Method == http.MethodPost && r.URL.Path == "/login":
@@ -41,7 +41,7 @@ func railsLike(t *testing.T) *httptest.Server {
 				http.Error(w, "referer "+ref, http.StatusUnprocessableEntity)
 				return
 			}
-			session, err := r.Cookie("_okya_session")
+			session, err := r.Cookie("_shop_session")
 			if err != nil || session.Value != "sid-1" {
 				http.Error(w, "no session", http.StatusUnprocessableEntity)
 				return
@@ -70,7 +70,7 @@ func TestRailsLoginPassesCSRFThroughProxy(t *testing.T) {
 	upstream := railsLike(t)
 	defer upstream.Close()
 	ups := upstreams.NewMemory()
-	okya, err := ups.Create("OKYA_AUTH_DEV", upstream.URL, "/okya-auth")
+	shop, err := ups.Create("SHOP_AUTH_DEV", upstream.URL, "/shop-auth")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +84,7 @@ func TestRailsLoginPassesCSRFThroughProxy(t *testing.T) {
 	client := noRedirectClient()
 	client.Jar = jar
 
-	page, err := client.Get(proxySrv.URL + "/okya-auth/login")
+	page, err := client.Get(proxySrv.URL + "/shop-auth/login")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,23 +94,23 @@ func TestRailsLoginPassesCSRFThroughProxy(t *testing.T) {
 	for _, cookie := range page.Cookies() {
 		names[cookie.Name] = cookie
 	}
-	session := names["mp_"+okya.ID+"__okya_session"]
+	session := names["mp_"+shop.ID+"__shop_session"]
 	if session == nil || session.Domain != "" || session.Secure {
 		t.Fatalf("session cookie = %+v", session)
 	}
-	csrf := names["mp_"+okya.ID+"___Host-csrf"]
+	csrf := names["mp_"+shop.ID+"___Host-csrf"]
 	if csrf == nil || csrf.Secure || csrf.SameSite != http.SameSiteLaxMode {
 		t.Fatalf("csrf cookie = %+v (all %v)", csrf, page.Cookies())
 	}
 
 	form := url.Values{"authenticity_token": {"tok-sid-1"}, "email": {"a@b.c"}, "password": {"secret"}}
-	req, err := http.NewRequest(http.MethodPost, proxySrv.URL+"/okya-auth/login", strings.NewReader(form.Encode()))
+	req, err := http.NewRequest(http.MethodPost, proxySrv.URL+"/shop-auth/login", strings.NewReader(form.Encode()))
 	if err != nil {
 		t.Fatal(err)
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Origin", proxySrv.URL)
-	req.Header.Set("Referer", proxySrv.URL+"/okya-auth/login")
+	req.Header.Set("Referer", proxySrv.URL+"/shop-auth/login")
 	req.Header.Set("X-Forwarded-Host", "evil.example")
 	resp, err := client.Do(req)
 	if err != nil {
@@ -121,7 +121,7 @@ func TestRailsLoginPassesCSRFThroughProxy(t *testing.T) {
 	if resp.StatusCode != http.StatusFound {
 		t.Fatalf("status = %d body = %s", resp.StatusCode, body)
 	}
-	if got := resp.Header.Get("Location"); got != "/okya-auth/dashboard" {
+	if got := resp.Header.Get("Location"); got != "/shop-auth/dashboard" {
 		t.Fatalf("Location = %s", got)
 	}
 
@@ -145,30 +145,30 @@ func TestRailsLoginPassesCSRFThroughProxy(t *testing.T) {
 }
 
 func TestOutboundLeavesForeignOriginAlone(t *testing.T) {
-	upstream, _ := url.Parse("https://auth.okya.example:443/base")
+	upstream, _ := url.Parse("https://auth.shop.example:443/base")
 	header := http.Header{}
 	header.Set("Origin", "https://other.example")
 	header.Set("Referer", "https://other.example/page")
-	rewriteOutbound(header, "10.0.2.2:8080", upstream, "/okya", "")
+	rewriteOutbound(header, "10.0.2.2:8080", upstream, "/shop", "")
 	if header.Get("Origin") != "https://other.example" || header.Get("Referer") != "https://other.example/page" {
 		t.Fatalf("foreign values changed: %v", header)
 	}
 	header.Set("Origin", "http://10.0.2.2:8080")
-	header.Set("Referer", "http://10.0.2.2:8080/okya/login?step=2#x")
+	header.Set("Referer", "http://10.0.2.2:8080/shop/login?step=2#x")
 	header.Set("Forwarded", "host=evil")
-	rewriteOutbound(header, "10.0.2.2:8080", upstream, "/okya", "")
-	if got := header.Get("Origin"); got != "https://auth.okya.example" {
+	rewriteOutbound(header, "10.0.2.2:8080", upstream, "/shop", "")
+	if got := header.Get("Origin"); got != "https://auth.shop.example" {
 		t.Fatalf("Origin = %s", got)
 	}
-	if got := header.Get("Referer"); got != "https://auth.okya.example/base/login?step=2" {
+	if got := header.Get("Referer"); got != "https://auth.shop.example/base/login?step=2" {
 		t.Fatalf("Referer = %s", got)
 	}
 	if header.Get("Forwarded") != "" {
 		t.Fatal("Forwarded should be dropped")
 	}
 	header.Set("Referer", "http://10.0.2.2:8080/login")
-	rewriteOutbound(header, "10.0.2.2:8080", upstream, "/okya", "")
-	if got := header.Get("Referer"); got != "https://auth.okya.example/base/login" {
+	rewriteOutbound(header, "10.0.2.2:8080", upstream, "/shop", "")
+	if got := header.Get("Referer"); got != "https://auth.shop.example/base/login" {
 		t.Fatalf("unprefixed Referer = %s", got)
 	}
 }

@@ -1,5 +1,5 @@
 version: 1
-name: okya-auth-refresh-failure
+name: shop-auth-refresh-failure
 description: The refresh call fails with a dummy error. No real tokens.
 rules:
   - name: refresh-fail

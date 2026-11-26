@@ -12,11 +12,11 @@ import (
 )
 
 const (
-	appCallback = "co.okya.pos.dev://callback?code=abc&state=xyz"
-	intentURL   = "intent://callback?code=abc#Intent;scheme=co.okya.pos.dev;package=co.okya.pos.dev;end"
-	appBody     = `<a href="co.okya.pos.dev://callback?code=abc&amp;state=xyz">Open app</a>` +
-		`<form action="/oauth/authorize?redirect_uri=co.okya.pos.dev%3A%2F%2Fcallback&amp;state=xyz">` +
-		`<script>location.href="intent://callback#Intent;scheme=co.okya.pos.dev;end"</script>`
+	appCallback = "com.example.pos.dev://callback?code=abc&state=xyz"
+	intentURL   = "intent://callback?code=abc#Intent;scheme=com.example.pos.dev;package=com.example.pos.dev;end"
+	appBody     = `<a href="com.example.pos.dev://callback?code=abc&amp;state=xyz">Open app</a>` +
+		`<form action="/oauth/authorize?redirect_uri=com.example.pos.dev%3A%2F%2Fcallback&amp;state=xyz">` +
+		`<script>location.href="intent://callback#Intent;scheme=com.example.pos.dev;end"</script>`
 )
 
 // An OAuth sign-in ends with a redirect to the Flutter app's own scheme.
@@ -33,7 +33,7 @@ func TestAppSchemeRedirectPassesThrough(t *testing.T) {
 			w.Header().Set("Location", intentURL)
 			w.WriteHeader(http.StatusFound)
 		case "/authorize":
-			w.Header().Set("Location", authURL+"/oauth/authorize?redirect_uri=co.okya.pos.dev%3A%2F%2Fcallback&state=xyz")
+			w.Header().Set("Location", authURL+"/oauth/authorize?redirect_uri=com.example.pos.dev%3A%2F%2Fcallback&state=xyz")
 			w.WriteHeader(http.StatusFound)
 		case "/page":
 			w.Header().Set("Refresh", "0; url="+appCallback)
@@ -47,7 +47,7 @@ func TestAppSchemeRedirectPassesThrough(t *testing.T) {
 	authURL = upstream.URL
 
 	ups := upstreams.NewMemory()
-	okya, err := ups.Create("OKYA_AUTH", upstream.URL, "/okya-auth")
+	shop, err := ups.Create("SHOP_AUTH", upstream.URL, "/shop-auth")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +63,7 @@ func TestAppSchemeRedirectPassesThrough(t *testing.T) {
 			req.Header.Set("Referer", proxySrv.URL+referer)
 		}
 		if sticky {
-			req.AddCookie(&http.Cookie{Name: stickyCookieName, Value: okya.ID})
+			req.AddCookie(&http.Cookie{Name: stickyCookieName, Value: shop.ID})
 		}
 		resp, err := client.Do(req)
 		if err != nil {
@@ -78,8 +78,8 @@ func TestAppSchemeRedirectPassesThrough(t *testing.T) {
 		name, prefix, referer string
 		sticky                bool
 	}{
-		{"prefixed", "/okya-auth", "", false},
-		{"via Referer", "", "/okya-auth/login", false},
+		{"prefixed", "/shop-auth", "", false},
+		{"via Referer", "", "/shop-auth/login", false},
 		{"via cookie", "", "/login", true},
 	}
 	for _, route := range routes {
@@ -93,7 +93,7 @@ func TestAppSchemeRedirectPassesThrough(t *testing.T) {
 		}
 		resp, _ = send(route.prefix+"/authorize", route.referer, route.sticky)
 		want := proxySrv.URL[len("http://"):]
-		if got := resp.Header.Get("Location"); got != "http://"+want+"/okya-auth/oauth/authorize?redirect_uri=co.okya.pos.dev%3A%2F%2Fcallback&state=xyz" {
+		if got := resp.Header.Get("Location"); got != "http://"+want+"/shop-auth/oauth/authorize?redirect_uri=com.example.pos.dev%3A%2F%2Fcallback&state=xyz" {
 			t.Fatalf("%s: authorize Location=%q, the redirect_uri query must be kept byte for byte", route.name, got)
 		}
 		resp, body := send(route.prefix+"/page", route.referer, route.sticky)
@@ -106,27 +106,27 @@ func TestAppSchemeRedirectPassesThrough(t *testing.T) {
 	}
 
 	for _, entry := range log.List() {
-		if entry.Path == "/okya-auth/callback-redirect" && entry.ResponseHeaders.Get("Location") != appCallback {
+		if entry.Path == "/shop-auth/callback-redirect" && entry.ResponseHeaders.Get("Location") != appCallback {
 			t.Fatalf("history Location = %q", entry.ResponseHeaders.Get("Location"))
 		}
 	}
 }
 
 func TestNonWebSchemesAreNeverRewritten(t *testing.T) {
-	base := mustURL(t, "https://auth.okya.example")
-	targets := []redirectTarget{{prefix: "/okya-auth", base: base}}
+	base := mustURL(t, "https://auth.shop.example")
+	targets := []redirectTarget{{prefix: "/shop-auth", base: base}}
 	for _, raw := range []string{
 		appCallback,
-		"CO.OKYA.POS.DEV://callback?code=abc",
+		"COM.EXAMPLE.POS.DEV://callback?code=abc",
 		intentURL,
-		"co.okya.pos.dev:/callback?code=abc",
-		"co.okya.pos.dev:callback",
-		"mailto:help@okya.example",
+		"com.example.pos.dev:/callback?code=abc",
+		"com.example.pos.dev:callback",
+		"mailto:help@shop.example",
 		"tel:+6600000000",
 		"javascript:void(0)",
 		"data:text/plain,hi",
-		"ftp://auth.okya.example/x",
-		"ws://auth.okya.example/x",
+		"ftp://auth.shop.example/x",
+		"ws://auth.shop.example/x",
 	} {
 		got, changed := rewriteLocationTo(raw, "10.0.2.2:8080", targets)
 		if changed || got != raw {

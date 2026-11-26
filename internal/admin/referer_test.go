@@ -31,7 +31,7 @@ func TestHistoryShowsRefererNote(t *testing.T) {
 		Status:        200,
 		Source:        history.SourceUpstream,
 		UpstreamID:    "0123456789abcdef",
-		UpstreamName:  "OKYA_AUTH_DEV",
+		UpstreamName:  "SHOP_AUTH_DEV",
 		ViaReferer:    true,
 	})
 	dashboard, err := New(store, log, ups)
@@ -43,15 +43,15 @@ func TestHistoryShowsRefererNote(t *testing.T) {
 	client := dashboardClient()
 
 	page := get(t, client, srv.URL+"/_admin/history")
-	if !strings.Contains(page, "OKYA_AUTH_DEV (via Referer)") {
+	if !strings.Contains(page, "SHOP_AUTH_DEV (via Referer)") {
 		t.Fatalf("list = %s", page)
 	}
 	detail := get(t, client, srv.URL+"/_admin/history/"+added.ID)
-	if !strings.Contains(detail, "OKYA_AUTH_DEV (via Referer)") || !strings.Contains(detail, "<dt>Upstream</dt>") {
+	if !strings.Contains(detail, "SHOP_AUTH_DEV (via Referer)") || !strings.Contains(detail, "<dt>Upstream</dt>") {
 		t.Fatalf("detail = %s", detail)
 	}
 	feed := get(t, client, srv.URL+"/_admin/history/feed")
-	if !strings.Contains(feed, `"upstream":"OKYA_AUTH_DEV (via Referer)"`) {
+	if !strings.Contains(feed, `"upstream":"SHOP_AUTH_DEV (via Referer)"`) {
 		t.Fatalf("feed = %s", feed)
 	}
 }

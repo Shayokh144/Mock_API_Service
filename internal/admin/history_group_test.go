@@ -16,14 +16,14 @@ import (
 func TestGroupHistoryKeyOrderAndSummary(t *testing.T) {
 	start := time.Date(2026, 11, 19, 12, 0, 0, 0, time.UTC)
 	entries := []history.Entry{
-		{ID: "older", StartedAt: start, Method: "GET", Path: "/v1/items", RawQuery: "a=1", Status: 304, Source: history.SourceMock, UpstreamID: "u1", UpstreamName: "OKYA", DelayMS: 1500, RuleID: "abc", RuleName: "Saved"},
-		{ID: "other-path", StartedAt: start.Add(time.Second), Method: "GET", Path: "/v1/users/111", Status: 200, Source: history.SourceUpstream, UpstreamID: "u1", UpstreamName: "OKYA"},
-		{ID: "uuid", StartedAt: start.Add(2 * time.Second), Method: "GET", Path: "/v1/users/222", Status: 200, Source: history.SourceUpstream, UpstreamID: "u1", UpstreamName: "OKYA"},
-		{ID: "newer", StartedAt: start.Add(3 * time.Second), Method: "GET", Path: "/v1/items", RawQuery: "b=2", Status: 200, Source: history.SourceUpstream, UpstreamID: "u1", UpstreamName: "OKYA", ViaReferer: true, DelayMS: 1500, RuleID: "abc", RuleName: "Saved"},
+		{ID: "older", StartedAt: start, Method: "GET", Path: "/v1/items", RawQuery: "a=1", Status: 304, Source: history.SourceMock, UpstreamID: "u1", UpstreamName: "SHOP", DelayMS: 1500, RuleID: "abc", RuleName: "Saved"},
+		{ID: "other-path", StartedAt: start.Add(time.Second), Method: "GET", Path: "/v1/users/111", Status: 200, Source: history.SourceUpstream, UpstreamID: "u1", UpstreamName: "SHOP"},
+		{ID: "uuid", StartedAt: start.Add(2 * time.Second), Method: "GET", Path: "/v1/users/222", Status: 200, Source: history.SourceUpstream, UpstreamID: "u1", UpstreamName: "SHOP"},
+		{ID: "newer", StartedAt: start.Add(3 * time.Second), Method: "GET", Path: "/v1/items", RawQuery: "b=2", Status: 200, Source: history.SourceUpstream, UpstreamID: "u1", UpstreamName: "SHOP", ViaReferer: true, DelayMS: 1500, RuleID: "abc", RuleName: "Saved"},
 		{ID: "other-upstream", StartedAt: start.Add(4 * time.Second), Method: "GET", Path: "/v1/items", Status: 201, Source: history.SourceMock, UpstreamID: "u2", UpstreamName: "Other"},
 		{ID: "rejected-new", StartedAt: start.Add(5 * time.Second), Method: "GET", Path: "/v1/missing", Status: 0, Source: history.SourceRejected},
 		{ID: "rejected-old", StartedAt: start.Add(-time.Second), Method: "GET", Path: "/v1/missing", Status: 0, Source: history.SourceRejected},
-		{ID: "post", StartedAt: start.Add(6 * time.Second), Method: "POST", Path: "/v1/items", Status: 204, Source: history.SourceUpstream, UpstreamID: "u1", UpstreamName: "OKYA"},
+		{ID: "post", StartedAt: start.Add(6 * time.Second), Method: "POST", Path: "/v1/items", Status: 204, Source: history.SourceUpstream, UpstreamID: "u1", UpstreamName: "SHOP"},
 	}
 	lines := historyLines(entries, "", false)
 	if historyGroupKey(entries[0]) != historyGroupKey(entries[3]) {
@@ -58,7 +58,7 @@ func TestGroupHistoryKeyOrderAndSummary(t *testing.T) {
 	if len(items.Rows) != 2 || items.Rows[0].ID != "newer" || items.Rows[1].ID != "older" {
 		t.Fatalf("item rows = %+v", items.Rows)
 	}
-	if items.Upstream != "OKYA (via Referer)" || items.Path != "/v1/items" {
+	if items.Upstream != "SHOP (via Referer)" || items.Path != "/v1/items" {
 		t.Fatalf("collapsed item = %s %s", items.Upstream, items.Path)
 	}
 	if items.StatusSummary != "200 ×1, 304 ×1" || items.Sources != "upstream (fresh rule), mock" {
@@ -82,16 +82,16 @@ func TestHistoryPageGroupsAfterFiltersAndToggle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	okya, err := ups.Create("OKYA", "http://127.0.0.1:9", "/okya")
+	shop, err := ups.Create("SHOP", "http://127.0.0.1:9", "/shop")
 	if err != nil {
 		t.Fatal(err)
 	}
 	log := history.New(20)
 	start := time.Date(2026, 11, 19, 12, 0, 0, 0, time.UTC)
-	older := log.Add(history.Entry{StartedAt: start, Method: "GET", Path: "/v1/items", RawQuery: "a=1", Status: 304, Source: history.SourceMock, UpstreamID: okya.ID, UpstreamName: okya.Name, RuleID: "aaaaaaaaaaaaaaaa", RuleName: "Saved", DelayMS: 1500})
-	other := log.Add(history.Entry{StartedAt: start.Add(time.Second), Method: "GET", Path: "/v1/users/111", Status: 200, Source: history.SourceUpstream, UpstreamID: okya.ID, UpstreamName: okya.Name})
-	newer := log.Add(history.Entry{StartedAt: start.Add(2 * time.Second), Method: "GET", Path: "/v1/items", RawQuery: "b=2", Status: 200, Source: history.SourceUpstream, UpstreamID: okya.ID, UpstreamName: okya.Name, DelayMS: 1500})
-	log.Add(history.Entry{StartedAt: start.Add(3 * time.Second), Method: "GET", Path: "/v1/items", Status: 500, Source: history.SourceMock, UpstreamID: okya.ID, UpstreamName: okya.Name, DelayMS: 1500})
+	older := log.Add(history.Entry{StartedAt: start, Method: "GET", Path: "/v1/items", RawQuery: "a=1", Status: 304, Source: history.SourceMock, UpstreamID: shop.ID, UpstreamName: shop.Name, RuleID: "aaaaaaaaaaaaaaaa", RuleName: "Saved", DelayMS: 1500})
+	other := log.Add(history.Entry{StartedAt: start.Add(time.Second), Method: "GET", Path: "/v1/users/111", Status: 200, Source: history.SourceUpstream, UpstreamID: shop.ID, UpstreamName: shop.Name})
+	newer := log.Add(history.Entry{StartedAt: start.Add(2 * time.Second), Method: "GET", Path: "/v1/items", RawQuery: "b=2", Status: 200, Source: history.SourceUpstream, UpstreamID: shop.ID, UpstreamName: shop.Name, DelayMS: 1500})
+	log.Add(history.Entry{StartedAt: start.Add(3 * time.Second), Method: "GET", Path: "/v1/items", Status: 500, Source: history.SourceMock, UpstreamID: shop.ID, UpstreamName: shop.Name, DelayMS: 1500})
 
 	dashboard, err := New(store, log, ups)
 	if err != nil {
@@ -124,7 +124,7 @@ func TestHistoryPageGroupsAfterFiltersAndToggle(t *testing.T) {
 	if len(cells) != 9 {
 		t.Fatalf("group cells = %d\n%s", len(cells), page)
 	}
-	for i, want := range []string{"GET", "▶", "200 ×1", "mock", "OKYA", "1500 ms", "", formatHistoryTime(start.Add(3 * time.Second)), ""} {
+	for i, want := range []string{"GET", "▶", "200 ×1", "mock", "SHOP", "1500 ms", "", formatHistoryTime(start.Add(3 * time.Second)), ""} {
 		if want != "" && !strings.Contains(html.UnescapeString(cells[i]), want) {
 			t.Fatalf("cell %d = %q, want %q", i, cells[i], want)
 		}
