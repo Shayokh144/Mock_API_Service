@@ -65,6 +65,8 @@ type Options struct {
 	Timeout      time.Duration
 	HistoryLimit int
 	MaxBody      int
+	// HostAllowed is the proxy Host check for test sessions. See proxy.LocalHosts.
+	HostAllowed func(host string) bool
 }
 
 // Manager tracks the developer session and test sessions.
@@ -200,11 +202,12 @@ func (m *Manager) Create(name string, port int, idle time.Duration) (Info, error
 	rulesStore := rules.NewMemory()
 	log := history.New(m.opts.HistoryLimit)
 	handler := proxy.New(proxy.Options{
-		Upstreams: m.opts.Upstreams,
-		Timeout:   m.opts.Timeout,
-		Rules:     rulesStore,
-		History:   log,
-		MaxBody:   m.opts.MaxBody,
+		Upstreams:   m.opts.Upstreams,
+		Timeout:     m.opts.Timeout,
+		Rules:       rulesStore,
+		History:     log,
+		MaxBody:     m.opts.MaxBody,
+		HostAllowed: m.opts.HostAllowed,
 	})
 	item := &live{
 		info: Info{

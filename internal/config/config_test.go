@@ -143,6 +143,24 @@ func TestLoadAllowsMissingUpstream(t *testing.T) {
 	}
 }
 
+func TestLoadProxyAllowedHosts(t *testing.T) {
+	cfg, err := Load(getenvFrom(map[string]string{"PROXY_ALLOWED_HOSTS": " Mac.Local , 192.168.1.20,,[fe80::1] "}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"mac.local", "192.168.1.20", "fe80::1"}
+	if strings.Join(cfg.ProxyAllowedHosts, ",") != strings.Join(want, ",") {
+		t.Fatalf("hosts = %v", cfg.ProxyAllowedHosts)
+	}
+	cfg, err = Load(getenvFrom(nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.ProxyAllowedHosts) != 0 {
+		t.Fatalf("default hosts = %v", cfg.ProxyAllowedHosts)
+	}
+}
+
 func TestLoadRejectsBadSettings(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -166,6 +184,9 @@ func TestLoadRejectsBadSettings(t *testing.T) {
 		{"text body", map[string]string{"MAX_BODY_BYTES": "eight"}, "MAX_BODY_BYTES"},
 		{"bad prefix", map[string]string{"UPSTREAM_PREFIX": "/shop/"}, "UPSTREAM_PREFIX"},
 		{"admin prefix", map[string]string{"UPSTREAM_PREFIX": "/_admin"}, "UPSTREAM_PREFIX"},
+		{"host wildcard", map[string]string{"PROXY_ALLOWED_HOSTS": "*"}, "PROXY_ALLOWED_HOSTS"},
+		{"host with port", map[string]string{"PROXY_ALLOWED_HOSTS": "dev.example:8080"}, "PROXY_ALLOWED_HOSTS"},
+		{"host url", map[string]string{"PROXY_ALLOWED_HOSTS": "http://dev.example"}, "PROXY_ALLOWED_HOSTS"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
