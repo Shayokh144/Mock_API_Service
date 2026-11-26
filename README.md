@@ -222,11 +222,44 @@ Keep that change debug-only, or check with the team before committing it. If `NS
 
 Run it with `flutter run -d <simulator>`, or run the same Simulator from Xcode.
 
-A physical device is out of scope for this loopback-only MVP.
+### Physical Android device
+
+A real phone cannot use `10.0.2.2`. That alias exists only inside the emulator, and the proxy listens only on the Mac's loopback. `adb reverse` closes the gap: it sends a port on the phone over the USB cable (or wireless debugging) to the same port on the Mac. The proxy stays loopback-only and nothing is opened on your Wi-Fi.
+
+1. Turn on USB debugging on the phone, connect it, and accept the prompt on the phone. `adb devices` lists it as `device`.
+2. Forward the proxy port. With an emulator also running, name the phone with `-s` and the serial from `adb devices`:
+
+```sh
+adb -s <serial> reverse tcp:8080 tcp:8080
+```
+
+3. Point the debug base URL at `http://localhost:8080/app`, plus any path from the real base URL. `/app` is the default `UPSTREAM_PREFIX`. Replace it with the prefix on the Upstreams page, for example `http://localhost:8080/okya`.
+
+```sh
+flutter run -d <serial> --dart-define=API_BASE_URL=http://localhost:8080/app
+```
+
+4. Allow cleartext to `localhost` in the debug network security config. A config that lists only `10.0.2.2` blocks the phone with `CLEARTEXT communication to localhost not permitted`. Add both names:
+
+```xml
+<domain-config cleartextTrafficPermitted="true">
+    <domain includeSubdomains="false">10.0.2.2</domain>
+    <domain includeSubdomains="false">localhost</domain>
+</domain-config>
+```
+
+5. Check the forward from the Mac. `adb -s <serial> shell curl -s http://localhost:8080/_admin` prints `the dashboard is not served on the proxy port`. That reply comes from the proxy, so the phone reaches it.
+
+The forward ends when the phone is unplugged or rebooted, or when the adb server restarts. Run step 2 again after any of those. `adb -s <serial> reverse --list` shows the active forwards, and `adb -s <serial> reverse --remove tcp:8080` removes one. A test session listens on its own port, so forward that port too, for example `adb -s <serial> reverse tcp:18090 tcp:18090`, and use `http://localhost:18090` instead of the session's `emulator_url`.
+
+`http://localhost:8080` also works on the emulator after `adb -s emulator-5554 reverse tcp:8080 tcp:8080`, so one base URL can serve both.
+
+A physical iPhone is not supported. iOS has no built-in equivalent of `adb reverse`, and the proxy does not listen on the LAN.
 
 ### If the app does not show traffic
 
-- Cleartext or ATS errors: the debug network security config must allow `10.0.2.2`, or `NSAllowsLocalNetworking` must be true.
+- Cleartext or ATS errors: the debug network security config must allow `10.0.2.2` (emulator) or `localhost` (physical Android device), or `NSAllowsLocalNetworking` must be true.
+- Works on the emulator but not on a physical Android phone: the phone cannot use `10.0.2.2`. Run `adb -s <serial> reverse tcp:8080 tcp:8080` and use `http://localhost:8080`. See Physical Android device.
 - The app still calls the old base URL: the debug define or flavor did not win. This run must be a debug build.
 - Connection refused or a timeout: the proxy is not running, or the app port is not the proxy port. The default port is `8080`.
 - The call works and history stays empty: the app is not reaching this proxy. Open [http://127.0.0.1:8081/_admin/history](http://127.0.0.1:8081/_admin/history) and check the base URL host.
@@ -562,7 +595,7 @@ Use this on a Mac after the automated tests pass. The implementation environment
 | Startup says `UPSTREAM_BASE_URL is required` | Export the upstream base URL in the same shell. |
 | Startup says `LISTEN_ADDR must be a loopback address` | Use `127.0.0.1`, `localhost`, or `[::1]`. |
 | Startup says the rules file contains invalid JSON | Fix or remove `data/rules.json`. Startup will not replace a broken file. |
-| The app gets a connection error | The proxy is running, and the debug base URL uses the proxy port plus the upstream prefix. On the Mac that is `http://localhost:8080/app`. On an Android emulator use `http://10.0.2.2:8080/app`. |
+| The app gets a connection error | The proxy is running, and the debug base URL uses the proxy port plus the upstream prefix. On the Mac that is `http://localhost:8080/app`. On an Android emulator use `http://10.0.2.2:8080/app`. On a physical Android phone run `adb reverse tcp:8080 tcp:8080` and use `http://localhost:8080/app`. |
 | A trailing slash hits the wrong upstream route | `/v1/users` and `/v1/users/` are different paths. |
 | `/_admin` shows an upstream page | The request did not reach this proxy. |
 | A mock does not match | The method and path are exact, the rule is enabled, and the pattern is not under `/_admin`. |
